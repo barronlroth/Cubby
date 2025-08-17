@@ -3,6 +3,7 @@ import SwiftData
 
 struct HomeView: View {
     @Query private var homes: [Home]
+    @Query private var allStorageLocations: [StorageLocation]
     @Binding var selectedHome: Home?
     @Binding var selectedLocation: StorageLocation?
     @State private var showingAddLocation = false
@@ -10,7 +11,9 @@ struct HomeView: View {
     @State private var expandedLocations = Set<UUID>()
     
     private var rootStorageLocations: [StorageLocation] {
-        selectedHome?.storageLocations?.filter { $0.parentLocation == nil } ?? []
+        allStorageLocations.filter { location in
+            location.home?.id == selectedHome?.id && location.parentLocation == nil
+        }
     }
     
     var body: some View {

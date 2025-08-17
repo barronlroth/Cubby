@@ -16,11 +16,11 @@ This todo list is derived from the technical specification and breaks down all i
    - Fixed duplicate swipe action buttons issue
    - Fixed crash when creating nested locations
 
-## ⚠️ KNOWN ISSUES TO FIX
-1. **UI Refresh After Creating Storage Location**
-   - When creating a new storage location, the app doesn't automatically refresh to display it
-   - User needs to navigate away and back to see the new location
-   - Likely needs a SwiftData fetch or view refresh trigger after save
+## ✅ RECENTLY FIXED ISSUES
+1. **UI Refresh After Creating Storage Location** ✅
+   - Fixed by using @Query in HomeView to fetch all storage locations
+   - Locations now filter based on selectedHome ID
+   - SwiftData automatically refreshes the view when new locations are added
 
 ## ✅ WORKING FEATURES
 - Home creation and management
