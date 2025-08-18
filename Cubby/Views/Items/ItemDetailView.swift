@@ -143,7 +143,7 @@ struct ItemDetailView: View {
             Text("Are you sure you want to delete \"\(item.title)\"? You can undo this action for a limited time.")
         }
         .sheet(isPresented: $showingMovePicker) {
-            StorageLocationPicker(selectedHome: item.storageLocation?.home, selectedLocation: $newLocation)
+            StorageLocationPicker(selectedHomeId: item.storageLocation?.home?.id, selectedLocation: $newLocation)
                 .onDisappear {
                     if let newLocation, newLocation.id != item.storageLocation?.id {
                         moveItem(to: newLocation)

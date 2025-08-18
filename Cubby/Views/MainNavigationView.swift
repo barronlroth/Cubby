@@ -27,8 +27,12 @@ struct MainNavigationView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            AddItemFloatingButton(showingAddItem: $showingAddItem)
-                .padding()
+            // Only show FAB when a home is selected
+            if selectedHome != nil {
+                AddItemFloatingButton(showingAddItem: $showingAddItem)
+                    .padding()
+                    .transition(.scale.combined(with: .opacity))
+            }
         }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
@@ -54,7 +58,10 @@ struct MainNavigationView: View {
             .animation(.spring(response: 0.3), value: undoManager.canUndo)
         }
         .sheet(isPresented: $showingAddItem) {
-            AddItemView(selectedHome: selectedHome)
+            // Validate homeId before presenting
+            if let homeId = selectedHome?.id {
+                AddItemView(selectedHomeId: homeId)
+            }
         }
         .sheet(isPresented: $showingSearch) {
             SearchView()
@@ -62,8 +69,28 @@ struct MainNavigationView: View {
         .onAppear {
             if selectedHome == nil && !homes.isEmpty {
                 selectedHome = homes.first
+                DebugLogger.info("MainNavigationView.onAppear - Set selectedHome to: \(homes.first?.name ?? "nil")")
             }
         }
+        .onChange(of: homes) { oldHomes, newHomes in
+            // Keep selectedHome synchronized with homes
+            if let currentHome = selectedHome {
+                // Check if current home still exists
+                if !newHomes.contains(where: { $0.id == currentHome.id }) {
+                    // Current home was deleted, select first available
+                    selectedHome = newHomes.first
+                    DebugLogger.warning("MainNavigationView - Selected home was deleted, switching to: \(newHomes.first?.name ?? "none")")
+                }
+            } else if selectedHome == nil && !newHomes.isEmpty {
+                // No home selected but homes exist, select first
+                selectedHome = newHomes.first
+                DebugLogger.info("MainNavigationView - No home selected, auto-selecting: \(newHomes.first?.name ?? "none")")
+            }
+        }
+        .onChange(of: selectedHome) { oldHome, newHome in
+            DebugLogger.info("MainNavigationView - selectedHome changed from \(oldHome?.name ?? "nil") to \(newHome?.name ?? "nil")")
+        }
+        .animation(.spring(response: 0.3), value: selectedHome?.id)
     }
     
     private func performUndo() {
@@ -81,7 +108,10 @@ struct AddItemFloatingButton: View {
     @Binding var showingAddItem: Bool
     
     var body: some View {
-        Button(action: { showingAddItem = true }) {
+        Button(action: { 
+            DebugLogger.info("FAB - Add Item button pressed")
+            showingAddItem = true 
+        }) {
             Image(systemName: "plus")
                 .font(.title2)
                 .fontWeight(.semibold)
@@ -99,15 +129,17 @@ struct SearchPillButton: View {
     
     var body: some View {
         Button(action: { showingSearch = true }) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                 Text("Search")
             }
-            .font(.callout)
+            .font(.subheadline)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(.regularMaterial)
             .clipShape(Capsule())
+            .shadow(radius: 2, y: 1)
         }
+        .padding(.horizontal)
     }
 }

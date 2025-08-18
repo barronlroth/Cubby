@@ -48,7 +48,7 @@ struct StorageLocationRow: View {
             locationLabel
         }
         .sheet(isPresented: $showingAddLocation) {
-            AddLocationView(home: location.home, parentLocation: location)
+            AddLocationView(homeId: location.home?.id, parentLocation: location)
         }
         .alert("Delete Location", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }

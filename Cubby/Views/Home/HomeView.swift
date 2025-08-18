@@ -1,56 +1,115 @@
 import SwiftUI
 import SwiftData
 
+struct LocationSection: Identifiable {
+    let id = UUID()
+    let location: StorageLocation
+    let locationPath: String
+    let items: [InventoryItem]
+    
+    var isEmpty: Bool {
+        items.isEmpty
+    }
+}
+
 struct HomeView: View {
     @Query private var homes: [Home]
-    @Query private var allStorageLocations: [StorageLocation]
+    @Query private var allItems: [InventoryItem]
     @Binding var selectedHome: Home?
     @Binding var selectedLocation: StorageLocation?
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
-    @State private var expandedLocations = Set<UUID>()
+    @State private var showingAddItem = false
+    @Environment(\.modelContext) private var modelContext
     
-    private var rootStorageLocations: [StorageLocation] {
-        allStorageLocations.filter { location in
-            location.home?.id == selectedHome?.id && location.parentLocation == nil
+    private var locationSections: [LocationSection] {
+        let homeItems = allItems.filter { item in
+            item.storageLocation?.home?.id == selectedHome?.id
         }
+        
+        let groupedDict = Dictionary(grouping: homeItems) { item in
+            item.storageLocation
+        }
+        
+        return groupedDict.compactMap { (location, items) in
+            guard let location = location, !items.isEmpty else { return nil }
+            return LocationSection(
+                location: location,
+                locationPath: location.fullPath,
+                items: items.sorted { $0.title < $1.title }
+            )
+        }
+        .sorted { $0.locationPath < $1.locationPath }
     }
     
     var body: some View {
-        List(selection: $selectedLocation) {
-            if !rootStorageLocations.isEmpty {
-                ForEach(rootStorageLocations) { location in
-                    StorageLocationRow(
-                        location: location,
-                        expandedLocations: $expandedLocations,
-                        selectedLocation: $selectedLocation
-                    )
-                }
-            } else {
+        List {
+            if locationSections.isEmpty {
                 ContentUnavailableView(
-                    "No Storage Locations",
-                    systemImage: "folder.badge.plus",
-                    description: Text("Add your first storage location to get started")
+                    "No Items",
+                    systemImage: "shippingbox",
+                    description: Text("Add items to your storage locations to see them here")
                 )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .frame(maxWidth: .infinity, minHeight: 400)
+            } else {
+                ForEach(locationSections) { section in
+                    Section {
+                        ForEach(section.items) { item in
+                            ItemRow(item: item, showLocation: false)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        LocationSectionHeader(
+                            locationPath: section.locationPath,
+                            itemCount: section.items.count
+                        )
+                    }
+                }
             }
         }
+        .listStyle(PlainListStyle())
         .navigationTitle(selectedHome?.name ?? "Select Home")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HomePicker(selectedHome: $selectedHome, showingAddHome: $showingAddHome)
             }
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("Add Location", systemImage: "folder.badge.plus") {
-                    showingAddLocation = true
+                if selectedHome != nil {
+                    Menu {
+                        Button(action: { 
+                            DebugLogger.info("HomeView - Add Item pressed, selectedHome: \(String(describing: selectedHome?.name)), ID: \(String(describing: selectedHome?.id))")
+                            showingAddItem = true 
+                        }) {
+                            Label("Add Item", systemImage: "plus")
+                        }
+                        
+                        Button(action: { 
+                            showingAddLocation = true
+                        }) {
+                            Label("Add Location", systemImage: "folder.badge.plus")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
-                .disabled(selectedHome == nil)
             }
         }
         .sheet(isPresented: $showingAddLocation) {
-            AddLocationView(home: selectedHome, parentLocation: nil)
+            if let homeId = selectedHome?.id {
+                AddLocationView(homeId: homeId, parentLocation: nil)
+            }
         }
         .sheet(isPresented: $showingAddHome) {
             AddHomeView(selectedHome: $selectedHome)
+        }
+        .sheet(isPresented: $showingAddItem) {
+            if let homeId = selectedHome?.id {
+                AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+            }
         }
     }
 }

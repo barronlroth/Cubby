@@ -3,8 +3,14 @@ import SwiftData
 
 struct ItemRow: View {
     let item: InventoryItem
+    let showLocation: Bool
     @State private var photo: UIImage?
     @State private var isLoadingPhoto = false
+    
+    init(item: InventoryItem, showLocation: Bool = true) {
+        self.item = item
+        self.showLocation = showLocation
+    }
     
     var body: some View {
         NavigationLink(destination: ItemDetailView(item: item)) {
@@ -46,13 +52,15 @@ struct ItemRow: View {
                             .lineLimit(2)
                     }
                     
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder")
-                            .font(.caption2)
-                        Text(item.storageLocation?.name ?? "Unknown")
-                            .font(.caption)
+                    if showLocation {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder")
+                                .font(.caption2)
+                            Text(item.storageLocation?.name ?? "Unknown")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.tertiary)
                     }
-                    .foregroundStyle(.tertiary)
                 }
                 
                 Spacer()

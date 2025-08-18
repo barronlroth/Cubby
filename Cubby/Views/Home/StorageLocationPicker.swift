@@ -2,15 +2,26 @@ import SwiftUI
 import SwiftData
 
 struct StorageLocationPicker: View {
-    let selectedHome: Home?
+    let selectedHomeId: UUID?
     @Binding var selectedLocation: StorageLocation?
     @Environment(\.dismiss) private var dismiss
+    @Query private var allStorageLocations: [StorageLocation]
+    @Query private var homes: [Home]
     @State private var searchText = ""
     @State private var showingAddLocation = false
     @State private var expandedLocations = Set<UUID>()
     
+    private var selectedHome: Home? {
+        homes.first { $0.id == selectedHomeId }
+    }
+    
     private var rootLocations: [StorageLocation] {
-        selectedHome?.storageLocations?.filter { $0.parentLocation == nil } ?? []
+        let locations = allStorageLocations.filter { location in
+            location.home?.id == selectedHomeId && location.parentLocation == nil
+        }
+        print("🔍 StorageLocationPicker - Found \(locations.count) root locations for homeId: \(String(describing: selectedHomeId))")
+        print("🔍 StorageLocationPicker - Total locations in query: \(allStorageLocations.count)")
+        return locations
     }
     
     var body: some View {
@@ -52,7 +63,7 @@ struct StorageLocationPicker: View {
                 }
             }
             .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(home: selectedHome, parentLocation: nil)
+                AddLocationView(homeId: selectedHomeId, parentLocation: nil)
             }
         }
     }
@@ -151,7 +162,7 @@ struct LocationPickerRow: View {
                 }
             }
             .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(home: location.home, parentLocation: location)
+                AddLocationView(homeId: location.home?.id, parentLocation: location)
             }
         }
     }

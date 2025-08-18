@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct AddLocationView: View {
-    let home: Home?
+    let homeId: UUID?
     let parentLocation: StorageLocation?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -55,7 +55,38 @@ struct AddLocationView: View {
     }
     
     private func saveLocation() {
-        guard let home else { return }
+        print("🔍 AddLocationView.saveLocation - homeId: \(String(describing: homeId))")
+        
+        // First, try to get the home from the parent location if available
+        var home: Home?
+        
+        if let parentLocation {
+            home = parentLocation.home
+            print("🔍 AddLocationView - Got home from parent: \(String(describing: home?.name))")
+        } else if let homeId {
+            // Fetch the home directly from the model context
+            let descriptor = FetchDescriptor<Home>(
+                predicate: #Predicate { $0.id == homeId }
+            )
+            
+            do {
+                let homes = try modelContext.fetch(descriptor)
+                print("🔍 AddLocationView - Fetched \(homes.count) homes for ID: \(homeId)")
+                home = homes.first
+            } catch {
+                print("❌ AddLocationView - Fetch failed: \(error)")
+                errorMessage = "Failed to fetch home: \(error.localizedDescription)"
+                showingError = true
+                return
+            }
+        }
+        
+        guard let home else {
+            print("❌ AddLocationView - No home found, homeId: \(String(describing: homeId))")
+            errorMessage = "Unable to find the selected home. Please try again."
+            showingError = true
+            return
+        }
         
         let trimmedName = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }

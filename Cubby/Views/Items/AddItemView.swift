@@ -3,7 +3,7 @@ import SwiftData
 import PhotosUI
 
 struct AddItemView: View {
-    let selectedHome: Home?
+    let selectedHomeId: UUID?
     var preselectedLocation: StorageLocation? = nil
     
     @Environment(\.dismiss) private var dismiss
@@ -16,6 +16,7 @@ struct AddItemView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showingLocationPicker = false
     @State private var isSaving = false
+    @State private var selectedHome: Home?
     
     var body: some View {
         NavigationStack {
@@ -76,7 +77,7 @@ struct AddItemView: View {
                 }
             }
             .sheet(isPresented: $showingLocationPicker) {
-                StorageLocationPicker(selectedHome: selectedHome, selectedLocation: $selectedLocation)
+                StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
             .onChange(of: selectedPhotoItem) { oldValue, newValue in
                 Task {
@@ -87,8 +88,27 @@ struct AddItemView: View {
                 }
             }
             .onAppear {
+                DebugLogger.info("AddItemView.onAppear - homeId: \(String(describing: selectedHomeId))")
                 if let preselectedLocation {
                     selectedLocation = preselectedLocation
+                }
+                // Fetch the home when view appears
+                if let selectedHomeId {
+                    DebugLogger.info("AddItemView - Fetching home with ID: \(selectedHomeId)")
+                    let descriptor = FetchDescriptor<Home>(
+                        predicate: #Predicate { $0.id == selectedHomeId }
+                    )
+                    if let homes = try? modelContext.fetch(descriptor) {
+                        DebugLogger.info("AddItemView - Fetched \(homes.count) homes")
+                        selectedHome = homes.first
+                        if selectedHome == nil {
+                            DebugLogger.error("AddItemView - No home found for ID: \(selectedHomeId)")
+                        } else {
+                            DebugLogger.success("AddItemView - Home found: \(selectedHome!.name)")
+                        }
+                    }
+                } else {
+                    DebugLogger.warning("AddItemView - No homeId provided")
                 }
             }
             .disabled(isSaving)

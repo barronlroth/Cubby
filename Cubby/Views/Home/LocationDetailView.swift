@@ -110,10 +110,10 @@ struct LocationDetailView: View {
             }
         }
         .sheet(isPresented: $showingAddItem) {
-            AddItemView(selectedHome: location.home, preselectedLocation: location)
+            AddItemView(selectedHomeId: location.home?.id, preselectedLocation: location)
         }
         .sheet(isPresented: $showingAddLocation) {
-            AddLocationView(home: location.home, parentLocation: location)
+            AddLocationView(homeId: location.home?.id, parentLocation: location)
         }
         .safeAreaInset(edge: .top) {
             HStack {
