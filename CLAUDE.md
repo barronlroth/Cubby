@@ -63,9 +63,12 @@ Cubby/
 │   └── InventoryItem.swift        # Individual items with photos
 ├── Views/
 │   ├── Home/
-│   │   ├── HomeView.swift         # Main screen with location hierarchy
-│   │   ├── StorageLocationRow.swift # Recursive location display
-│   │   └── LocationDetailView.swift # Shows items in a location
+│   │   ├── HomeView.swift         # Main screen with flat list of items grouped by location
+│   │   ├── StorageLocationRow.swift # Recursive location display (for location management)
+│   │   ├── LocationDetailView.swift # Shows items in a location
+│   │   ├── LocationSectionHeader.swift # Section headers for grouped items display
+│   │   ├── StorageLocationPicker.swift # Location selector with hierarchy
+│   │   └── AddLocationView.swift  # Form to create new storage locations
 │   ├── Items/
 │   │   ├── AddItemView.swift      # Form to create new items
 │   │   ├── ItemDetailView.swift   # View/edit individual items
@@ -82,7 +85,8 @@ Cubby/
 │   └── SearchViewModel.swift      # Search logic with debouncing
 └── Utils/
     ├── ValidationHelpers.swift    # Input validation
-    └── MockDataGenerator.swift    # Test data generation
+    ├── MockDataGenerator.swift    # Test data generation
+    └── DebugLogger.swift          # Debug logging infrastructure
 ```
 
 ### Key Models and Relationships
@@ -112,13 +116,26 @@ Cubby/
 4. **@Environment(\.modelContext)** provides access for mutations
 5. **Automatic UI updates** when data changes
 
+### Data Passing Pattern
+- **Pass IDs, not objects**: When passing data between views (especially sheets), pass UUID instead of model objects
+- **Fetch locally**: Each view should fetch its required data using @Query or FetchDescriptor
+- **Prevents reference detachment**: Avoids SwiftData model context issues across sheet presentations
+- Example: `AddItemView(selectedHomeId: home?.id)` instead of `AddItemView(selectedHome: home)`
+
 ### Key Features Implementation
 
-#### Nested Locations (Recently Fixed)
-- Uses recursive `StorageLocationRow` component
+#### Home Page Design (Recently Redesigned)
+- Flat list view showing all items grouped by storage location
+- Section headers display full location path with item counts
+- Items sorted alphabetically within sections
+- Empty locations are hidden (only locations with items shown)
+- Navigation menu only appears when a home is selected
+
+#### Storage Location Management
+- Hierarchical structure maintained for location organization
+- Uses recursive `StorageLocationRow` for location management views
 - Proper inverse relationships: `parentLocation` ↔ `childLocations`
-- DisclosureGroup for expand/collapse functionality
-- Swipe actions properly scoped to prevent duplicates
+- Maximum nesting depth of 10 levels
 
 #### Photo Management
 - Photos compressed to 70% JPEG quality
@@ -147,9 +164,8 @@ Cubby/
 - Avoid circular references in self-referential relationships
 
 ### Known Issues
-1. **UI Refresh**: New storage locations don't always appear immediately after creation
-2. **Performance**: Not tested with 1000+ items
-3. **Edge Cases**: App may crash if all homes are deleted
+1. **Performance**: Not tested with 1000+ items
+2. **Empty Locations**: Storage locations without items don't appear in the home view (by design)
 
 ### SwiftUI Best Practices
 - Use @Query for reactive data fetching
@@ -183,12 +199,22 @@ Cubby/
 2. Verify model context saves
 3. Look for circular references
 4. Check for proper @Query usage in views
+5. **Use FetchDescriptor for direct queries** when @Query doesn't update
+6. **Pass IDs instead of objects** to avoid reference detachment
+7. **Check if selectedHome is nil** before allowing actions
+8. **Use DebugLogger** to track state changes and fetch results
 
 ### Performance Optimization
 1. Use lazy loading for large lists
 2. Implement pagination for 50+ items
 3. Cache expensive computations
 4. Profile with Instruments
+
+### Debug Infrastructure
+- **DebugLogger utility**: Provides consistent logging with visual markers (🔍, ❌, ⚠️, ✅)
+- **Usage**: `DebugLogger.info("message")`, `DebugLogger.error("message")`
+- **Monitor logs**: Run from Xcode to see console output
+- **Helps diagnose**: SwiftData context issues, state synchronization problems
 
 ## Code Style Guidelines
 - Use descriptive variable names
