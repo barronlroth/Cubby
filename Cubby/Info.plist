@@ -6,5 +6,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Cubby needs camera access to take photos of your items for your inventory.</string>
 </dict>
 </plist>

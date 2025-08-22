@@ -59,7 +59,11 @@ struct AddItemView: View {
                             self.selectedPhotoItem = nil
                         }
                     } else {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        PhotosPicker(
+                            selection: $selectedPhotoItem,
+                            matching: .images,
+                            preferredItemEncoding: .automatic
+                        ) {
                             Label("Add Photo", systemImage: "camera")
                         }
                     }
