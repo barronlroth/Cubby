@@ -15,8 +15,11 @@ class UndoManager: ObservableObject {
     }
     
     @Published private(set) var canUndo = false
+    @Published private(set) var timeRemaining: Int = 0
     private var deletedItems: [DeletedItem] = []
     private let maxUndoItems = 10
+    private let autoHideDelay: Int = 8 // seconds
+    private var autoHideTimer: Timer?
     
     private init() {}
     
@@ -43,10 +46,14 @@ class UndoManager: ObservableObject {
         }
         
         canUndo = !deletedItems.isEmpty
+        startAutoHideTimer()
     }
     
     func undo(in context: ModelContext) -> Bool {
         guard let lastDeleted = deletedItems.popLast() else { return false }
+        
+        // Cancel the auto-hide timer since user manually undid
+        cancelAutoHideTimer()
         
         // Find the storage location
         let locationId = lastDeleted.locationId
@@ -86,6 +93,9 @@ class UndoManager: ObservableObject {
     }
     
     func clearUndoStack() {
+        // Cancel any running timer
+        cancelAutoHideTimer()
+        
         // Clean up any photos from the undo stack
         for item in deletedItems {
             if let photoFileName = item.photoFileName {
@@ -101,5 +111,31 @@ class UndoManager: ObservableObject {
     var undoDescription: String? {
         guard let lastDeleted = deletedItems.last else { return nil }
         return "Undo delete \"\(lastDeleted.title)\""
+    }
+    
+    func dismissUndo() {
+        cancelAutoHideTimer()
+        canUndo = false
+    }
+    
+    private func startAutoHideTimer() {
+        cancelAutoHideTimer()
+        timeRemaining = autoHideDelay
+        
+        autoHideTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            self.timeRemaining -= 1
+            
+            if self.timeRemaining <= 0 {
+                self.dismissUndo()
+            }
+        }
+    }
+    
+    private func cancelAutoHideTimer() {
+        autoHideTimer?.invalidate()
+        autoHideTimer = nil
+        timeRemaining = 0
     }
 }

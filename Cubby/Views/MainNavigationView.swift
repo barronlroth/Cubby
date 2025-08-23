@@ -39,23 +39,40 @@ struct MainNavigationView: View {
                 SearchPillButton(showingSearch: $showingSearch)
                 
                 if undoManager.canUndo {
-                    Button(action: performUndo) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.uturn.backward")
-                            Text(undoManager.undoDescription ?? "Undo")
+                    HStack(spacing: 4) {
+                        Button(action: performUndo) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.uturn.backward")
+                                Text(undoManager.undoDescription ?? "Undo")
+                                if undoManager.timeRemaining > 0 {
+                                    Text("(\(undoManager.timeRemaining)s)")
+                                        .font(.caption2)
+                                        .opacity(0.8)
+                                }
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.orange.opacity(0.9))
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
                         }
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.orange.opacity(0.9))
-                        .foregroundColor(.white)
-                        .clipShape(Capsule())
+                        
+                        Button(action: { undoManager.dismissUndo() }) {
+                            Image(systemName: "xmark")
+                                .font(.caption)
+                                .frame(width: 24, height: 24)
+                                .background(Color.gray.opacity(0.6))
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
+                        }
                     }
                     .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(.top, 8)
             .animation(.spring(response: 0.3), value: undoManager.canUndo)
+            .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
         .sheet(isPresented: $showingAddItem) {
             // Validate homeId before presenting
