@@ -9,8 +9,13 @@ class InventoryItem {
     var photoFileName: String?
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
+    var tags: Set<String> = []
     
     var storageLocation: StorageLocation?
+    
+    var sortedTags: [String] {
+        Array(tags).sorted()
+    }
     
     init(title: String, description: String? = nil, storageLocation: StorageLocation) {
         self.title = title

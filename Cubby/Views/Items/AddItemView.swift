@@ -17,6 +17,9 @@ struct AddItemView: View {
     @State private var showingLocationPicker = false
     @State private var isSaving = false
     @State private var selectedHome: Home?
+    @State private var tags: Set<String> = []
+    @State private var tagInput = ""
+    @Query private var allItems: [InventoryItem]
     
     var body: some View {
         NavigationStack {
@@ -43,6 +46,14 @@ struct AddItemView: View {
                         }
                     }
                     .foregroundColor(.primary)
+                }
+                
+                Section("Tags") {
+                    TagInputView(
+                        tags: $tags,
+                        currentInput: $tagInput,
+                        suggestions: tagSuggestions
+                    )
                 }
                 
                 Section("Photo") {
@@ -135,6 +146,7 @@ struct AddItemView: View {
             description: itemDescription.isEmpty ? nil : itemDescription.trimmingCharacters(in: .whitespacesAndNewlines),
             storageLocation: selectedLocation
         )
+        newItem.tags = tags
         
         if let selectedImage {
             do {
@@ -154,5 +166,16 @@ struct AddItemView: View {
             print("Failed to save item: \(error)")
             isSaving = false
         }
+    }
+    
+    private var tagSuggestions: [String] {
+        guard !tagInput.isEmpty else { return [] }
+        let formatted = tagInput.formatAsTag()
+        
+        return Set(allItems.flatMap { Array($0.tags) })
+            .filter { $0.contains(formatted) && $0 != formatted }
+            .sorted()
+            .prefix(5)
+            .map { String($0) }
     }
 }
