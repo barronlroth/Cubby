@@ -54,6 +54,9 @@ class SearchViewModel: ObservableObject {
         
         let allItems = (try? modelContext.fetch(descriptor)) ?? []
         
+        // Split search into multiple terms for multi-tag search
+        let searchTerms = searchTerm.split(separator: " ").map(String.init)
+        
         // Filter items based on search criteria
         searchResults = allItems.filter { item in
             // Check home filter if selected
@@ -64,11 +67,23 @@ class SearchViewModel: ObservableObject {
                 }
             }
             
-            // Check search term
-            let titleMatches = item.title.localizedCaseInsensitiveContains(searchTerm)
-            let descriptionMatches = item.itemDescription?.localizedCaseInsensitiveContains(searchTerm) ?? false
-            
-            return titleMatches || descriptionMatches
+            // Check if any search term matches
+            return searchTerms.allSatisfy { term in
+                let titleMatches = item.title.localizedCaseInsensitiveContains(term)
+                let descriptionMatches = item.itemDescription?.localizedCaseInsensitiveContains(term) ?? false
+                let tagMatches = item.tags.contains { tag in
+                    tag.localizedCaseInsensitiveContains(term)
+                }
+                
+                return titleMatches || descriptionMatches || tagMatches
+            }
+        }
+        
+        // Sort by relevance (items matching more terms appear first)
+        searchResults.sort { item1, item2 in
+            let count1 = countMatches(for: item1, with: searchTerms)
+            let count2 = countMatches(for: item2, with: searchTerms)
+            return count1 > count2
         }
         
         isSearching = false
@@ -78,5 +93,15 @@ class SearchViewModel: ObservableObject {
         searchText = ""
         searchResults = []
         searchTask?.cancel()
+    }
+    
+    private func countMatches(for item: InventoryItem, with terms: [String]) -> Int {
+        terms.reduce(0) { count, term in
+            var matches = 0
+            if item.title.localizedCaseInsensitiveContains(term) { matches += 1 }
+            if item.itemDescription?.localizedCaseInsensitiveContains(term) ?? false { matches += 1 }
+            if item.tags.contains(where: { $0.localizedCaseInsensitiveContains(term) }) { matches += 1 }
+            return count + matches
+        }
     }
 }

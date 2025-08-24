@@ -14,6 +14,9 @@ struct ItemDetailView: View {
     @State private var showingDeleteAlert = false
     @State private var showingMovePicker = false
     @State private var newLocation: StorageLocation?
+    @State private var editedTags: Set<String> = []
+    @State private var tagInput = ""
+    @Query private var allItems: [InventoryItem]
     
     var body: some View {
         ScrollView {
@@ -69,6 +72,24 @@ struct ItemDetailView: View {
                         } else {
                             Text(item.itemDescription ?? "No description")
                                 .foregroundStyle(item.itemDescription != nil ? .primary : .secondary)
+                        }
+                    }
+                    
+                    if !item.tagsSet.isEmpty || isEditing {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if isEditing {
+                                TagInputView(
+                                    tags: $editedTags,
+                                    currentInput: $tagInput,
+                                    suggestions: tagSuggestions
+                                )
+                            } else {
+                                Text("Tags")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                
+                                TagDisplayView(tags: item.tagsSet, onDelete: nil)
+                            }
                         }
                     }
                     
@@ -163,12 +184,14 @@ struct ItemDetailView: View {
     private func startEditing() {
         editedTitle = item.title
         editedDescription = item.itemDescription ?? ""
+        editedTags = item.tagsSet
         isEditing = true
     }
     
     private func saveChanges() {
         item.title = editedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         item.itemDescription = editedDescription.isEmpty ? nil : editedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.tagsSet = editedTags
         item.modifiedAt = Date()
         
         do {
@@ -206,5 +229,16 @@ struct ItemDetailView: View {
         } catch {
             print("Failed to delete item: \(error)")
         }
+    }
+    
+    private var tagSuggestions: [String] {
+        guard !tagInput.isEmpty else { return [] }
+        let formatted = tagInput.formatAsTag()
+        
+        return Set(allItems.flatMap { $0.tags })
+            .filter { $0.contains(formatted) && $0 != formatted }
+            .sorted()
+            .prefix(5)
+            .map { String($0) }
     }
 }
