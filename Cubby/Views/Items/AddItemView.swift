@@ -146,7 +146,7 @@ struct AddItemView: View {
             description: itemDescription.isEmpty ? nil : itemDescription.trimmingCharacters(in: .whitespacesAndNewlines),
             storageLocation: selectedLocation
         )
-        newItem.tags = tags
+        newItem.tagsSet = tags
         
         if let selectedImage {
             do {
@@ -172,7 +172,7 @@ struct AddItemView: View {
         guard !tagInput.isEmpty else { return [] }
         let formatted = tagInput.formatAsTag()
         
-        return Set(allItems.flatMap { Array($0.tags) })
+        return Set(allItems.flatMap { $0.tags })
             .filter { $0.contains(formatted) && $0 != formatted }
             .sorted()
             .prefix(5)

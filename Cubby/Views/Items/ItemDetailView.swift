@@ -75,7 +75,7 @@ struct ItemDetailView: View {
                         }
                     }
                     
-                    if !item.tags.isEmpty || isEditing {
+                    if !item.tagsSet.isEmpty || isEditing {
                         VStack(alignment: .leading, spacing: 8) {
                             if isEditing {
                                 TagInputView(
@@ -88,7 +88,7 @@ struct ItemDetailView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 
-                                TagDisplayView(tags: item.tags, onDelete: nil)
+                                TagDisplayView(tags: item.tagsSet, onDelete: nil)
                             }
                         }
                     }
@@ -184,14 +184,14 @@ struct ItemDetailView: View {
     private func startEditing() {
         editedTitle = item.title
         editedDescription = item.itemDescription ?? ""
-        editedTags = item.tags
+        editedTags = item.tagsSet
         isEditing = true
     }
     
     private func saveChanges() {
         item.title = editedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         item.itemDescription = editedDescription.isEmpty ? nil : editedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        item.tags = editedTags
+        item.tagsSet = editedTags
         item.modifiedAt = Date()
         
         do {
@@ -235,7 +235,7 @@ struct ItemDetailView: View {
         guard !tagInput.isEmpty else { return [] }
         let formatted = tagInput.formatAsTag()
         
-        return Set(allItems.flatMap { Array($0.tags) })
+        return Set(allItems.flatMap { $0.tags })
             .filter { $0.contains(formatted) && $0 != formatted }
             .sorted()
             .prefix(5)
