@@ -32,7 +32,34 @@ Add camera usage description to `/Cubby/Info.plist`:
 
 **Location**: Add after the existing `UIBackgroundModes` entry.
 
-#### Step 1.3: Verify Project Settings
+#### Step 1.3: Create Privacy Manifest (Required for iOS 17+)
+Create new file: `/Cubby/PrivacyInfo.xcprivacy`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
+```
+
+#### Step 1.4: Verify Project Settings
 1. Open `Cubby.xcodeproj`
 2. Select the Cubby target
 3. Go to Info tab
@@ -43,6 +70,8 @@ Add camera usage description to `/Cubby/Info.plist`:
 #### Step 2.1: Create ImagePicker Component
 
 Create new file: `/Cubby/Views/Components/ImagePicker.swift`
+
+**Important**: UIImagePickerController is the correct API for camera access. There is no native SwiftUI camera view.
 
 ```swift
 import SwiftUI
@@ -58,6 +87,11 @@ struct ImagePicker: UIViewControllerRepresentable {
         picker.sourceType = sourceType
         picker.delegate = context.coordinator
         picker.allowsEditing = false
+        
+        // Accessibility
+        picker.view.accessibilityLabel = "Camera view"
+        picker.view.accessibilityHint = "Take a photo of your item"
+        
         return picker
     }
     
@@ -77,7 +111,8 @@ struct ImagePicker: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, 
                                  didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
-                parent.image = image
+                // Fix orientation if needed
+                parent.image = image.fixedOrientation()
             }
             parent.dismiss()
         }
@@ -85,6 +120,20 @@ struct ImagePicker: UIViewControllerRepresentable {
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
         }
+    }
+}
+
+// Image orientation fix extension
+extension UIImage {
+    func fixedOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        
+        UIGraphicsBeginImageContextWithOptions(size, false, scale)
+        draw(in: CGRect(origin: .zero, size: size))
+        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return normalizedImage ?? self
     }
 }
 ```
@@ -98,27 +147,35 @@ import SwiftUI
 import AVFoundation
 import UIKit
 
+// Modern implementation with @MainActor and proper error handling
 @MainActor
-class CameraService: ObservableObject {
+final class CameraService: ObservableObject {
     static let shared = CameraService()
     
-    @Published var isCameraAvailable: Bool = false
-    @Published var cameraAuthorizationStatus: AVAuthorizationStatus
+    @Published private(set) var isCameraAvailable: Bool = false
+    @Published private(set) var authorizationStatus: AVAuthorizationStatus
     
     private init() {
-        self.cameraAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        self.authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
         self.isCameraAvailable = UIImagePickerController.isSourceTypeAvailable(.camera)
         
         DebugLogger.info("CameraService initialized - Available: \(isCameraAvailable)")
     }
     
+    nonisolated func checkAuthorizationStatus() async {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        await MainActor.run {
+            self.authorizationStatus = status
+        }
+    }
+    
     func requestCameraPermission() async -> Bool {
-        switch cameraAuthorizationStatus {
+        switch authorizationStatus {
         case .authorized:
             return true
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
-            cameraAuthorizationStatus = granted ? .authorized : .denied
+            authorizationStatus = granted ? .authorized : .denied
             return granted
         case .denied, .restricted:
             return false
@@ -135,14 +192,48 @@ class CameraService: ObservableObject {
         #endif
     }
     
-    var permissionMessage: String? {
-        switch cameraAuthorizationStatus {
+    var error: CameraError? {
+        switch authorizationStatus {
         case .denied:
-            return "Camera access is required to take photos. Please enable it in Settings."
+            return .permissionDenied
         case .restricted:
-            return "Camera access is restricted on this device."
+            return .hardwareRestricted
         default:
-            return nil
+            return isCameraAvailable ? nil : .hardwareUnavailable
+        }
+    }
+}
+
+// Enhanced error handling
+enum CameraError: LocalizedError {
+    case permissionDenied
+    case hardwareUnavailable
+    case hardwareRestricted
+    case captureFailure
+    
+    var errorDescription: String? {
+        switch self {
+        case .permissionDenied:
+            return "Camera Access Required"
+        case .hardwareUnavailable:
+            return "Camera Not Available"
+        case .hardwareRestricted:
+            return "Camera Access Restricted"
+        case .captureFailure:
+            return "Photo Capture Failed"
+        }
+    }
+    
+    var recoverySuggestion: String? {
+        switch self {
+        case .permissionDenied:
+            return "Grant camera access in Settings to take photos"
+        case .hardwareUnavailable:
+            return "Use Photo Library to select existing photos"
+        case .hardwareRestricted:
+            return "Camera access is restricted on this device"
+        case .captureFailure:
+            return "Try taking the photo again"
         }
     }
 }
@@ -150,17 +241,25 @@ class CameraService: ObservableObject {
 
 ### Phase 3: UI Integration (30 minutes)
 
-#### Step 3.1: Update AddItemView
+#### Step 3.1: Update AddItemView with Modern State Management
 
 Modify `/Cubby/Views/Items/AddItemView.swift`:
 
-1. **Add new state variables** (after existing @State properties):
+1. **Add improved state management** (after existing @State properties):
 ```swift
-@State private var showingCamera = false
+// Better state management with enum
+enum PhotoSourceState {
+    case idle
+    case showingCamera
+    case showingLibrary
+    case processingImage(UIImage)
+}
+
+@State private var photoSourceState = PhotoSourceState.idle
 @StateObject private var cameraService = CameraService.shared
 ```
 
-2. **Replace the Photo section** with:
+2. **Replace the Photo section** with enhanced UI and accessibility:
 ```swift
 Section("Photo") {
     if let selectedImage {
@@ -170,20 +269,23 @@ Section("Photo") {
             .frame(maxHeight: 200)
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .accessibilityLabel("Selected photo")
         
         Button("Remove Photo", role: .destructive) {
             self.selectedImage = nil
             self.selectedPhotoItem = nil
+            photoSourceState = .idle
         }
+        .accessibilityLabel("Remove selected photo")
     } else {
         HStack(spacing: 12) {
-            // Camera Button
+            // Camera Button - UIImagePickerController is the correct approach
             if cameraService.isCameraAvailable {
                 Button(action: {
                     Task {
                         let granted = await cameraService.requestCameraPermission()
                         if granted {
-                            showingCamera = true
+                            photoSourceState = .showingCamera
                         }
                     }
                 }) {
@@ -191,37 +293,74 @@ Section("Photo") {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Take a photo")
+                .accessibilityHint("Opens the camera to capture a photo of your item")
             }
             
-            // Photo Library Button
+            // Photo Library Button - PhotosPicker is library-only
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                 Label("Library", systemImage: "photo.on.rectangle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .accessibilityLabel("Choose from library")
+            .accessibilityHint("Opens your photo library to select an existing photo")
         }
         
-        // Permission message if needed
-        if let message = cameraService.permissionMessage {
-            Text(message)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .onTapGesture {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
+        // Error handling with recovery suggestions
+        if let error = cameraService.error {
+            VStack(spacing: 4) {
+                Text(error.errorDescription ?? "Camera unavailable")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.red)
+                
+                if let suggestion = error.recoverySuggestion {
+                    Text(suggestion)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
+            }
+            .multilineTextAlignment(.center)
+            .onTapGesture {
+                if error == .permissionDenied,
+                   let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
         }
     }
 }
 ```
 
-3. **Add camera sheet** (after existing .sheet modifiers):
+3. **Add camera sheet with state handling** (after existing .sheet modifiers):
 ```swift
-.sheet(isPresented: $showingCamera) {
-    ImagePicker(image: $selectedImage, sourceType: .camera)
+.sheet(item: Binding(
+    get: {
+        switch photoSourceState {
+        case .showingCamera: return PhotoSource.camera
+        case .showingLibrary: return PhotoSource.library
+        default: return nil
+        }
+    },
+    set: { _ in photoSourceState = .idle }
+)) { source in
+    ImagePicker(image: $selectedImage, sourceType: source == .camera ? .camera : .photoLibrary)
         .ignoresSafeArea()
+        .onDisappear {
+            if let image = selectedImage {
+                photoSourceState = .processingImage(image)
+            } else {
+                photoSourceState = .idle
+            }
+        }
+}
+
+// Add this enum near the top of the file
+enum PhotoSource: String, Identifiable {
+    case camera
+    case library
+    var id: String { rawValue }
 }
 ```
 
@@ -321,27 +460,27 @@ Add to features list if public-facing.
 ### Common Issues & Solutions
 
 #### Issue 1: Camera doesn't appear on device
-**Solution**: Check Info.plist has NSCameraUsageDescription
+**Solution**: 
+- Check Info.plist has NSCameraUsageDescription
+- Verify PrivacyInfo.xcprivacy is included in the build
 
-#### Issue 2: Crash when opening camera
-**Solution**: Ensure permission is granted before presenting
+#### Issue 2: "CameraPicker not found" error
+**Solution**: CameraPicker doesn't exist. Use UIImagePickerController wrapped in UIViewControllerRepresentable.
 
-#### Issue 3: Photo orientation incorrect
-**Solution**: Use UIImage orientation fix:
-```swift
-extension UIImage {
-    func fixedOrientation() -> UIImage {
-        guard imageOrientation != .up else { return self }
-        // Implementation to fix orientation
-    }
-}
-```
+#### Issue 3: PhotosPicker doesn't show camera option
+**Solution**: PhotosPicker is library-only. You need a separate camera button with UIImagePickerController.
 
-#### Issue 4: Memory warning with large photos
+#### Issue 4: Photo orientation incorrect
+**Solution**: The fixedOrientation() extension is already included in ImagePicker.swift
+
+#### Issue 5: Memory warning with large photos
 **Solution**: Compress before saving:
 ```swift
 let compressed = image.jpegData(compressionQuality: 0.7)
 ```
+
+#### Issue 6: App Store submission rejected for privacy
+**Solution**: Ensure PrivacyInfo.xcprivacy is included with proper API usage reasons
 
 ### Git Workflow
 
@@ -400,14 +539,22 @@ gh pr create --title "Add camera capture for item photos" \
    - Provide clear explanation
    - Handle denial gracefully
 
+## Important Technical Notes
+
+### Verified API Information
+1. **UIImagePickerController is correct**: There is no native SwiftUI camera API
+2. **PhotosPicker is library-only**: It cannot directly access the camera
+3. **Dual-button approach is best**: Separate buttons for camera and library provide the clearest UX
+4. **Privacy Manifest is required**: iOS 17+ requires PrivacyInfo.xcprivacy for App Store distribution
+
 ## Next Steps
 
 After implementation:
 
 1. **User Testing**: Get feedback on UX flow
 2. **Performance Testing**: Profile with Instruments
-3. **A/B Testing**: Compare camera vs library usage
-4. **Enhancements**: Consider adding filters, editing tools
+3. **Accessibility Testing**: Verify VoiceOver support
+4. **Privacy Compliance**: Test with Privacy Report in Xcode
 
 ## Support
 
@@ -418,7 +565,8 @@ For questions during implementation:
 
 ---
 
-**Guide Version**: 1.0  
+**Guide Version**: 2.0  
 **Last Updated**: 2024-12-29  
 **Estimated Time**: 2-3 hours  
-**Difficulty**: Intermediate
+**Difficulty**: Intermediate  
+**Note**: Updated with verified Apple documentation and corrected API information
