@@ -16,32 +16,88 @@ struct ItemDetailView: View {
     @State private var newLocation: StorageLocation?
     @State private var editedTags: Set<String> = []
     @State private var tagInput = ""
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var editedPhoto: UIImage?
+    @State private var photoChanged = false
     @Query private var allItems: [InventoryItem]
     
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                if let photoFileName = item.photoFileName {
-                    Group {
-                        if let photo {
-                            Image(uiImage: photo)
-                                .resizable()
-                                .scaledToFit()
-                        } else {
-                            ProgressView()
+                // Photo Section
+                Group {
+                    if isEditing {
+                        VStack(spacing: 12) {
+                            if let editedPhoto {
+                                Image(uiImage: editedPhoto)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 400)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            } else if let photo, !photoChanged {
+                                Image(uiImage: photo)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 400)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            } else {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 60))
+                                        .foregroundStyle(.tertiary)
+                                    Text("Tap to add photo")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
                                 .frame(height: 200)
+                                .background(Color.gray.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            
+                            HStack(spacing: 12) {
+                                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                    Label(editedPhoto != nil || photo != nil ? "Change Photo" : "Add Photo", systemImage: "camera")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                
+                                if editedPhoto != nil || (photo != nil && !photoChanged) {
+                                    Button("Remove Photo", role: .destructive) {
+                                        editedPhoto = nil
+                                        selectedPhotoItem = nil
+                                        photoChanged = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.red)
+                                }
+                            }
+                        }
+                    } else {
+                        // Read-only mode
+                        if let photoFileName = item.photoFileName {
+                            Group {
+                                if let photo {
+                                    Image(uiImage: photo)
+                                        .resizable()
+                                        .scaledToFit()
+                                } else {
+                                    ProgressView()
+                                        .frame(height: 200)
+                                }
+                            }
+                            .frame(maxHeight: 400)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        } else {
+                            Image(systemName: "photo")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 200)
+                                .background(Color.gray.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                     }
-                    .frame(maxHeight: 400)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                        .background(Color.gray.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
                 VStack(alignment: .leading, spacing: 16) {
@@ -171,6 +227,15 @@ struct ItemDetailView: View {
                     }
                 }
         }
+        .onChange(of: selectedPhotoItem) { oldValue, newValue in
+            Task {
+                if let data = try? await newValue?.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    editedPhoto = uiImage
+                    photoChanged = true
+                }
+            }
+        }
         .task {
             await loadPhoto()
         }
@@ -185,6 +250,9 @@ struct ItemDetailView: View {
         editedTitle = item.title
         editedDescription = item.itemDescription ?? ""
         editedTags = item.tagsSet
+        editedPhoto = nil
+        selectedPhotoItem = nil
+        photoChanged = false
         isEditing = true
     }
     
@@ -194,13 +262,43 @@ struct ItemDetailView: View {
         item.tagsSet = editedTags
         item.modifiedAt = Date()
         
-        do {
-            try modelContext.save()
-        } catch {
-            print("Failed to save changes: \(error)")
+        // Handle photo changes
+        Task {
+            await handlePhotoChanges()
+            
+            do {
+                try modelContext.save()
+            } catch {
+                print("Failed to save changes: \(error)")
+            }
         }
         
         isEditing = false
+    }
+    
+    private func handlePhotoChanges() async {
+        if photoChanged {
+            // Remove old photo if it exists
+            if let oldPhotoFileName = item.photoFileName {
+                await PhotoService.shared.deletePhoto(fileName: oldPhotoFileName)
+            }
+            
+            // Save new photo if one was selected
+            if let editedPhoto {
+                do {
+                    let fileName = try await PhotoService.shared.savePhoto(editedPhoto)
+                    item.photoFileName = fileName
+                    // Update the displayed photo
+                    photo = editedPhoto
+                } catch {
+                    print("Failed to save new photo: \(error)")
+                }
+            } else {
+                // Photo was removed
+                item.photoFileName = nil
+                photo = nil
+            }
+        }
     }
     
     private func moveItem(to newLocation: StorageLocation) {
