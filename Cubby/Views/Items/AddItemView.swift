@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import AVFoundation
 
 struct AddItemView: View {
     let selectedHomeId: UUID?
@@ -16,6 +17,8 @@ struct AddItemView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showingLocationPicker = false
     @State private var isSaving = false
+    @State private var showingCamera = false
+    @StateObject private var cameraService = CameraService.shared
     @State private var selectedHome: Home?
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
@@ -64,14 +67,64 @@ struct AddItemView: View {
                             .frame(maxHeight: 200)
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityLabel("Selected photo")
                         
                         Button("Remove Photo", role: .destructive) {
                             self.selectedImage = nil
                             self.selectedPhotoItem = nil
                         }
+                        .accessibilityLabel("Remove selected photo")
                     } else {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                            Label("Add Photo", systemImage: "camera")
+                        HStack(spacing: 12) {
+                            // Camera Button - UIImagePickerController is the correct approach
+                            if cameraService.isCameraAvailable {
+                                Button(action: {
+                                    Task {
+                                        let granted = await cameraService.requestCameraPermission()
+                                        if granted {
+                                            showingCamera = true
+                                        }
+                                    }
+                                }) {
+                                    Label("Camera", systemImage: "camera.fill")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityLabel("Take a photo")
+                                .accessibilityHint("Opens the camera to capture a photo of your item")
+                            }
+                            
+                            // Photo Library Button - PhotosPicker is library-only
+                            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                Label("Library", systemImage: "photo.on.rectangle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Choose from library")
+                            .accessibilityHint("Opens your photo library to select an existing photo")
+                        }
+                        
+                        // Error handling with recovery suggestions
+                        if let error = cameraService.error {
+                            VStack(spacing: 4) {
+                                Text(error.errorDescription ?? "Camera unavailable")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.red)
+                                
+                                if let suggestion = error.recoverySuggestion {
+                                    Text(suggestion)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .multilineTextAlignment(.center)
+                            .onTapGesture {
+                                if error == .permissionDenied,
+                                   let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
                         }
                     }
                 }
@@ -89,6 +142,10 @@ struct AddItemView: View {
             }
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
+            }
+            .sheet(isPresented: $showingCamera) {
+                ImagePicker(image: $selectedImage, sourceType: .camera)
+                    .ignoresSafeArea()
             }
             .onChange(of: selectedPhotoItem) { oldValue, newValue in
                 Task {
