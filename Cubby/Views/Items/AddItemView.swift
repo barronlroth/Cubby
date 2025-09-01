@@ -1,6 +1,6 @@
 import SwiftUI
 import SwiftData
-import PhotosUI
+import UIKit
 
 struct AddItemView: View {
     let selectedHomeId: UUID?
@@ -13,8 +13,10 @@ struct AddItemView: View {
     @State private var itemDescription = ""
     @State private var selectedLocation: StorageLocation?
     @State private var selectedImage: UIImage?
-    @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showingLocationPicker = false
+    @State private var showingCamera = false
+    @State private var showingPhotoPicker = false
+    @State private var cameraUnavailableAlert = false
     @State private var isSaving = false
     @State private var selectedHome: Home?
     @State private var tags: Set<String> = []
@@ -67,14 +69,34 @@ struct AddItemView: View {
                         
                         Button("Remove Photo", role: .destructive) {
                             self.selectedImage = nil
-                            self.selectedPhotoItem = nil
                         }
                     } else {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Menu {
+                            Button {
+                                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                    showingCamera = true
+                                } else {
+                                    cameraUnavailableAlert = true
+                                }
+                            } label: {
+                                Label("Take Photo", systemImage: "camera")
+                            }
+                            Button {
+                                showingPhotoPicker = true
+                            } label: {
+                                Label("Choose from Gallery", systemImage: "photo")
+                            }
+                        } label: {
                             Label("Add Photo", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
                         }
                     }
                 }
+            .alert("Camera Unavailable", isPresented: $cameraUnavailableAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The camera is not available on this device.")
+            }
             }
             .navigationTitle("Add Item")
             .navigationBarTitleDisplayMode(.inline)
@@ -90,13 +112,11 @@ struct AddItemView: View {
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
-            .onChange(of: selectedPhotoItem) { oldValue, newValue in
-                Task {
-                    if let data = try? await newValue?.loadTransferable(type: Data.self),
-                       let uiImage = UIImage(data: data) {
-                        selectedImage = uiImage
-                    }
-                }
+            .sheet(isPresented: $showingCamera) {
+                ImagePicker(selectedImage: $selectedImage, sourceType: .camera)
+            }
+            .sheet(isPresented: $showingPhotoPicker) {
+                PhotoLibraryPicker(selectedImage: $selectedImage)
             }
             .onAppear {
                 DebugLogger.info("AddItemView.onAppear - homeId: \(String(describing: selectedHomeId))")
