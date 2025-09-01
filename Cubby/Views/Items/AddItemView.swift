@@ -22,6 +22,7 @@ struct AddItemView: View {
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
     @Query private var allItems: [InventoryItem]
+    @FocusState private var titleIsFocused: Bool
     
     var body: some View {
         NavigationStack {
@@ -29,6 +30,20 @@ struct AddItemView: View {
                 Section("Item Details") {
                     TextField("Title", text: $title)
                         .textInputAutocapitalization(.words)
+                        .focused($titleIsFocused)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return }
+                            if selectedLocation == nil, let def = defaultUnsortedLocation() {
+                                selectedLocation = def
+                            }
+                            if !isSaving, selectedLocation != nil {
+                                Task { await saveItem() }
+                            } else if selectedLocation == nil {
+                                showingLocationPicker = true
+                            }
+                        }
                     
                     TextField("Description", text: $itemDescription, axis: .vertical)
                         .lineLimit(3...6)
@@ -141,6 +156,15 @@ struct AddItemView: View {
                 } else {
                     DebugLogger.warning("AddItemView - No homeId provided")
                 }
+                // Default to Unsorted when no location preselected
+                if selectedLocation == nil, let def = defaultUnsortedLocation() {
+                    selectedLocation = def
+                }
+            }
+            .task {
+                // Slight delay ensures the sheet is fully presented before focusing
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                await MainActor.run { titleIsFocused = true }
             }
             .disabled(isSaving)
             .overlay {
@@ -156,13 +180,24 @@ struct AddItemView: View {
         }
     }
     
+    private func defaultUnsortedLocation() -> StorageLocation? {
+        guard let selectedHomeId else { return nil }
+        let descriptor = FetchDescriptor<StorageLocation>(
+            predicate: #Predicate { $0.home?.id == selectedHomeId && $0.name == "Unsorted" }
+        )
+        if let locations = try? modelContext.fetch(descriptor) {
+            return locations.first
+        }
+        return nil
+    }
+
     private func saveItem() async {
         guard let selectedLocation else { return }
         
         isSaving = true
         
         let newItem = InventoryItem(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            title: title.titleCased(),
             description: itemDescription.isEmpty ? nil : itemDescription.trimmingCharacters(in: .whitespacesAndNewlines),
             storageLocation: selectedLocation
         )

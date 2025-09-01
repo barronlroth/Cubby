@@ -189,7 +189,7 @@ struct ItemDetailView: View {
     }
     
     private func saveChanges() {
-        item.title = editedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.title = editedTitle.titleCased()
         item.itemDescription = editedDescription.isEmpty ? nil : editedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         item.tagsSet = editedTags
         item.modifiedAt = Date()
