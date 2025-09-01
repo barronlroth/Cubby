@@ -15,6 +15,8 @@ struct AddItemView: View {
     @State private var selectedImage: UIImage?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showingLocationPicker = false
+    @State private var showingCamera = false
+    @State private var showingPhotoPicker = false
     @State private var isSaving = false
     @State private var selectedHome: Home?
     @State private var tags: Set<String> = []
@@ -70,8 +72,19 @@ struct AddItemView: View {
                             self.selectedPhotoItem = nil
                         }
                     } else {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Button {
+                            // Context menu will handle the action
+                        } label: {
                             Label("Add Photo", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .contextMenu {
+                            Button("Take Photo") {
+                                showingCamera = true
+                            }
+                            Button("Choose from Gallery") {
+                                showingPhotoPicker = true
+                            }
                         }
                     }
                 }
@@ -90,12 +103,25 @@ struct AddItemView: View {
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
+            .sheet(isPresented: $showingCamera) {
+                ImagePicker(selectedImage: $selectedImage, sourceType: .camera)
+            }
+            .sheet(isPresented: $showingPhotoPicker) {
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Text("Select Photo")
+                }
+            }
             .onChange(of: selectedPhotoItem) { oldValue, newValue in
                 Task {
                     if let data = try? await newValue?.loadTransferable(type: Data.self),
                        let uiImage = UIImage(data: data) {
                         selectedImage = uiImage
                     }
+                }
+            }
+            .onChange(of: selectedImage) { oldValue, newValue in
+                if newValue != nil {
+                    selectedPhotoItem = nil
                 }
             }
             .onAppear {
