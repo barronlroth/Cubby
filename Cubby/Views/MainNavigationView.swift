@@ -36,8 +36,6 @@ struct MainNavigationView: View {
         }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
-                SearchPillButton(showingSearch: $showingSearch)
-                
                 if undoManager.canUndo {
                     HStack(spacing: 4) {
                         Button(action: performUndo) {
@@ -80,9 +78,7 @@ struct MainNavigationView: View {
                 AddItemView(selectedHomeId: homeId)
             }
         }
-        .sheet(isPresented: $showingSearch) {
-            SearchView()
-        }
+        // Search is now opened from HomeView toolbar
         .onAppear {
             if selectedHome == nil && !homes.isEmpty {
                 selectedHome = homes.first
@@ -134,29 +130,11 @@ struct AddItemFloatingButton: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
                 .frame(width: 56, height: 56)
-                .background(Color.accentColor)
+                .background(Color.black)
                 .clipShape(Circle())
-                .shadow(radius: 4, y: 2)
+                .shadow(radius: 6, y: 3)
         }
     }
 }
 
-struct SearchPillButton: View {
-    @Binding var showingSearch: Bool
-    
-    var body: some View {
-        Button(action: { showingSearch = true }) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                Text("Search")
-            }
-            .font(.subheadline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
-            .clipShape(Capsule())
-            .shadow(radius: 2, y: 1)
-        }
-        .padding(.horizontal)
-    }
-}
+// Removed SearchPillButton; search is triggered from HomeView toolbar

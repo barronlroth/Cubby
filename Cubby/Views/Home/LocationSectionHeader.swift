@@ -4,25 +4,44 @@ struct LocationSectionHeader: View {
     let locationPath: String
     let itemCount: Int
     
+    private var segments: [String] {
+        // Support both " > " and ">" separators
+        if locationPath.contains(" > ") || locationPath.contains(">") {
+            return locationPath
+                .split(separator: ">")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+        } else {
+            return [locationPath]
+        }
+    }
+    
     var body: some View {
-        HStack {
-            Text(locationPath)
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 4) {
+            // Title (current/leaf location)
+            Text(segments.last ?? locationPath)
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
-            
-            Spacer()
-            
-            Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.2))
-                .clipShape(Capsule())
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            // Subtitle path (ancestors only)
+            if segments.count > 1 {
+                HStack(spacing: 4) {
+                    Image("pajamas-reply")
+                        .renderingMode(.template)
+                        .foregroundStyle(.secondary)
+                    Text(segments.dropLast().joined(separator: " → "))
+                        .font(.system(size: 14, weight: .medium).italic())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
         .listRowInsets(EdgeInsets())
-        .listRowBackground(Color(UIColor.systemGroupedBackground))
+        .listRowBackground(Color.clear)
     }
 }
