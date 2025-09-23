@@ -372,27 +372,36 @@ private struct BottomFloatingBar: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
+
                 TextField("Search", text: $searchText)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
                     .focused($searchFieldFocused)
             }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 48)
-            .background(Material.thin, in: Capsule())
+            .padding(.vertical, 12)
+            .padding(.leading, 16)
+            .padding(.trailing, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(action: onAddTap) {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
-                    .frame(width: 48, height: 48)
-                    .background(Material.thin, in: Circle())
+                    .frame(width: 44, height: 44)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.92))
+                            .shadow(color: Color.black.opacity(0.12), radius: 6, y: 3)
+                    )
             }
             .disabled(addDisabled)
             .accessibilityLabel("Add Item")
         }
-        .padding(8)
-        .background(Material.regular, in: Capsule())
-        .shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 6)
     }
 }
