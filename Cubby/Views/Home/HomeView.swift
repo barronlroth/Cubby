@@ -30,6 +30,7 @@ struct HomeView: View {
     @State private var showingAddItem = false
     @State private var searchText = ""
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @FocusState private var searchFieldFocused: Bool
     @Environment(\.modelContext) private var modelContext
     
     private var locationSections: [LocationSection] {
@@ -97,21 +98,27 @@ struct HomeView: View {
             .background(appBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: isCompactWidth ? .toolbar : .automatic, prompt: "Search")
-        .applySearchToolbarBehavior(isCompact: isCompactWidth)
+        .conditionalSearchable(isCompact: isCompactWidth, text: $searchText)
         .toolbar {
-            if isCompactWidth {
-                ToolbarItem(placement: .bottomBar) {
-                    addItemButton
-                }
-            } else {
+            if !isCompactWidth {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     addItemButton
                 }
             }
         }
-        .toolbarBackground(.thinMaterial, for: .bottomBar)
-        .toolbarBackgroundVisibility(.visible, for: .bottomBar)
+        .safeAreaInset(edge: .bottom) {
+            if isCompactWidth {
+                BottomFloatingBar(
+                    searchText: $searchText,
+                    searchFieldFocused: $searchFieldFocused,
+                    addDisabled: selectedHome == nil,
+                    onAddTap: { showingAddItem = true }
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity)
+            }
+        }
         .sheet(isPresented: $showingAddLocation) {
             if let homeId = selectedHome?.id {
                 AddLocationView(homeId: homeId, parentLocation: nil)
@@ -338,5 +345,54 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func conditionalSearchable(isCompact: Bool, text: Binding<String>) -> some View {
+        if isCompact {
+            self
+        } else {
+            self
+                .searchable(text: text, placement: .automatic, prompt: "Search")
+                .applySearchToolbarBehavior(isCompact: false)
+        }
+    }
+}
+
+private struct BottomFloatingBar: View {
+    @Binding var searchText: String
+    @FocusState.Binding var searchFieldFocused: Bool
+    let addDisabled: Bool
+    let onAddTap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search", text: $searchText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .focused($searchFieldFocused)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .background(Material.thin, in: Capsule())
+
+            Button(action: onAddTap) {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 48, height: 48)
+                    .background(Material.thin, in: Circle())
+            }
+            .disabled(addDisabled)
+            .accessibilityLabel("Add Item")
+        }
+        .padding(8)
+        .background(Material.regular, in: Capsule())
+        .shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
     }
 }
