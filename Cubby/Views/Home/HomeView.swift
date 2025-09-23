@@ -63,19 +63,25 @@ struct HomeView: View {
     private var displayedSections: [LocationSection] {
         guard isSearching else { return locationSections }
 
-        return locationSections.compactMap { section in
-            let matchedItems = section.items.filter { item in
-                itemMatchesSearch(item)
+        var result: [LocationSection] = []
+        for section in locationSections {
+            var matchedItems: [InventoryItem] = []
+            for item in section.items {
+                if itemMatchesSearch(item) {
+                    matchedItems.append(item)
+                }
             }
-
-            guard !matchedItems.isEmpty else { return nil }
-
-            return LocationSection(
-                location: section.location,
-                locationPath: section.locationPath,
-                items: matchedItems
-            )
+            if !matchedItems.isEmpty {
+                result.append(
+                    LocationSection(
+                        location: section.location,
+                        locationPath: section.locationPath,
+                        items: matchedItems
+                    )
+                )
+            }
         }
+        return result
     }
 
     private var isCompactWidth: Bool {
@@ -83,37 +89,14 @@ struct HomeView: View {
     }
     
     var body: some View {
-        List {
-            // Scroll-aware header within content that collapses
-            header
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-
-            if displayedSections.isEmpty {
-                emptyState
-            } else {
-                ForEach(displayedSections) { section in
-                    Section {
-                        ForEach(section.items) { item in
-                            ItemRow(item: item, showLocation: false)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                        }
-                    } header: {
-                        LocationSectionHeader(
-                            locationPath: section.locationPath,
-                            itemCount: section.items.count
-                        )
-                    }
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(appBackground)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        let sections = displayedSections
+        
+        return listView(for: sections)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(appBackground)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: isCompactWidth ? .toolbar : .automatic, prompt: "Search")
         .applySearchToolbarBehavior(isCompact: isCompactWidth)
         .toolbar {
@@ -127,8 +110,8 @@ struct HomeView: View {
                 }
             }
         }
-        .toolbarBackground(isCompactWidth ? .thinMaterial : .clear, for: .bottomBar)
-        .toolbarBackgroundVisibility(isCompactWidth ? .visible : .hidden, for: .bottomBar)
+        .toolbarBackground(.thinMaterial, for: .bottomBar)
+        .toolbarBackgroundVisibility(.visible, for: .bottomBar)
         .sheet(isPresented: $showingAddLocation) {
             if let homeId = selectedHome?.id {
                 AddLocationView(homeId: homeId, parentLocation: nil)
@@ -205,6 +188,35 @@ struct HomeView: View {
         }
 
         return false
+    }
+    
+    @ViewBuilder
+    private func listView(for sections: [LocationSection]) -> some View {
+        List {
+            header
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+
+            if sections.isEmpty {
+                emptyState
+            } else {
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.items) { item in
+                            ItemRow(item: item, showLocation: false)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        LocationSectionHeader(
+                            locationPath: section.locationPath,
+                            itemCount: section.items.count
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @Environment(\.colorScheme) private var colorScheme
