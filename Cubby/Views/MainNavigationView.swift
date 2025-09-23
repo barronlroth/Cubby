@@ -5,8 +5,6 @@ struct MainNavigationView: View {
     @Query private var homes: [Home]
     @State private var selectedHome: Home?
     @State private var selectedLocation: StorageLocation?
-    @State private var showingAddItem = false
-    @State private var showingSearch = false
     @State private var showingUndoToast = false
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
@@ -24,14 +22,6 @@ struct MainNavigationView: View {
                     systemImage: "folder",
                     description: Text("Choose a storage location to view its items")
                 )
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            // Only show FAB when a home is selected
-            if selectedHome != nil {
-                AddItemFloatingButton(showingAddItem: $showingAddItem)
-                    .padding()
-                    .transition(.scale.combined(with: .opacity))
             }
         }
         .overlay(alignment: .top) {
@@ -72,13 +62,6 @@ struct MainNavigationView: View {
             .animation(.spring(response: 0.3), value: undoManager.canUndo)
             .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
-        .sheet(isPresented: $showingAddItem) {
-            // Validate homeId before presenting
-            if let homeId = selectedHome?.id {
-                AddItemView(selectedHomeId: homeId)
-            }
-        }
-        // Search is now opened from HomeView toolbar
         .onAppear {
             if selectedHome == nil && !homes.isEmpty {
                 selectedHome = homes.first
@@ -116,25 +99,3 @@ struct MainNavigationView: View {
         }
     }
 }
-
-struct AddItemFloatingButton: View {
-    @Binding var showingAddItem: Bool
-    
-    var body: some View {
-        Button(action: { 
-            DebugLogger.info("FAB - Add Item button pressed")
-            showingAddItem = true 
-        }) {
-            Image(systemName: "plus")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.black)
-                .clipShape(Circle())
-                .shadow(radius: 6, y: 3)
-        }
-    }
-}
-
-// Removed SearchPillButton; search is triggered from HomeView toolbar

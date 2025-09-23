@@ -3,13 +3,20 @@ import UIKit
 import SwiftData
 
 struct LocationSection: Identifiable {
-    let id = UUID()
+    let id: UUID
     let location: StorageLocation
     let locationPath: String
     let items: [InventoryItem]
     
     var isEmpty: Bool {
         items.isEmpty
+    }
+
+    init(location: StorageLocation, locationPath: String, items: [InventoryItem]) {
+        self.id = location.id
+        self.location = location
+        self.locationPath = locationPath
+        self.items = items
     }
 }
 
@@ -21,7 +28,8 @@ struct HomeView: View {
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
     @State private var showingAddItem = false
-    @State private var showingSearch = false
+    @State private var searchText = ""
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.modelContext) private var modelContext
     
     private var locationSections: [LocationSection] {
@@ -43,6 +51,36 @@ struct HomeView: View {
         }
         .sorted { $0.locationPath < $1.locationPath }
     }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !trimmedSearchText.isEmpty
+    }
+
+    private var displayedSections: [LocationSection] {
+        guard isSearching else { return locationSections }
+
+        return locationSections.compactMap { section in
+            let matchedItems = section.items.filter { item in
+                itemMatchesSearch(item)
+            }
+
+            guard !matchedItems.isEmpty else { return nil }
+
+            return LocationSection(
+                location: section.location,
+                locationPath: section.locationPath,
+                items: matchedItems
+            )
+        }
+    }
+
+    private var isCompactWidth: Bool {
+        horizontalSizeClass == .compact
+    }
     
     var body: some View {
         List {
@@ -51,17 +89,10 @@ struct HomeView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
 
-            if locationSections.isEmpty {
-                ContentUnavailableView(
-                    "No Items",
-                    systemImage: "shippingbox",
-                    description: Text("Add items to your storage locations to see them here")
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .frame(maxWidth: .infinity, minHeight: 400)
+            if displayedSections.isEmpty {
+                emptyState
             } else {
-                ForEach(locationSections) { section in
+                ForEach(displayedSections) { section in
                     Section {
                         ForEach(section.items) { item in
                             ItemRow(item: item, showLocation: false)
@@ -83,16 +114,21 @@ struct HomeView: View {
         .background(appBackground)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: isCompactWidth ? .toolbar : .automatic, prompt: "Search")
+        .applySearchToolbarBehavior(isCompact: isCompactWidth)
         .toolbar {
-            // Trailing search button
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { showingSearch = true }) {
-                    Image("pajamas-search")
-                        .renderingMode(.template)
+            if isCompactWidth {
+                ToolbarItem(placement: .bottomBar) {
+                    addItemButton
                 }
-                .accessibilityLabel("Search")
+            } else {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    addItemButton
+                }
             }
         }
+        .toolbarBackground(isCompactWidth ? .thinMaterial : .clear, for: .bottomBar)
+        .toolbarBackgroundVisibility(isCompactWidth ? .visible : .hidden, for: .bottomBar)
         .sheet(isPresented: $showingAddLocation) {
             if let homeId = selectedHome?.id {
                 AddLocationView(homeId: homeId, parentLocation: nil)
@@ -106,8 +142,8 @@ struct HomeView: View {
                 AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
             }
         }
-        .sheet(isPresented: $showingSearch) {
-            SearchView()
+        .onChange(of: selectedHome?.id) { _, _ in
+            searchText = ""
         }
     }
 
@@ -119,6 +155,56 @@ struct HomeView: View {
                 .padding(.top, 8)
         }
         .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        if isSearching {
+            ContentUnavailableView(
+                "No Results",
+                systemImage: "magnifyingglass",
+                description: Text("No items match \"\(trimmedSearchText)\" in this home")
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .frame(maxWidth: .infinity, minHeight: 200)
+        } else {
+            ContentUnavailableView(
+                "No Items",
+                systemImage: "shippingbox",
+                description: Text("Add items to your storage locations to see them here")
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .frame(maxWidth: .infinity, minHeight: 400)
+        }
+    }
+
+    private var addItemButton: some View {
+        Button(action: { showingAddItem = true }) {
+            Image(systemName: "plus")
+                .font(.title3.weight(.semibold))
+        }
+        .labelStyle(.iconOnly)
+        .accessibilityLabel("Add Item")
+        .disabled(selectedHome == nil)
+    }
+
+    private func itemMatchesSearch(_ item: InventoryItem) -> Bool {
+        guard isSearching else { return true }
+
+        let query = trimmedSearchText
+
+        if item.title.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
+        if let description = item.itemDescription,
+           description.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
+        return false
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -226,4 +312,19 @@ private struct HomeViewPreviewHarness: View {
     return HomeViewPreviewHarness(initialHome: data.home)
         .modelContainer(data.container)
 }
- #endif
+#endif
+
+private extension View {
+    @ViewBuilder
+    func applySearchToolbarBehavior(isCompact: Bool) -> some View {
+        if isCompact {
+            if #available(iOS 26.0, *) {
+                self.searchToolbarBehavior(.minimize)
+            } else {
+                self
+            }
+        } else {
+            self
+        }
+    }
+}
