@@ -2,6 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct MainNavigationView: View {
+    @Binding var searchText: String
+    @Binding var showingAddItem: Bool
+    @Binding var canAddItem: Bool
     @Query private var homes: [Home]
     @State private var selectedHome: Home?
     @State private var selectedLocation: StorageLocation?
@@ -12,7 +15,12 @@ struct MainNavigationView: View {
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            HomeView(selectedHome: $selectedHome, selectedLocation: $selectedLocation)
+            HomeView(
+                selectedHome: $selectedHome,
+                selectedLocation: $selectedLocation,
+                searchText: $searchText,
+                showingAddItem: $showingAddItem
+            )
         } detail: {
             if let selectedLocation {
                 LocationDetailView(location: selectedLocation)
@@ -67,6 +75,7 @@ struct MainNavigationView: View {
                 selectedHome = homes.first
                 DebugLogger.info("MainNavigationView.onAppear - Set selectedHome to: \(homes.first?.name ?? "nil")")
             }
+            canAddItem = selectedHome != nil
         }
         .onChange(of: homes) { oldHomes, newHomes in
             // Keep selectedHome synchronized with homes
@@ -82,9 +91,11 @@ struct MainNavigationView: View {
                 selectedHome = newHomes.first
                 DebugLogger.info("MainNavigationView - No home selected, auto-selecting: \(newHomes.first?.name ?? "none")")
             }
+            canAddItem = selectedHome != nil
         }
         .onChange(of: selectedHome) { oldHome, newHome in
             DebugLogger.info("MainNavigationView - selectedHome changed from \(oldHome?.name ?? "nil") to \(newHome?.name ?? "nil")")
+            canAddItem = newHome != nil
         }
         .animation(.spring(response: 0.3), value: selectedHome?.id)
     }
