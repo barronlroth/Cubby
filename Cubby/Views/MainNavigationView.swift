@@ -12,6 +12,8 @@ struct MainNavigationView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.isSearching) private var isSearching
+    @Environment(\.dismissSearch) private var dismissSearch
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -21,6 +23,22 @@ struct MainNavigationView: View {
                 searchText: $searchText,
                 showingAddItem: $showingAddItem
             )
+            .navigationTitle("Home")
+            .searchable(text: $searchText, prompt: Text("Search Items"))
+            .applyLiquidGlassSearchBehaviors()
+            .toolbar {
+                #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Spacer(minLength: 12)
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        toolbarButton
+                    }
+                }
+                #endif
+            }
         } detail: {
             if let selectedLocation {
                 LocationDetailView(location: selectedLocation)
@@ -32,6 +50,7 @@ struct MainNavigationView: View {
                 )
             }
         }
+        .toolbar { toolbarContent }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if undoManager.canUndo {
@@ -99,7 +118,68 @@ struct MainNavigationView: View {
         }
         .animation(.spring(response: 0.3), value: selectedHome?.id)
     }
-    
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchEngaged: Bool {
+        !trimmedSearchText.isEmpty || isSearching
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        #if os(iOS)
+        if #unavailable(iOS 26.0) {
+            ToolbarItem(placement: .bottomBar) {
+                toolbarButton
+            }
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            toolbarButton
+        }
+        #endif
+    }
+
+    private var toolbarButton: some View {
+        Button(action: handleToolbarButtonTap) {
+            Image(systemName: toolbarIconName)
+                .font(.system(size: 20, weight: .semibold))
+        }
+        .labelStyle(.iconOnly)
+        .controlSize(.large)
+        .disabled(!isSearchEngaged && !canAddItem)
+        .accessibilityLabel(toolbarAccessibilityLabel)
+        .accessibilityHint(toolbarAccessibilityHint)
+    }
+
+    private var toolbarIconName: String {
+        isSearchEngaged ? "xmark" : "plus"
+    }
+
+    private var toolbarAccessibilityLabel: String {
+        isSearchEngaged ? "Cancel Search" : "Add Item"
+    }
+
+    private var toolbarAccessibilityHint: String {
+        if isSearchEngaged {
+            return "Clears the current search text"
+        }
+        return canAddItem ? "Opens the new item form" : "Select a home to add items"
+    }
+
+    private func handleToolbarButtonTap() {
+        if isSearchEngaged {
+            searchText = ""
+            if #available(iOS 17.0, *) {
+                dismissSearch()
+            }
+        } else if canAddItem {
+            showingAddItem = true
+        }
+    }
+
     private func performUndo() {
         let success = undoManager.undo(in: modelContext)
         if success {
@@ -108,5 +188,22 @@ struct MainNavigationView: View {
                 showingUndoToast = false
             }
         }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func applyLiquidGlassSearchBehaviors() -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            self
+                .searchToolbarBehavior(.minimize)
+                .searchPresentationToolbarBehavior(.avoidHidingContent)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
