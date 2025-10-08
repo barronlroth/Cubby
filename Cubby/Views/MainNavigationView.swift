@@ -23,9 +23,13 @@ struct MainNavigationView: View {
                 searchText: $searchText,
                 showingAddItem: $showingAddItem
             )
-            .navigationTitle("Home")
             .searchable(text: $searchText, prompt: Text("Search Items"))
             .applyLiquidGlassSearchBehaviors()
+            .scrollContentBackground(.hidden)
+            .modifier(ApplyHomeDesign())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarBackButtonHidden(true)
+            .modifier(ContentTopMarginZero())
             .toolbar {
                 #if os(iOS)
                 if #available(iOS 26.0, *) {
@@ -205,5 +209,32 @@ private extension View {
         #else
         self
         #endif
+    }
+}
+
+private struct ContentTopMarginZero: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 17.0, *) {
+            content
+                .contentMargins(.top, 0, for: .scrollContent)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+private extension Color {
+    static let cubbyHomeBackground = Color(red: 0xF9/255.0, green: 0xF8/255.0, blue: 0xF7/255.0)
+}
+
+private struct ApplyHomeDesign: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(Color.black.opacity(0.9))
+            .background(Color.cubbyHomeBackground)
     }
 }
