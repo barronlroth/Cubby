@@ -26,15 +26,25 @@ struct LocationSectionHeader: View {
 
             // Subtitle path (ancestors only)
             if segments.count > 1 {
+                let ancestors = Array(segments.dropLast())
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.turn.down.right")
                         .renderingMode(.template)
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text(segments.dropLast().joined(separator: " → "))
-                        .font(.system(size: 14, weight: .medium).italic())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
+                        Text(segment)
+                            .font(.system(size: 14, weight: .medium).italic())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+                        if index < ancestors.count - 1 {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
@@ -45,4 +55,3 @@ struct LocationSectionHeader: View {
         .listRowBackground(Color.clear)
     }
 }
-
