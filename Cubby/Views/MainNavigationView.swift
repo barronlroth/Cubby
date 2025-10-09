@@ -2,19 +2,47 @@ import SwiftUI
 import SwiftData
 
 struct MainNavigationView: View {
+    @Binding var searchText: String
+    @Binding var showingAddItem: Bool
+    @Binding var canAddItem: Bool
     @Query private var homes: [Home]
     @State private var selectedHome: Home?
     @State private var selectedLocation: StorageLocation?
-    @State private var showingAddItem = false
-    @State private var showingSearch = false
     @State private var showingUndoToast = false
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.isSearching) private var isSearching
+    @Environment(\.dismissSearch) private var dismissSearch
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            HomeView(selectedHome: $selectedHome, selectedLocation: $selectedLocation)
+            HomeView(
+                selectedHome: $selectedHome,
+                selectedLocation: $selectedLocation,
+                searchText: $searchText,
+                showingAddItem: $showingAddItem
+            )
+            .searchable(text: $searchText, prompt: Text("Search Items"))
+            .applyLiquidGlassSearchBehaviors()
+            .scrollContentBackground(.hidden)
+            .modifier(ApplyHomeDesign())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarBackButtonHidden(true)
+            .modifier(ContentTopMarginZero())
+            .toolbar {
+                #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Spacer(minLength: 12)
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        toolbarButton
+                    }
+                }
+                #endif
+            }
         } detail: {
             if let selectedLocation {
                 LocationDetailView(location: selectedLocation)
@@ -26,18 +54,9 @@ struct MainNavigationView: View {
                 )
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            // Only show FAB when a home is selected
-            if selectedHome != nil {
-                AddItemFloatingButton(showingAddItem: $showingAddItem)
-                    .padding()
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
+        .toolbar { toolbarContent }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
-                SearchPillButton(showingSearch: $showingSearch)
-                
                 if undoManager.canUndo {
                     HStack(spacing: 4) {
                         Button(action: performUndo) {
@@ -74,20 +93,12 @@ struct MainNavigationView: View {
             .animation(.spring(response: 0.3), value: undoManager.canUndo)
             .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
-        .sheet(isPresented: $showingAddItem) {
-            // Validate homeId before presenting
-            if let homeId = selectedHome?.id {
-                AddItemView(selectedHomeId: homeId)
-            }
-        }
-        .sheet(isPresented: $showingSearch) {
-            SearchView()
-        }
         .onAppear {
             if selectedHome == nil && !homes.isEmpty {
                 selectedHome = homes.first
                 DebugLogger.info("MainNavigationView.onAppear - Set selectedHome to: \(homes.first?.name ?? "nil")")
             }
+            canAddItem = selectedHome != nil
         }
         .onChange(of: homes) { oldHomes, newHomes in
             // Keep selectedHome synchronized with homes
@@ -103,13 +114,76 @@ struct MainNavigationView: View {
                 selectedHome = newHomes.first
                 DebugLogger.info("MainNavigationView - No home selected, auto-selecting: \(newHomes.first?.name ?? "none")")
             }
+            canAddItem = selectedHome != nil
         }
         .onChange(of: selectedHome) { oldHome, newHome in
             DebugLogger.info("MainNavigationView - selectedHome changed from \(oldHome?.name ?? "nil") to \(newHome?.name ?? "nil")")
+            canAddItem = newHome != nil
         }
         .animation(.spring(response: 0.3), value: selectedHome?.id)
     }
-    
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchEngaged: Bool {
+        !trimmedSearchText.isEmpty || isSearching
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        #if os(iOS)
+        if #unavailable(iOS 26.0) {
+            ToolbarItem(placement: .bottomBar) {
+                toolbarButton
+            }
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            toolbarButton
+        }
+        #endif
+    }
+
+    private var toolbarButton: some View {
+        Button(action: handleToolbarButtonTap) {
+            Image(systemName: toolbarIconName)
+                .font(.system(size: 20, weight: .semibold))
+        }
+        .labelStyle(.iconOnly)
+        .controlSize(.large)
+        .disabled(!isSearchEngaged && !canAddItem)
+        .accessibilityLabel(toolbarAccessibilityLabel)
+        .accessibilityHint(toolbarAccessibilityHint)
+    }
+
+    private var toolbarIconName: String {
+        isSearchEngaged ? "xmark" : "plus"
+    }
+
+    private var toolbarAccessibilityLabel: String {
+        isSearchEngaged ? "Cancel Search" : "Add Item"
+    }
+
+    private var toolbarAccessibilityHint: String {
+        if isSearchEngaged {
+            return "Clears the current search text"
+        }
+        return canAddItem ? "Opens the new item form" : "Select a home to add items"
+    }
+
+    private func handleToolbarButtonTap() {
+        if isSearchEngaged {
+            searchText = ""
+            if #available(iOS 17.0, *) {
+                dismissSearch()
+            }
+        } else if canAddItem {
+            showingAddItem = true
+        }
+    }
+
     private func performUndo() {
         let success = undoManager.undo(in: modelContext)
         if success {
@@ -121,42 +195,46 @@ struct MainNavigationView: View {
     }
 }
 
-struct AddItemFloatingButton: View {
-    @Binding var showingAddItem: Bool
-    
-    var body: some View {
-        Button(action: { 
-            DebugLogger.info("FAB - Add Item button pressed")
-            showingAddItem = true 
-        }) {
-            Image(systemName: "plus")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.accentColor)
-                .clipShape(Circle())
-                .shadow(radius: 4, y: 2)
+private extension View {
+    @ViewBuilder
+    func applyLiquidGlassSearchBehaviors() -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            self
+                .searchToolbarBehavior(.minimize)
+                .searchPresentationToolbarBehavior(.avoidHidingContent)
+        } else {
+            self
         }
+        #else
+        self
+        #endif
     }
 }
 
-struct SearchPillButton: View {
-    @Binding var showingSearch: Bool
-    
-    var body: some View {
-        Button(action: { showingSearch = true }) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                Text("Search")
-            }
-            .font(.subheadline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
-            .clipShape(Capsule())
-            .shadow(radius: 2, y: 1)
+private struct ContentTopMarginZero: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 17.0, *) {
+            content
+                .contentMargins(.top, 0, for: .scrollContent)
+        } else {
+            content
         }
-        .padding(.horizontal)
+        #else
+        content
+        #endif
+    }
+}
+
+private extension Color {
+    static let cubbyHomeBackground = Color(red: 0xF9/255.0, green: 0xF8/255.0, blue: 0xF7/255.0)
+}
+
+private struct ApplyHomeDesign: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(Color.black.opacity(0.9))
+            .background(Color.cubbyHomeBackground)
     }
 }

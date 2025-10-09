@@ -40,7 +40,7 @@ struct CubbyApp: App {
         WindowGroup {
             Group {
                 if hasCompletedOnboarding {
-                    MainNavigationView()
+                    HomeSearchContainer()
                 } else {
                     OnboardingView()
                 }

@@ -2,11 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Allow Cubby to take photos of your items so you can visually track inventory.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
+    <key>NSCameraUsageDescription</key>
+    <string>Allow Cubby to take photos of your items so you can visually track inventory.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+    <key>UIAppFonts</key>
+    <array>
+        <string>AwesomeSerif-ExtraTall.otf</string>
+        <string>circular-book.otf</string>
+        <string>circular-book-italic.otf</string>
+        <string>circular-medium.otf</string>
+        <string>circular-medium-italic.otf</string>
+    </array>
 </dict>
 </plist>

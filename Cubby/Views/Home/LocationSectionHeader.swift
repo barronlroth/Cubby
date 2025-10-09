@@ -4,25 +4,54 @@ struct LocationSectionHeader: View {
     let locationPath: String
     let itemCount: Int
     
+    private var segments: [String] {
+        // Support both " > " and ">" separators
+        if locationPath.contains(" > ") || locationPath.contains(">") {
+            return locationPath
+                .split(separator: ">")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+        } else {
+            return [locationPath]
+        }
+    }
+    
     var body: some View {
-        HStack {
-            Text(locationPath)
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 4) {
+            // Title (current/leaf location)
+            Text(segments.last ?? locationPath)
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
-            
-            Spacer()
-            
-            Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.2))
-                .clipShape(Capsule())
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            // Subtitle path (ancestors only)
+            if segments.count > 1 {
+                let ancestors = Array(segments.dropLast())
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .renderingMode(.template)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
+                        Text(segment)
+                            .font(.system(size: 14, weight: .medium).italic())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+                        if index < ancestors.count - 1 {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
         .listRowInsets(EdgeInsets())
-        .listRowBackground(Color(UIColor.systemGroupedBackground))
+        .listRowBackground(Color.clear)
     }
 }

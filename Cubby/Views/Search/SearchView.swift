@@ -78,31 +78,15 @@ struct SearchView: View {
 
 struct SearchResultRow: View {
     let item: InventoryItem
-    @State private var photo: UIImage?
     
     var body: some View {
         HStack(spacing: 12) {
-            if let photoFileName = item.photoFileName {
-                Group {
-                    if let photo {
-                        Image(uiImage: photo)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        Image(systemName: "photo")
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .frame(width: 50, height: 50)
-                .background(Color.gray.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                Image(systemName: "shippingbox")
-                    .font(.title3)
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 50, height: 50)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            ZStack {
+                Circle()
+                    .fill(UIColor(named: "ItemIconBackground") != nil ? Color("ItemIconBackground") : Color(.secondarySystemBackground))
+                    .frame(width: 48, height: 48)
+                Text(EmojiPicker.emoji(for: item.id))
+                    .font(.system(size: 24))
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -133,11 +117,6 @@ struct SearchResultRow: View {
             
             Spacer()
         }
-        .padding(.vertical, 4)
-        .task {
-            if let photoFileName = item.photoFileName {
-                photo = await PhotoService.shared.loadPhoto(fileName: photoFileName)
-            }
-        }
+        .padding(.vertical, 6)
     }
 }
