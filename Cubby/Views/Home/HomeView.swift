@@ -175,7 +175,7 @@ struct HomeView: View {
                     Section {
                         ForEach(section.items) { item in
                             ItemRow(item: item, showLocation: false)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                         }
@@ -305,4 +305,3 @@ private struct HomeViewPreviewHarness: View {
         .modelContainer(data.container)
 }
 #endif
-
