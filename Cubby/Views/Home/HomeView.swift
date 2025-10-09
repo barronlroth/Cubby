@@ -223,7 +223,7 @@ struct HomePicker: View {
                     .foregroundStyle(.primary)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)
-                Image("mingcute-down-line")
+                Image(systemName: "chevron.down")
                     .renderingMode(.template)
                     .foregroundStyle(.primary)
             }
