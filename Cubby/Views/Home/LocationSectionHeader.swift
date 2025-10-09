@@ -27,7 +27,7 @@ struct LocationSectionHeader: View {
             // Subtitle path (ancestors only)
             if segments.count > 1 {
                 HStack(spacing: 4) {
-                    Image("pajamas-reply")
+                    Image(systemName: "arrow.turn.down.right")
                         .renderingMode(.template)
                         .foregroundStyle(.secondary)
                     Text(segments.dropLast().joined(separator: " → "))
@@ -45,3 +45,4 @@ struct LocationSectionHeader: View {
         .listRowBackground(Color.clear)
     }
 }
+
