@@ -165,6 +165,7 @@ struct HomeView: View {
         List {
             header
                 .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 .listRowBackground(Color.clear)
 
             if sections.isEmpty {
@@ -304,3 +305,4 @@ private struct HomeViewPreviewHarness: View {
         .modelContainer(data.container)
 }
 #endif
+
