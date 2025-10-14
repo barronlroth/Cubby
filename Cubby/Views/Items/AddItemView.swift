@@ -202,6 +202,7 @@ struct AddItemView: View {
             storageLocation: selectedLocation
         )
         newItem.tagsSet = tags
+        newItem.emoji = EmojiPicker.emoji(for: newItem.id)
         
         if let selectedImage {
             do {
@@ -216,6 +217,19 @@ struct AddItemView: View {
         
         do {
             try modelContext.save()
+            if let pid = newItem.persistentModelID as? PersistentIdentifier {
+                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: pid,
+                    title: newItem.title,
+                    modelContext: modelContext
+                )
+            } else {
+                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: newItem.persistentModelID,
+                    title: newItem.title,
+                    modelContext: modelContext
+                )
+            }
             dismiss()
         } catch {
             print("Failed to save item: \(error)")
@@ -234,3 +248,4 @@ struct AddItemView: View {
             .map { String($0) }
     }
 }
+

@@ -19,7 +19,7 @@ struct ItemRow: View {
                     Circle()
                         .fill(iconBackground)
                         .frame(width: 48, height: 48)
-                    Text(EmojiPicker.emoji(for: item.id))
+                    Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
                         .font(.system(size: 24))
                 }
 
@@ -64,3 +64,4 @@ struct ItemRow: View {
         }
     }
 }
+

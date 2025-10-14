@@ -7,6 +7,7 @@ class InventoryItem {
     var title: String
     var itemDescription: String?
     var photoFileName: String?
+    var emoji: String? = nil
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
     var tags: [String] = []
