@@ -1,0 +1,11 @@
+# Ignore sensitive API keys
+AuthKey_*.p8
+
+# Fastlane generated artifacts
+report.xml
+Preview.html
+screenshots/
+latest_testflight_build_info.txt
+
+# Temporary build outputs
+*.log

@@ -45,6 +45,11 @@ xcrun simctl launch booted com.barronroth.Cubby
 - SwiftData models automatically generate database schema
 - Test on iPhone 16 Pro simulator for best experience
 
+### Release & Distribution
+- Fastlane is configured in `fastlane/Fastfile` with a `beta` lane that builds `Cubby.xcodeproj`/`Cubby` and uploads to TestFlight using App Store Connect API keys.
+- To ship a beta: export `APP_STORE_CONNECT_API_KEY_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` (and optionally `APP_STORE_CONNECT_API_KEY_KEYFILE_PATH` or `APP_STORE_CONNECT_API_KEY_KEY_CONTENT_BASE64`), then run `fastlane beta` from the repo root.
+- The lane increments `CFBundleVersion`, produces an App Store export build, uploads via TestFlight, and skips waiting for processing.
+
 ## Architecture
 
 ### Core Technologies

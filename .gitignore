@@ -18,3 +18,7 @@ Package.resolved
 Pods/
 
 reference_apps/
+fastlane/AuthKey_H67366U9L5.p8
+fastlane/report.xml
+Cubby.ipa
+Cubby.app.dSYM.zip

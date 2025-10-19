@@ -18,8 +18,47 @@ default_platform(:ios)
 platform :ios do
   desc "Push a new beta build to TestFlight"
   lane :beta do
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
+    key_path = ENV["APP_STORE_CONNECT_API_KEY_KEYFILE_PATH"] ||
+               (key_id ? File.join(__dir__, "AuthKey_#{key_id}.p8") : nil)
+
+    UI.user_error!("Set APP_STORE_CONNECT_API_KEY_KEY_ID") if key_id.to_s.empty?
+    UI.user_error!("Set APP_STORE_CONNECT_API_KEY_ISSUER_ID") if issuer_id.to_s.empty?
+
+    key_content_base64 = ENV["APP_STORE_CONNECT_API_KEY_KEY_CONTENT_BASE64"]
+
+    api_key = if key_content_base64 && !key_content_base64.empty?
+                app_store_connect_api_key(
+                  key_id: key_id,
+                  issuer_id: issuer_id,
+                  key_content: key_content_base64,
+                  is_key_content_base64: true
+                )
+              else
+                UI.user_error!("Provide APP_STORE_CONNECT_API_KEY_KEYFILE_PATH or name your key AuthKey_#{key_id}.p8 inside fastlane/") if key_path.nil?
+                UI.user_error!("Cannot find API key file at #{key_path}") unless File.exist?(key_path)
+
+                app_store_connect_api_key(
+                  key_id: key_id,
+                  issuer_id: issuer_id,
+                  key_filepath: key_path
+                )
+              end
+
     increment_build_number(xcodeproj: "Cubby.xcodeproj")
-    build_app(scheme: "Cubby")
-    upload_to_testflight
+
+    build_app(
+      project: "Cubby.xcodeproj",
+      scheme: "Cubby",
+      export_method: "app-store",
+      clean: true
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: false,
+      distribute_external: true
+    )
   end
 end
