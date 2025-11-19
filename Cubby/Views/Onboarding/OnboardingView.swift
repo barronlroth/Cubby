@@ -13,13 +13,17 @@ struct OnboardingView: View {
                 Spacer()
                 
                 VStack(spacing: 12) {
-                    Image(systemName: "house.fill")
-                        .font(.system(size: 80))
-                        .foregroundStyle(.tint)
+                    Image("OnboardingLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .shadow(radius: 10)
                     
                     Text("Welcome to Cubby")
-                        .font(.largeTitle)
+                        .font(.custom("AwesomeSerif-ExtraTall", size: 40))
                         .fontWeight(.bold)
+                        .multilineTextAlignment(.center)
                     
                     Text("Let's set up your first home")
                         .font(.title3)
@@ -50,9 +54,10 @@ struct OnboardingView: View {
                 .padding(.horizontal, 40)
                 
                 Spacer()
-                Spacer()
             }
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(appBackground)
         }
     }
     
@@ -73,6 +78,15 @@ struct OnboardingView: View {
         } catch {
             print("Failed to create home: \(error)")
             isCreatingHome = false
+        }
+    }
+    
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
         }
     }
 }

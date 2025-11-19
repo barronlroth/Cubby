@@ -113,9 +113,16 @@ struct AddItemView: View {
                 Text("The camera is not available on this device.")
             }
             }
-            .navigationTitle("Add Item")
+            .scrollContentBackground(.hidden)
+            .background(appBackground)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Add Item")
+                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
+                        .foregroundStyle(.primary)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -246,6 +253,15 @@ struct AddItemView: View {
             .sorted()
             .prefix(5)
             .map { String($0) }
+    }
+    
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
+        }
     }
 }
 

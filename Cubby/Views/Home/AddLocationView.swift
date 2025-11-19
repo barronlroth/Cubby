@@ -35,9 +35,16 @@ struct AddLocationView: View {
                     }
                 }
             }
-            .navigationTitle("Add Storage Location")
+            .scrollContentBackground(.hidden)
+            .background(appBackground)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Add Storage Location")
+                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
+                        .foregroundStyle(.primary)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -122,6 +129,15 @@ struct AddLocationView: View {
         } catch {
             errorMessage = "Failed to save location: \(error.localizedDescription)"
             showingError = true
+        }
+    }
+    
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
         }
     }
 }

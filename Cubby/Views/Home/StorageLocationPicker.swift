@@ -45,9 +45,16 @@ struct StorageLocationPicker: View {
                 }
             }
             .searchable(text: $searchText, prompt: "Search locations")
-            .navigationTitle("Select Location")
+            .scrollContentBackground(.hidden)
+            .background(appBackground)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Select Location")
+                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
+                        .foregroundStyle(.primary)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -65,6 +72,15 @@ struct StorageLocationPicker: View {
             .sheet(isPresented: $showingAddLocation) {
                 AddLocationView(homeId: selectedHomeId, parentLocation: nil)
             }
+        }
+    }
+    
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
         }
     }
 }

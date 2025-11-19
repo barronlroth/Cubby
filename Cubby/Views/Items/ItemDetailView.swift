@@ -55,8 +55,8 @@ struct ItemDetailView: View {
                                 .textFieldStyle(.roundedBorder)
                         } else {
                             Text(item.title)
-                                .font(.title2)
-                                .fontWeight(.semibold)
+                                .font(.custom("AwesomeSerif-ExtraTall", size: 32))
+                                .foregroundStyle(.primary)
                         }
                     }
                     
@@ -143,6 +143,8 @@ struct ItemDetailView: View {
                 .padding()
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(appBackground)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -240,5 +242,14 @@ struct ItemDetailView: View {
             .sorted()
             .prefix(5)
             .map { String($0) }
+    }
+    
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
+        }
     }
 }
