@@ -22,6 +22,15 @@ actor FoundationModelEmojiService: EmojiSuggesting {
 
     init() {}
 
+    static var isSupported: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            return true
+        }
+        #endif
+        return false
+    }
+
     func prepareIfNeeded() async {
         #if canImport(FoundationModels)
         if self.sessionBox != nil { return }

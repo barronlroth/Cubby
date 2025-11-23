@@ -40,10 +40,23 @@ actor EmojiAssignmentCoordinator {
             await applyEmoji(emoji, to: itemID, in: modelContext)
         } catch SuggestionError.unavailable {
             DebugLogger.warning("[EmojiAI] Foundation model unavailable")
+            await clearPendingFlag(for: itemID, in: modelContext)
         } catch SuggestionError.timeout {
             DebugLogger.warning("[EmojiAI] Suggestion timeout itemID=\(itemID)")
+            await clearPendingFlag(for: itemID, in: modelContext)
         } catch {
             DebugLogger.error("[EmojiAI] Suggestion failed itemID=\(itemID) error=\(error)")
+            await clearPendingFlag(for: itemID, in: modelContext)
+        }
+    }
+    
+    @MainActor
+    private func clearPendingFlag(for itemID: PersistentIdentifier, in context: ModelContext) {
+        if let anyModel = try? context.model(for: itemID), let item = anyModel as? InventoryItem {
+            if item.isPendingAiEmoji {
+                item.isPendingAiEmoji = false
+                try? context.save()
+            }
         }
     }
 

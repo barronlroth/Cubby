@@ -210,7 +210,9 @@ struct AddItemView: View {
         )
         newItem.tagsSet = tags
         newItem.emoji = EmojiPicker.emoji(for: newItem.id)
-        newItem.isPendingAiEmoji = true
+        if FoundationModelEmojiService.isSupported {
+            newItem.isPendingAiEmoji = true
+        }
         
         if let selectedImage {
             do {
