@@ -19,8 +19,7 @@ struct ItemRow: View {
                     Circle()
                         .fill(iconBackground)
                         .frame(width: 48, height: 48)
-                    Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
-                        .font(.system(size: 24))
+                    SlotMachineEmojiView(item: item, fontSize: 24)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {

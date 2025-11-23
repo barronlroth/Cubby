@@ -53,6 +53,7 @@ actor EmojiAssignmentCoordinator {
         if let anyModel = try? context.model(for: itemID), let item = anyModel as? InventoryItem {
             if item.emoji != emoji {
                 item.emoji = emoji
+                item.isPendingAiEmoji = false
                 do {
                     try context.save()
                     DebugLogger.info("[EmojiAI] Updated item emoji itemID=\(itemID) source=foundationModel")

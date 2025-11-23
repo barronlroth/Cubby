@@ -8,6 +8,7 @@ class InventoryItem {
     var itemDescription: String?
     var photoFileName: String?
     var emoji: String? = nil
+    var isPendingAiEmoji: Bool = false
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
     var tags: [String] = []
