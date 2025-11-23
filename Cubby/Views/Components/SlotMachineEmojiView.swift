@@ -9,6 +9,13 @@ struct SlotMachineEmojiView: View {
     @State private var isSpinning = false
     @State private var scale: CGFloat = 1.0
     
+    // Animation Constants
+    private let spinDuration: TimeInterval = 0.08
+    private let scaleUp: CGFloat = 1.4
+    private let scaleNormal: CGFloat = 1.0
+    private let springResponse: Double = 0.3
+    private let springDamping: Double = 0.6
+    
     // A curated list of emojis for the slot machine effect
     private let slotEmojis = ["🍎", "🚀", "🎸", "📚", "⚽️", "🍕", "🎨", "🎮", "✈️", "💡", "📷", "🧸", "🔑", "📦", "💎"]
     
@@ -30,6 +37,9 @@ struct SlotMachineEmojiView: View {
                     currentEmoji = item.emoji ?? "📦"
                 }
             }
+            .onDisappear {
+                stopSpinning()
+            }
             .onChange(of: item.isPendingAiEmoji) { oldValue, newValue in
                 if newValue {
                     startSpinning()
@@ -49,7 +59,7 @@ struct SlotMachineEmojiView: View {
         guard !isSpinning else { return }
         isSpinning = true
         
-        timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: spinDuration, repeats: true) { _ in
             currentEmoji = slotEmojis.randomElement() ?? "📦"
         }
     }
@@ -68,11 +78,11 @@ struct SlotMachineEmojiView: View {
         generator.impactOccurred()
         
         // Lock-in animation
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-            scale = 1.4
+        withAnimation(.spring(response: springResponse, dampingFraction: springDamping)) {
+            scale = scaleUp
         }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.6).delay(0.1)) {
-            scale = 1.0
+        withAnimation(.spring(response: springResponse, dampingFraction: springDamping).delay(0.1)) {
+            scale = scaleNormal
         }
     }
 }
