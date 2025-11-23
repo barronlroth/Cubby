@@ -35,13 +35,13 @@ struct ItemDetailView: View {
                     .frame(maxHeight: 400)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 200)
-                        .background(Color.gray.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    ZStack {
+                        Color.gray.opacity(0.1)
+                        SlotMachineEmojiView(item: item, fontSize: 60)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
                 VStack(alignment: .leading, spacing: 16) {
