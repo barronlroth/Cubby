@@ -14,6 +14,7 @@ struct MainNavigationView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
+    @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -94,9 +95,16 @@ struct MainNavigationView: View {
             .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
         .onAppear {
-            if selectedHome == nil && !homes.isEmpty {
-                selectedHome = homes.first
-                DebugLogger.info("MainNavigationView.onAppear - Set selectedHome to: \(homes.first?.name ?? "nil")")
+            if selectedHome == nil {
+                if let lastIdString = lastUsedHomeId,
+                   let lastId = UUID(uuidString: lastIdString),
+                   let restoredHome = homes.first(where: { $0.id == lastId }) {
+                    selectedHome = restoredHome
+                    DebugLogger.info("MainNavigationView.onAppear - Restored last used home: \(restoredHome.name)")
+                } else if !homes.isEmpty {
+                    selectedHome = homes.first
+                    DebugLogger.info("MainNavigationView.onAppear - No last used home found, defaulted to: \(homes.first?.name ?? "nil")")
+                }
             }
             canAddItem = selectedHome != nil
         }
@@ -118,6 +126,9 @@ struct MainNavigationView: View {
         }
         .onChange(of: selectedHome) { oldHome, newHome in
             DebugLogger.info("MainNavigationView - selectedHome changed from \(oldHome?.name ?? "nil") to \(newHome?.name ?? "nil")")
+            if let newHome {
+                lastUsedHomeId = newHome.id.uuidString
+            }
             canAddItem = newHome != nil
         }
         .animation(.spring(response: 0.3), value: selectedHome?.id)
