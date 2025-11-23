@@ -5,12 +5,11 @@ struct SlotMachineEmojiView: View {
     let fontSize: CGFloat
     
     @State private var currentEmoji: String
-    @State private var timer: Timer?
-    @State private var isSpinning = false
     @State private var scale: CGFloat = 1.0
+    @State private var wasSpinning = false
     
     // Animation Constants
-    private let spinDuration: TimeInterval = 0.08
+    private let spinDuration: UInt64 = 80_000_000 // 0.08s
     private let scaleUp: CGFloat = 1.4
     private let scaleNormal: CGFloat = 1.0
     private let springResponse: Double = 0.3
@@ -29,25 +28,23 @@ struct SlotMachineEmojiView: View {
         Text(currentEmoji)
             .font(.system(size: fontSize))
             .scaleEffect(scale)
-            .blur(radius: isSpinning ? 0.5 : 0)
-            .onAppear {
+            .blur(radius: item.isPendingAiEmoji ? 0.5 : 0)
+            .task(id: item.isPendingAiEmoji) {
                 if item.isPendingAiEmoji {
-                    startSpinning()
+                    wasSpinning = true
+                    while !Task.isCancelled {
+                        currentEmoji = slotEmojis.randomElement() ?? "📦"
+                        try? await Task.sleep(nanoseconds: spinDuration)
+                    }
                 } else {
-                    currentEmoji = item.emoji ?? "📦"
+                    if wasSpinning {
+                        wasSpinning = false
+                        stopSpinning()
+                    } else {
+                        currentEmoji = item.emoji ?? "📦"
+                    }
                 }
             }
-            .onDisappear {
-                stopSpinning()
-            }
-            .onChange(of: item.isPendingAiEmoji) { oldValue, newValue in
-                if newValue {
-                    startSpinning()
-                } else {
-                    stopSpinning()
-                }
-            }
-            // Also watch for emoji changes in case the flag updates after the emoji
             .onChange(of: item.emoji) { _, newEmoji in
                 if !item.isPendingAiEmoji {
                     currentEmoji = newEmoji ?? "📦"
@@ -55,21 +52,7 @@ struct SlotMachineEmojiView: View {
             }
     }
     
-    private func startSpinning() {
-        guard !isSpinning else { return }
-        isSpinning = true
-        
-        timer = Timer.scheduledTimer(withTimeInterval: spinDuration, repeats: true) { _ in
-            currentEmoji = slotEmojis.randomElement() ?? "📦"
-        }
-    }
-    
     private func stopSpinning() {
-        guard isSpinning else { return }
-        isSpinning = false
-        timer?.invalidate()
-        timer = nil
-        
         // Set final emoji
         currentEmoji = item.emoji ?? "📦"
         
