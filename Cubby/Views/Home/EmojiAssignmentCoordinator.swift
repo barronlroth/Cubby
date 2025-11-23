@@ -51,9 +51,19 @@ actor EmojiAssignmentCoordinator {
     private func applyEmoji(_ emoji: String, to itemID: PersistentIdentifier, in context: ModelContext) {
         // Attempt to resolve model by persistent identifier
         if let anyModel = try? context.model(for: itemID), let item = anyModel as? InventoryItem {
+            var shouldSave = false
+            
             if item.emoji != emoji {
                 item.emoji = emoji
+                shouldSave = true
+            }
+            
+            if item.isPendingAiEmoji {
                 item.isPendingAiEmoji = false
+                shouldSave = true
+            }
+            
+            if shouldSave {
                 do {
                     try context.save()
                     DebugLogger.info("[EmojiAI] Updated item emoji itemID=\(itemID) source=foundationModel")
