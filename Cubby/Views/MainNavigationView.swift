@@ -238,14 +238,9 @@ private struct ContentTopMarginZero: ViewModifier {
     }
 }
 
-private extension Color {
-    static let cubbyHomeBackground = Color(red: 0xF9/255.0, green: 0xF8/255.0, blue: 0xF7/255.0)
-}
-
 private struct ApplyHomeDesign: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .foregroundStyle(Color.black.opacity(0.9))
-            .background(Color.cubbyHomeBackground)
+            .background(Color("CubbyHomeBackground"))
     }
 }

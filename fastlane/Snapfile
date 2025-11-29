@@ -1,0 +1,12 @@
+scheme("Cubby")
+devices([
+  "iPhone 17 Pro"
+])
+languages(["en-US"])
+output_directory("./fastlane/screenshots")
+clear_previous_screenshots(true)
+number_of_retries(1)
+stop_after_first_error(true)
+test_target_name("CubbyUITests")
+xcargs("-only-testing:CubbyUITests")
+concurrent_simulators(false)

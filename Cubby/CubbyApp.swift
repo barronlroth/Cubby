@@ -13,8 +13,20 @@ struct CubbyApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     let modelContainer: ModelContainer
+    private let isUITesting: Bool
+    private let shouldSeedMockData: Bool
     
     init() {
+        let args = ProcessInfo.processInfo.arguments
+        // Fastlane snapshot passes "-ui_testing"; support both.
+        self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
+        self.shouldSeedMockData = isUITesting || args.contains("SEED_MOCK_DATA")
+
+        if isUITesting, let bundleId = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleId)
+            UserDefaults.standard.synchronize()
+        }
+
         do {
             let schema = Schema([
                 Home.self,
@@ -24,13 +36,20 @@ struct CubbyApp: App {
             
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
-                isStoredInMemoryOnly: false
+                isStoredInMemoryOnly: isUITesting
             )
             
             modelContainer = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
+
+            if shouldSeedMockData {
+                // Recreate data for UI runs so snapshots and previews have content.
+                MockDataGenerator.clearAllData(in: modelContainer.mainContext)
+                MockDataGenerator.generateMockData(in: modelContainer.mainContext)
+                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            }
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

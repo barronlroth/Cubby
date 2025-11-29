@@ -38,24 +38,55 @@ struct MockDataGenerator {
         modelContext.insert(desk)
         modelContext.insert(filingCabinet)
         
-        // Create sample items
-        let watch = InventoryItem(title: "Rolex Submariner", description: "Black dial, steel bracelet", storageLocation: drawer)
-        let powerDrill = InventoryItem(title: "DeWalt 20V Drill", description: "Cordless drill with 2 batteries", storageLocation: toolbox)
-        let laptop = InventoryItem(title: "MacBook Pro 16\"", description: "M3 Max, 64GB RAM, Space Black", storageLocation: desk)
-        let passport = InventoryItem(title: "Passport", description: "Expires 2028", storageLocation: filingCabinet)
+        // Create sample items (rarely used / easy to misplace)
+        let watch = InventoryItem(title: "Rolex Submariner", description: "Dress watch for special occasions", storageLocation: drawer)
+        watch.emoji = "⌚️"
+        let travelAdapters = InventoryItem(title: "Travel Adapter Kit", description: "EU/UK/AU plugs + USB-C", storageLocation: drawer)
+        travelAdapters.emoji = "🔌"
+
         let winterCoat = InventoryItem(title: "Canada Goose Parka", description: "Black, size L", storageLocation: closet)
-        let coffeemaker = InventoryItem(title: "Nespresso Machine", description: "Vertuo Next model", storageLocation: kitchen)
-        let riceStock = InventoryItem(title: "Basmati Rice", description: "5 bags of 10lb each", storageLocation: pantry)
-        let bikeHelmet = InventoryItem(title: "Giro Bike Helmet", description: "White with MIPS", storageLocation: garage)
+        winterCoat.emoji = "🧥"
+        let skiPants = InventoryItem(title: "Ski Pants", description: "Insulated, size L", storageLocation: closet)
+        skiPants.emoji = "🎿"
+        let skiGloves = InventoryItem(title: "Ski Gloves", description: "Waterproof, insulated", storageLocation: closet)
+        skiGloves.emoji = "🧤"
+
+        let cargoBox = InventoryItem(title: "Roof Cargo Box", description: "Thule XL, winter storage", storageLocation: garage)
+        cargoBox.emoji = "🛄"
+        let snowChains = InventoryItem(title: "Snow Chains", description: "Set of 2, fits 20\" tires", storageLocation: garage)
+        snowChains.emoji = "⛓️"
+
+        let studFinder = InventoryItem(title: "Stud Finder", description: "Battery powered", storageLocation: toolbox)
+        studFinder.emoji = "📡"
+        let solderingIron = InventoryItem(title: "Soldering Iron", description: "60W with fine tip", storageLocation: toolbox)
+        solderingIron.emoji = "🪛"
+
+        let fondueSet = InventoryItem(title: "Fondue Set", description: "Ceramic pot, 6 forks", storageLocation: kitchen)
+        fondueSet.emoji = "🫕"
+        let emergencyWater = InventoryItem(title: "Emergency Water Jugs", description: "3 gallons stored away", storageLocation: pantry)
+        emergencyWater.emoji = "💧"
+
+        let backupDrive = InventoryItem(title: "Backup Hard Drive", description: "4TB archives", storageLocation: desk)
+        backupDrive.emoji = "💽"
+        let passport = InventoryItem(title: "Passport", description: "Expires 2028", storageLocation: filingCabinet)
+        passport.emoji = "🛂"
+        let birthCertificates = InventoryItem(title: "Birth Certificates", description: "Family documents", storageLocation: filingCabinet)
+        birthCertificates.emoji = "📜"
         
         modelContext.insert(watch)
-        modelContext.insert(powerDrill)
-        modelContext.insert(laptop)
+        modelContext.insert(travelAdapters)
         modelContext.insert(passport)
         modelContext.insert(winterCoat)
-        modelContext.insert(coffeemaker)
-        modelContext.insert(riceStock)
-        modelContext.insert(bikeHelmet)
+        modelContext.insert(skiPants)
+        modelContext.insert(skiGloves)
+        modelContext.insert(cargoBox)
+        modelContext.insert(snowChains)
+        modelContext.insert(studFinder)
+        modelContext.insert(solderingIron)
+        modelContext.insert(fondueSet)
+        modelContext.insert(emergencyWater)
+        modelContext.insert(backupDrive)
+        modelContext.insert(birthCertificates)
         
         // Create locations for vacation home
         let beachGarage = StorageLocation(name: "Garage", home: vacationHome)
@@ -66,12 +97,27 @@ struct MockDataGenerator {
         
         // Add items to vacation home
         let surfboard = InventoryItem(title: "Surfboard", description: "7' funboard", storageLocation: beachShed)
+        surfboard.emoji = "🏄"
         let beachChairs = InventoryItem(title: "Beach Chairs", description: "4 folding chairs", storageLocation: beachShed)
+        beachChairs.emoji = "🏖️"
         let golfClubs = InventoryItem(title: "Golf Clubs", description: "Full set of Callaway clubs", storageLocation: beachGarage)
+        golfClubs.emoji = "⛳️"
+        let sunscreen = InventoryItem(title: "Sunscreen SPF50", description: "Water resistant, reef safe", storageLocation: beachShed)
+        sunscreen.emoji = "🧴"
+        let snorkelSet = InventoryItem(title: "Snorkel Set", description: "Mask, snorkel, and fins", storageLocation: beachShed)
+        snorkelSet.emoji = "🤿"
+        let beachUmbrella = InventoryItem(title: "Beach Umbrella", description: "UV 50+ canopy", storageLocation: beachShed)
+        beachUmbrella.emoji = "⛱️"
+        let beachCooler = InventoryItem(title: "Beach Cooler", description: "Keeps drinks cold all day", storageLocation: beachGarage)
+        beachCooler.emoji = "🧊"
         
         modelContext.insert(surfboard)
         modelContext.insert(beachChairs)
         modelContext.insert(golfClubs)
+        modelContext.insert(sunscreen)
+        modelContext.insert(snorkelSet)
+        modelContext.insert(beachUmbrella)
+        modelContext.insert(beachCooler)
         
         // Save all changes
         try? modelContext.save()

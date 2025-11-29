@@ -124,13 +124,8 @@ struct StorageLocationTests {
         try context.save()
         
         // Fetch parent location
-        let descriptor = FetchDescriptor<StorageLocation>(
-            predicate: #Predicate { location in
-                location.name == "Parent" && location.parentLocation == nil
-            }
-        )
-        
-        let fetchedLocations = try context.fetch(descriptor)
+        let fetchedLocations = try context.fetch(FetchDescriptor<StorageLocation>())
+            .filter { $0.name == "Parent" && $0.parentLocation == nil }
         #expect(fetchedLocations.count == 1)
         
         let fetchedParent = fetchedLocations.first!
