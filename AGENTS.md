@@ -51,12 +51,21 @@ xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
 
 ### Release & Distribution
 - Fastlane is configured in `fastlane/Fastfile` with a `beta` lane that builds `Cubby.xcodeproj`/`Cubby` and uploads to TestFlight using App Store Connect API keys.
-- To ship a beta: export `APP_STORE_CONNECT_API_KEY_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` (and optionally `APP_STORE_CONNECT_API_KEY_KEYFILE_PATH` or `APP_STORE_CONNECT_API_KEY_KEY_CONTENT_BASE64`), then run `fastlane beta` from the repo root.
-- The lane increments `CFBundleVersion`, produces an App Store export build, uploads via TestFlight, and skips waiting for processing.
+- To ship a beta: 
+  1. Create a `.env` file in the project root with the following variables:
+     ```
+     APP_STORE_CONNECT_API_KEY_KEY_ID=H67366U9L5
+     APP_STORE_CONNECT_API_KEY_ISSUER_ID=028f6613-2e7b-4404-a69a-ef95c23ee60a
+     APP_STORE_CONNECT_API_KEY_KEYFILE_PATH=/Users/barron/Developer/Cubby/fastlane/AuthKey_H67366U9L5.p8
+     ```
+  2. Run `fastlane beta` from the repo root
+  3. Note: The `.env` file is gitignored to protect credentials
+- The lane increments `CFBundleVersion`, produces an App Store export build, uploads via TestFlight, and waits for processing.
 - Fastlane snapshot setup:
   - `fastlane/Snapfile` targets iPhone 17 Pro Max and iPhone 17 (en-US) and writes to `fastlane/screenshots`.
   - Snapshots use the UI test target (`CubbyUITests`) which launches with `UI-TESTING` + `SEED_MOCK_DATA` for seeded in-memory data and onboarding skipped.
   - To run snapshots: `FASTLANE_SKIP_UPDATE_CHECK=1 fastlane snapshot` (optional: set `concurrent_simulators(false)` or narrow `devices` if needed).
+
 
 ## Architecture
 
