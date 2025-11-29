@@ -26,7 +26,7 @@ struct LocationSectionHeader: View {
 
             // Subtitle path (ancestors only)
             if segments.count > 1 {
-                let ancestors = Array(segments.dropLast())
+                let ancestors = Array(segments.dropLast().reversed())
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.turn.down.right")
                         .renderingMode(.template)
