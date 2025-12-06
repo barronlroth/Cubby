@@ -17,7 +17,9 @@ default_platform(:ios)
 
 platform :ios do
   desc "Push a new beta build to TestFlight"
-  lane :beta do
+  lane :beta do |options|
+    changelog = options[:changelog] || "Bug fixes and improvements."
+
     key_id = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
     issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
     key_path = ENV["APP_STORE_CONNECT_API_KEY_KEYFILE_PATH"] ||
@@ -58,7 +60,8 @@ platform :ios do
     upload_to_testflight(
       api_key: api_key,
       skip_waiting_for_build_processing: false,
-      distribute_external: true
+      distribute_external: true,
+      changelog: changelog
     )
   end
 end

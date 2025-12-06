@@ -23,3 +23,9 @@ fastlane/report.xml
 Cubby.ipa
 Cubby.app.dSYM.zip
 .env
+
+# Fastlane framing assets and generated screenshots
+fastlane/backgrounds/
+fastlane/frames/
+fastlane/screenshots/
+screenshots/

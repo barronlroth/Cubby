@@ -9,6 +9,9 @@ struct MockDataGenerator {
         
         modelContext.insert(mainHome)
         modelContext.insert(vacationHome)
+
+        // Default to the primary home so UI tests/snapshots land in a predictable spot.
+        UserDefaults.standard.set(mainHome.id.uuidString, forKey: "lastUsedHomeId")
         
         // Create storage locations for main home
         let garage = StorageLocation(name: "Garage", home: mainHome)

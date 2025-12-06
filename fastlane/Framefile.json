@@ -1,0 +1,59 @@
+{
+  "device_frame_version": "latest",
+  "default": {
+    "screenshots_path": "./fastlane/screenshots/frameit_14pm",
+    "background": "./backgrounds/dark.jpg",
+    "padding": "4%x4%",
+    "stack_title": true,
+    "title_below_image": false,
+    "show_complete_frame": false,
+    "title": {
+      "color": "#ffffff",
+      "font_size": 108,
+      "font": "../Cubby/Resources/Fonts/Serif/AwesomeSerif-ExtraTall.otf"
+    },
+    "keyword": {
+      "color": "#f5e0ab",
+      "font_size": 72,
+      "font": "../Cubby/Resources/Fonts/Serif/AwesomeSerif-ExtraTall.otf"
+    }
+  },
+  "data": [
+    {
+      "filter": "00-Onboarding",
+      "title": {
+        "text": "Organize your home"
+      },
+      "keyword": {
+        "text": "Know what you own, and where it lives"
+      }
+    },
+    {
+      "filter": "01-Home",
+      "title": {
+        "text": "See Everything in One Place"
+      },
+      "keyword": {
+        "text": "Browse by location or search instantly"
+      }
+    },
+    {
+      "filter": "02-ItemDetail",
+      "title": {
+        "text": "Details that Matter"
+      },
+      "keyword": {
+        "text": "Photos, notes, and exact storage path"
+      }
+    },
+    {
+      "filter": "03-AddItem",
+      "title": {
+        "text": "Add Items Fast"
+      },
+      "keyword": {
+        "text": "Assign to locations as you go"
+      }
+    }
+  ]
+}
