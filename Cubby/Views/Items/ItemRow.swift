@@ -24,13 +24,14 @@ struct ItemRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.custom("CircularStd-Medium", size: 16, relativeTo: .body))
+                        .foregroundStyle(Color.primary.opacity(0.9))
                         .lineLimit(1)
 
                     if let description = item.itemDescription, !description.isEmpty {
                         Text(description)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                            .foregroundStyle(Color.primary.opacity(0.4))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -63,4 +64,3 @@ struct ItemRow: View {
         }
     }
 }
-
