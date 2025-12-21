@@ -19,8 +19,8 @@ struct LocationSectionHeader: View {
         VStack(alignment: .leading, spacing: 4) {
             // Title (current/leaf location)
             Text(segments.last ?? locationPath)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
+                .font(.custom("CircularStd-Medium", size: 20))
+                .foregroundStyle(Color.primary.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -31,18 +31,18 @@ struct LocationSectionHeader: View {
                     Image(systemName: "arrow.turn.down.right")
                         .renderingMode(.template)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.4))
                     ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
                         Text(segment)
-                            .font(.system(size: 14, weight: .medium).italic())
-                            .foregroundStyle(.secondary)
+                            .font(.custom("CircularStd-MediumItalic", size: 14))
+                            .foregroundStyle(Color.primary.opacity(0.4))
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .layoutPriority(1)
                         if index < ancestors.count - 1 {
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.primary.opacity(0.4))
                         }
                     }
                 }
