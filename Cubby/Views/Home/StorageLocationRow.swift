@@ -7,6 +7,7 @@ struct StorageLocationRow: View {
     @Binding var selectedLocation: StorageLocation?
     @State private var showingAddLocation = false
     @State private var showingDeleteAlert = false
+    @State private var deletionErrorMessage: String?
     @Environment(\.modelContext) private var modelContext
     
     private var isExpanded: Bool {
@@ -58,6 +59,13 @@ struct StorageLocationRow: View {
         } message: {
             Text("Are you sure you want to delete \"\(location.name)\"?")
         }
+        .alert("Unable to Delete Location", isPresented: Binding(get: { deletionErrorMessage != nil }, set: { isPresented in
+            if !isPresented { deletionErrorMessage = nil }
+        })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deletionErrorMessage ?? "")
+        }
     }
     
     private var locationLabel: some View {
@@ -84,13 +92,13 @@ struct StorageLocationRow: View {
             selectedLocation = location
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if location.canDelete {
-                Button(role: .destructive) {
-                    showingDeleteAlert = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                showingDeleteAlert = true
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
+            .disabled(!location.canDelete)
+            .accessibilityHint("Only empty leaf locations can be deleted.")
             
             Button {
                 showingAddLocation = true
@@ -106,20 +114,26 @@ struct StorageLocationRow: View {
                 Label("Add Nested Location", systemImage: "folder.badge.plus")
             }
             
-            if location.canDelete {
-                Button(role: .destructive) {
-                    showingDeleteAlert = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                showingDeleteAlert = true
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
+            .disabled(!location.canDelete)
+            .accessibilityHint("Only empty leaf locations can be deleted.")
         }
     }
     
     private func deleteLocation() {
-        if location.canDelete {
-            modelContext.delete(location)
-            try? modelContext.save()
+        do {
+            try StorageLocationDeletionService.deleteLocationIfAllowed(
+                locationId: location.id,
+                modelContext: modelContext
+            )
+        } catch let error as StorageLocationDeletionError {
+            deletionErrorMessage = error.localizedDescription
+        } catch {
+            deletionErrorMessage = "Couldn’t delete this location. Please try again."
         }
     }
 }
