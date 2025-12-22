@@ -91,6 +91,9 @@ struct LocationPickerRow: View {
     @Binding var expandedLocations: Set<UUID>
     let searchText: String
     @State private var showingAddLocation = false
+    @State private var showingDeleteConfirmation = false
+    @State private var deletionErrorMessage: String?
+    @Environment(\.modelContext) private var modelContext
     
     private var isSelected: Bool {
         selectedLocation?.id == location.id
@@ -176,9 +179,48 @@ struct LocationPickerRow: View {
                 .onTapGesture {
                     selectedLocation = location
                 }
+                .contextMenu {
+                    Button {
+                        showingAddLocation = true
+                    } label: {
+                        Label("Add Nested Location", systemImage: "folder.badge.plus")
+                    }
+
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .disabled(!location.canDelete)
+                    .accessibilityHint("Only empty leaf locations can be deleted.")
+                }
             }
             .sheet(isPresented: $showingAddLocation) {
                 AddLocationView(homeId: location.home?.id, parentLocation: location)
+            }
+            .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    do {
+                        try StorageLocationDeletionService.deleteLocationIfAllowed(
+                            locationId: location.id,
+                            modelContext: modelContext
+                        )
+                    } catch let error as StorageLocationDeletionError {
+                        deletionErrorMessage = error.localizedDescription
+                    } catch {
+                        deletionErrorMessage = "Couldn’t delete this location. Please try again."
+                    }
+                }
+            } message: {
+                Text("This will delete “\(location.name)”.")
+            }
+            .alert("Unable to Delete Location", isPresented: Binding(get: { deletionErrorMessage != nil }, set: { isPresented in
+                if !isPresented { deletionErrorMessage = nil }
+            })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deletionErrorMessage ?? "")
             }
         }
     }

@@ -30,7 +30,7 @@ class StorageLocation {
     }
     
     var canDelete: Bool {
-        (items?.isEmpty ?? true) && (childLocations?.isEmpty ?? true)
+        items?.isEmpty == true && childLocations?.isEmpty == true
     }
     
     func canMoveTo(_ targetLocation: StorageLocation?) -> Bool {
