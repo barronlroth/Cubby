@@ -45,9 +45,7 @@
   - Prefer `scaledToFill` with a fixed-ish height for a stronger “hero” feel (and then clip).
   - Keep the photo static (no full-screen viewer) for this iteration.
 - If no photo:
-  - Show a “hero placeholder” that still feels intentional (not a gray box). Options:
-    - Keep the emoji as the hero element (bigger) with a subtle material/gradient behind it.
-    - Or show an empty photo frame style with the emoji centered.
+  - Hide the photo card entirely (no placeholder).
 
 ### Description
 - Requirement: **Circular Book 20 @ 90% opacity**
@@ -213,6 +211,7 @@
 ## Decisions (PM)
 - Title uses the serif Home title (`AwesomeSerif-ExtraTall`).
 - Keep the hero photo static (no full-screen viewer) for now.
+- If the item has no photo, hide the photo card entirely.
 - Hide the description block when empty/nil.
 - In the edit screen, tapping the image launches the existing photo flow (picker/camera/remove).
 - Location display is leaf → parents.
