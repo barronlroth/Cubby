@@ -39,12 +39,14 @@ struct ItemDetailView: View {
                             emojiSize: headerEmojiSize
                         )
 
-                        ItemDetailPhotoCard(
-                            item: item,
-                            photo: photo,
-                            isLoading: isPhotoLoading,
-                            height: photoCardHeight
-                        )
+                        if item.photoFileName != nil {
+                            ItemDetailPhotoCard(
+                                item: item,
+                                photo: photo,
+                                isLoading: isPhotoLoading,
+                                height: photoCardHeight
+                            )
+                        }
 
                         if let descriptionText {
                             ItemDetailDescription(text: descriptionText)
