@@ -248,14 +248,10 @@ struct AddItemView: View {
     }
     
     private var tagSuggestions: [String] {
-        guard !tagInput.isEmpty else { return [] }
-        let formatted = tagInput.formatAsTag()
-        
-        return Set(allItems.flatMap { $0.tags })
-            .filter { $0.contains(formatted) && $0 != formatted }
-            .sorted()
-            .prefix(5)
-            .map { String($0) }
+        TagSuggestionService.suggestions(
+            for: tagInput,
+            existingTags: allItems.flatMap(\.tags)
+        )
     }
     
     @Environment(\.colorScheme) private var colorScheme
@@ -267,4 +263,3 @@ struct AddItemView: View {
         }
     }
 }
-

@@ -4,6 +4,8 @@ import SwiftData
 struct StorageLocationPicker: View {
     let selectedHomeId: UUID?
     @Binding var selectedLocation: StorageLocation?
+    let onCancel: (() -> Void)?
+    let onDone: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Query private var allStorageLocations: [StorageLocation]
     @Query private var homes: [Home]
@@ -22,6 +24,18 @@ struct StorageLocationPicker: View {
         print("🔍 StorageLocationPicker - Found \(locations.count) root locations for homeId: \(String(describing: selectedHomeId))")
         print("🔍 StorageLocationPicker - Total locations in query: \(allStorageLocations.count)")
         return locations
+    }
+
+    init(
+        selectedHomeId: UUID?,
+        selectedLocation: Binding<StorageLocation?>,
+        onCancel: (() -> Void)? = nil,
+        onDone: (() -> Void)? = nil
+    ) {
+        self.selectedHomeId = selectedHomeId
+        self._selectedLocation = selectedLocation
+        self.onCancel = onCancel
+        self.onDone = onDone
     }
     
     var body: some View {
@@ -56,10 +70,20 @@ struct StorageLocationPicker: View {
                         .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismiss()
+                        if let onCancel {
+                            Task { @MainActor in onCancel() }
+                        }
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        dismiss()
+                        if let onDone {
+                            Task { @MainActor in onDone() }
+                        }
+                    }
                         .fontWeight(.semibold)
                         .disabled(selectedLocation == nil)
                 }

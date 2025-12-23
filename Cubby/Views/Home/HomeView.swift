@@ -219,7 +219,7 @@ struct HomePicker: View {
         } label: {
             HStack(spacing: 6) {
                 Text(selectedHome?.name ?? "Select Home")
-                    .font(.custom("AwesomeSerif-ExtraTall", size: 36))
+                    .font(CubbyTypography.homeTitleSerif)
                     .foregroundStyle(.primary)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)
