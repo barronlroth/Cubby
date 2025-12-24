@@ -41,9 +41,8 @@ struct StorageLocationDeletionServiceTests {
             modelContext: context
         )
 
-        let remaining = try context.fetch(
-            FetchDescriptor<StorageLocation>(predicate: #Predicate { $0.id == location.id })
-        )
+        let remaining = try context.fetch(FetchDescriptor<StorageLocation>())
+            .filter { $0.id == location.id }
         #expect(remaining.isEmpty)
     }
 
@@ -129,4 +128,3 @@ struct StorageLocationDeletionServiceTests {
         }
     }
 }
-

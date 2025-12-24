@@ -12,7 +12,7 @@ struct ItemRow: View {
     }
     
     var body: some View {
-        NavigationLink(destination: ItemDetailView(item: item)) {
+        NavigationLink(destination: ItemDetailView(itemId: item.id)) {
             HStack(spacing: 12) {
                 // Emoji icon in 48x48 circle
                 ZStack {

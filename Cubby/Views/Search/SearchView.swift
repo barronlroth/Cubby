@@ -5,7 +5,6 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var homes: [Home]
-    @State private var selectedItem: InventoryItem?
     @StateObject private var viewModel = SearchViewModel(modelContext: nil)
     
     var body: some View {
@@ -38,10 +37,11 @@ struct SearchView: View {
                     )
                 } else {
                     List(viewModel.searchResults) { item in
-                        SearchResultRow(item: item)
-                            .onTapGesture {
-                                selectedItem = item
-                            }
+                        NavigationLink {
+                            ItemDetailView(itemId: item.id)
+                        } label: {
+                            SearchResultRow(item: item)
+                        }
                     }
                 }
             }
@@ -59,12 +59,9 @@ struct SearchView: View {
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
-            }
-            .navigationDestination(item: $selectedItem) { item in
-                ItemDetailView(item: item)
             }
         }
         .onAppear {
@@ -120,4 +117,3 @@ struct SearchResultRow: View {
         .padding(.vertical, 6)
     }
 }
-
