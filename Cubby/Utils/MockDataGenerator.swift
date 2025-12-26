@@ -2,6 +2,28 @@ import Foundation
 import SwiftData
 
 struct MockDataGenerator {
+    static func generateItemLimitReachedMockData(in modelContext: ModelContext) {
+        let home = Home(name: "Main Home")
+        modelContext.insert(home)
+
+        UserDefaults.standard.set(home.id.uuidString, forKey: "lastUsedHomeId")
+
+        let closet = StorageLocation(name: "Closet", home: home)
+        modelContext.insert(closet)
+
+        for index in 1...10 {
+            let item = InventoryItem(
+                title: "Test Item \(index)",
+                description: "Seeded to hit the free item limit",
+                storageLocation: closet
+            )
+            item.emoji = "📦"
+            modelContext.insert(item)
+        }
+
+        try? modelContext.save()
+    }
+
     static func generateMockData(in modelContext: ModelContext) {
         // Create sample homes
         let mainHome = Home(name: "Main Home")

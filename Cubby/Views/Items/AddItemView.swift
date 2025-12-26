@@ -7,7 +7,9 @@ struct AddItemView: View {
     var preselectedLocation: StorageLocation? = nil
     
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.activePaywall) private var activePaywall
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var proAccessManager: ProAccessManager
     
     @State private var title = ""
     @State private var itemDescription = ""
@@ -23,6 +25,8 @@ struct AddItemView: View {
     @State private var tagInput = ""
     @Query private var allItems: [InventoryItem]
     @FocusState private var titleIsFocused: Bool
+    @State private var showingGateAlert = false
+    @State private var gatePaywallReason: PaywallContext.Reason = .itemLimitReached
     
     var body: some View {
         NavigationStack {
@@ -131,6 +135,17 @@ struct AddItemView: View {
                         .disabled(title.isEmpty || selectedLocation == nil || isSaving)
                 }
             }
+            .alert("Cubby Pro Required", isPresented: $showingGateAlert) {
+                Button("Upgrade") {
+                    presentUpgrade()
+                }
+                Button("Restore Purchases") {
+                    Task { await proAccessManager.restorePurchases() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(gateAlertMessage)
+            }
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
@@ -199,6 +214,13 @@ struct AddItemView: View {
     }
 
     private func saveItem() async {
+        let gate = FeatureGate.canCreateItem(homeId: selectedHomeId, modelContext: modelContext, isPro: proAccessManager.isPro)
+        guard gate.isAllowed else {
+            gatePaywallReason = gate.reason == .overLimit ? .overLimit : .itemLimitReached
+            showingGateAlert = true
+            return
+        }
+
         guard let selectedLocation else { return }
         
         isSaving = true
@@ -244,6 +266,26 @@ struct AddItemView: View {
         } catch {
             print("Failed to save item: \(error)")
             isSaving = false
+        }
+    }
+
+    private var gateAlertMessage: String {
+        switch gatePaywallReason {
+        case .itemLimitReached:
+            "Free includes up to 10 items. Upgrade to Cubby Pro to add more."
+        case .overLimit:
+            "You’re over the Free limit. Upgrade to Pro or delete down to continue creating."
+        case .homeLimitReached:
+            "Upgrade to Cubby Pro to add more."
+        }
+    }
+
+    private func presentUpgrade() {
+        let reason = gatePaywallReason
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            activePaywall.wrappedValue = PaywallContext(reason: reason)
         }
     }
     

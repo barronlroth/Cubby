@@ -14,6 +14,8 @@ struct MainNavigationView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
+    @Environment(\.activePaywall) private var activePaywall
+    @EnvironmentObject private var proAccessManager: ProAccessManager
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
     
     var body: some View {
@@ -190,7 +192,20 @@ struct MainNavigationView: View {
             if #available(iOS 17.0, *) {
                 dismissSearch()
             }
-        } else if canAddItem {
+        } else if canAddItem, let selectedHome {
+            let gate = FeatureGate.canCreateItem(
+                homeId: selectedHome.id,
+                modelContext: modelContext,
+                isPro: proAccessManager.isPro
+            )
+            guard gate.isAllowed else {
+                if gate.reason == .overLimit {
+                    activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
+                } else {
+                    activePaywall.wrappedValue = PaywallContext(reason: .itemLimitReached)
+                }
+                return
+            }
             showingAddItem = true
         }
     }

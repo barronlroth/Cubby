@@ -5,6 +5,10 @@ struct LocationDetailView: View {
     let location: StorageLocation
     @State private var showingAddItem = false
     @State private var showingAddLocation = false
+
+    @Environment(\.activePaywall) private var activePaywall
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var proAccessManager: ProAccessManager
     
     private var items: [InventoryItem] {
         location.items ?? []
@@ -96,7 +100,7 @@ struct LocationDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button(action: { showingAddItem = true }) {
+                    Button(action: handleAddItemTapped) {
                         Label("Add Item", systemImage: "plus")
                     }
                     if location.depth < StorageLocation.maxNestingDepth {
@@ -128,5 +132,22 @@ struct LocationDetailView: View {
             .padding(.vertical, 8)
             .background(.bar)
         }
+    }
+
+    private func handleAddItemTapped() {
+        let gate = FeatureGate.canCreateItem(
+            homeId: location.home?.id,
+            modelContext: modelContext,
+            isPro: proAccessManager.isPro
+        )
+        guard gate.isAllowed else {
+            if gate.reason == .overLimit {
+                activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
+            } else {
+                activePaywall.wrappedValue = PaywallContext(reason: .itemLimitReached)
+            }
+            return
+        }
+        showingAddItem = true
     }
 }
