@@ -10,6 +10,7 @@ struct ProStatusView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var proAccessManager: ProAccessManager
+    @State private var showingPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -59,9 +60,13 @@ struct ProStatusView: View {
                     }
                 }
 
-                if !proAccessManager.isPro, let offering = proAccessManager.offerings?.current {
+                if !proAccessManager.isPro {
                     Section("Upgrade") {
-                        PaywallView(offering: offering, displayCloseButton: false)
+                        Button {
+                            showingPaywall = true
+                        } label: {
+                            Label("View Upgrade Options", systemImage: "sparkles")
+                        }
                     }
                 }
             }
@@ -75,6 +80,9 @@ struct ProStatusView: View {
             .task {
                 await proAccessManager.loadOfferings()
                 await proAccessManager.refresh()
+            }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(displayCloseButton: true)
             }
         }
     }
