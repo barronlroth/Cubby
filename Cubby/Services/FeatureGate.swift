@@ -2,10 +2,18 @@ import Foundation
 import SwiftData
 
 @MainActor
-enum GateReason: Equatable {
+enum GateReason: Equatable, CustomStringConvertible {
     case homeLimitReached
     case itemLimitReached
     case overLimit
+
+    var description: String {
+        switch self {
+        case .homeLimitReached: "homeLimitReached"
+        case .itemLimitReached: "itemLimitReached"
+        case .overLimit: "overLimit"
+        }
+    }
 }
 
 @MainActor

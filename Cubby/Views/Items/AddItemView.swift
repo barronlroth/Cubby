@@ -216,6 +216,7 @@ struct AddItemView: View {
     private func saveItem() async {
         let gate = FeatureGate.canCreateItem(homeId: selectedHomeId, modelContext: modelContext, isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
+            DebugLogger.info("FeatureGate denied item creation: \(gate.reason?.description ?? "unknown")")
             gatePaywallReason = gate.reason == .overLimit ? .overLimit : .itemLimitReached
             showingGateAlert = true
             return

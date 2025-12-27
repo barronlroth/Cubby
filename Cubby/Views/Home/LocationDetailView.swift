@@ -141,6 +141,7 @@ struct LocationDetailView: View {
             isPro: proAccessManager.isPro
         )
         guard gate.isAllowed else {
+            DebugLogger.info("FeatureGate denied item creation: \(gate.reason?.description ?? "unknown")")
             if gate.reason == .overLimit {
                 activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
             } else {

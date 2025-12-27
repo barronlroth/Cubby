@@ -249,6 +249,7 @@ struct HomePicker: View {
     private func handleAddHomeTapped() {
         let gate = FeatureGate.canCreateHome(modelContext: modelContext, isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
+            DebugLogger.info("FeatureGate denied home creation: \(gate.reason?.description ?? "unknown")")
             if gate.reason == .overLimit {
                 activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
             } else {

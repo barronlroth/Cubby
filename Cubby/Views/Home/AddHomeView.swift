@@ -50,6 +50,7 @@ struct AddHomeView: View {
 
         let gate = FeatureGate.canCreateHome(modelContext: modelContext, isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
+            DebugLogger.info("FeatureGate denied home creation: \(gate.reason?.description ?? "unknown")")
             gatePaywallReason = gate.reason == .overLimit ? .overLimit : .homeLimitReached
             showingGateAlert = true
             return
