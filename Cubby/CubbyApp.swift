@@ -16,13 +16,15 @@ struct CubbyApp: App {
     private let isUITesting: Bool
     private let shouldSeedMockData: Bool
     private let forceOnboardingSnapshot: Bool
+    private let shouldSeedItemLimitReachedData: Bool
     
     init() {
         let args = ProcessInfo.processInfo.arguments
         // Fastlane snapshot passes "-ui_testing"; support both.
         self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
         self.forceOnboardingSnapshot = args.contains("SNAPSHOT_ONBOARDING")
-        self.shouldSeedMockData = !forceOnboardingSnapshot && (isUITesting || args.contains("SEED_MOCK_DATA"))
+        self.shouldSeedItemLimitReachedData = args.contains("SEED_ITEM_LIMIT_REACHED")
+        self.shouldSeedMockData = !forceOnboardingSnapshot && (isUITesting || args.contains("SEED_MOCK_DATA") || shouldSeedItemLimitReachedData)
 
         if isUITesting, let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
@@ -52,7 +54,11 @@ struct CubbyApp: App {
             if shouldSeedMockData {
                 // Recreate data for UI runs so snapshots and previews have content.
                 MockDataGenerator.clearAllData(in: modelContainer.mainContext)
-                MockDataGenerator.generateMockData(in: modelContainer.mainContext)
+                if shouldSeedItemLimitReachedData {
+                    MockDataGenerator.generateItemLimitReachedMockData(in: modelContainer.mainContext)
+                } else {
+                    MockDataGenerator.generateMockData(in: modelContainer.mainContext)
+                }
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
             }
         } catch {

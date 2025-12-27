@@ -29,6 +29,7 @@ struct HomeView: View {
     @Binding var showingAddItem: Bool
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
+    @State private var showingProStatus = false
     @Environment(\.modelContext) private var modelContext
     
     private var locationSections: [LocationSection] {
@@ -100,6 +101,9 @@ struct HomeView: View {
         .sheet(isPresented: $showingAddHome) {
             AddHomeView(selectedHome: $selectedHome)
         }
+        .sheet(isPresented: $showingProStatus) {
+            ProStatusView()
+        }
         .sheet(isPresented: $showingAddItem) {
             if let homeId = selectedHome?.id {
                 AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
@@ -113,7 +117,11 @@ struct HomeView: View {
     // MARK: - Header
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HomePicker(selectedHome: $selectedHome, showingAddHome: $showingAddHome)
+            HomePicker(
+                selectedHome: $selectedHome,
+                showingAddHome: $showingAddHome,
+                showingProStatus: $showingProStatus
+            )
                 .buttonStyle(.plain)
                 .padding(.top, 8)
         }
@@ -204,6 +212,11 @@ struct HomePicker: View {
     @Query private var homes: [Home]
     @Binding var selectedHome: Home?
     @Binding var showingAddHome: Bool
+    @Binding var showingProStatus: Bool
+
+    @Environment(\.activePaywall) private var activePaywall
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var proAccessManager: ProAccessManager
     
     var body: some View {
         Menu {
@@ -213,7 +226,10 @@ struct HomePicker: View {
                 }
             }
             Divider()
-            Button(action: { showingAddHome = true }) {
+            Button(action: { showingProStatus = true }) {
+                Label("Cubby Pro", systemImage: "crown")
+            }
+            Button(action: handleAddHomeTapped) {
                 Label("Add New Home", systemImage: "plus")
             }
         } label: {
@@ -228,6 +244,20 @@ struct HomePicker: View {
                     .foregroundStyle(.primary)
             }
         }
+    }
+
+    private func handleAddHomeTapped() {
+        let gate = FeatureGate.canCreateHome(modelContext: modelContext, isPro: proAccessManager.isPro)
+        guard gate.isAllowed else {
+            DebugLogger.info("FeatureGate denied home creation: \(gate.reason?.description ?? "unknown")")
+            if gate.reason == .overLimit {
+                activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
+            } else {
+                activePaywall.wrappedValue = PaywallContext(reason: .homeLimitReached)
+            }
+            return
+        }
+        showingAddHome = true
     }
 }
 
@@ -303,5 +333,6 @@ private struct HomeViewPreviewHarness: View {
     let data = HomeViewPreviewData.make()
     return HomeViewPreviewHarness(initialHome: data.home)
         .modelContainer(data.container)
+        .environmentObject(ProAccessManager())
 }
 #endif
