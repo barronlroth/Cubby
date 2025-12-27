@@ -52,20 +52,14 @@ struct FeatureGate {
             return .denied(.overLimit)
         }
 
-        let locationIdsDescriptor = FetchDescriptor<StorageLocation>(
-            predicate: #Predicate { $0.home?.id == homeId }
+        // Single query: count items where storageLocation.home.id matches
+        let itemCountDescriptor = FetchDescriptor<InventoryItem>(
+            predicate: #Predicate { $0.storageLocation?.home?.id == homeId }
         )
-        let locationIds = (try? modelContext.fetch(locationIdsDescriptor).map(\.id)) ?? []
+        let itemCount = (try? modelContext.fetchCount(itemCountDescriptor)) ?? 0
 
-        var itemCount = 0
-        for locationId in locationIds {
-            let itemCountDescriptor = FetchDescriptor<InventoryItem>(
-                predicate: #Predicate { $0.storageLocation?.id == locationId }
-            )
-            itemCount += (try? modelContext.fetchCount(itemCountDescriptor)) ?? 0
-            if itemCount >= freeMaxItemsPerHome {
-                return .denied(.itemLimitReached)
-            }
+        if itemCount >= freeMaxItemsPerHome {
+            return .denied(.itemLimitReached)
         }
 
         return .allowed
