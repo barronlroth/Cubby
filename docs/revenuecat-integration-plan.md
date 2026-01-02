@@ -4,8 +4,8 @@
 
 Cubby will use RevenueCat to sell **Pro** access via:
 
-- **Annual auto-renew subscription**: `$39.99/year`
-  - Includes an Apple-managed **free trial** (**3 days free**, then auto-renews at $39.99/year unless canceled)
+- **Annual auto-renew subscription**: `$29.99/year`
+  - Includes an Apple-managed **free trial** (**3 days free**, then auto-renews at $29.99/year unless canceled)
 - **Lifetime license** (non-consumable): `$249`
 
 **Free limits**
@@ -39,7 +39,7 @@ Create these products:
 
 | Product ID | Type | Price |
 |---|---|---|
-| `cubby_pro_annual` | Auto-renewable subscription | $39.99/year |
+| `cubby_pro_annual` | Auto-renewable subscription | $29.99/year |
 | `cubby_pro_lifetime` | Non-consumable | $249 |
 
 Notes:
@@ -155,7 +155,7 @@ Core elements:
 
 - Title/benefit copy based on reason (homes vs items vs over-limit)
 - Two purchase options:
-  - Annual subscription (primary; includes free trial messaging like “3 days free then $39.99/year”)
+  - Annual subscription (primary; includes free trial messaging like “3 days free then $29.99/year”)
   - Lifetime (secondary)
 - Buttons:
   - Purchase selected package
