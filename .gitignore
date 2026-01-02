@@ -13,6 +13,7 @@ xcuserdata/
 .build/
 Packages/
 Package.resolved
+!Cubby.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # CocoaPods (if ever used)
 Pods/
