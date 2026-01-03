@@ -4,6 +4,8 @@
 <dict>
     <key>NSCameraUsageDescription</key>
     <string>Allow Cubby to take photos of your items so you can visually track inventory.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>RevenueCatPublicApiKey</key>
     <string>$(REVENUECAT_PUBLIC_API_KEY)</string>
     <key>UIBackgroundModes</key>
