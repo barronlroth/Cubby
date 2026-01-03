@@ -18,8 +18,8 @@ struct SlotMachineEmojiView: View {
     private let scaleNormal: CGFloat = 1.0
     private let springResponse: Double = 0.3
     private let springDamping: Double = 0.6
-    private let spinFeedbackGenerator = UIImpactFeedbackGenerator(style: .rigid)
-    private let lockFeedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
+    @State private var spinFeedbackGenerator: UIImpactFeedbackGenerator?
+    @State private var lockFeedbackGenerator: UIImpactFeedbackGenerator?
     
     // A curated list of emojis for the slot machine effect
     private let slotEmojis = ["🍎", "🚀", "🎸", "📚", "⚽️", "🍕", "🎨", "🎮", "✈️", "💡", "📷", "🧸", "🔑", "📦", "💎"]
@@ -57,43 +57,54 @@ struct SlotMachineEmojiView: View {
     
     private func spinWithAcceleration() async {
         await MainActor.run {
-            spinFeedbackGenerator.prepare()
+            spinHaptics().prepare()
         }
         
         var currentDelay = initialSpinDelay
         while !Task.isCancelled {
             await MainActor.run {
                 currentEmoji = slotEmojis.randomElement() ?? "📦"
-                spinFeedbackGenerator.impactOccurred(intensity: 0.25)
+                spinHaptics().impactOccurred(intensity: 0.25)
             }
-            
-            try? await Task.sleep(nanoseconds: currentDelay)
+
+            do {
+                try await Task.sleep(nanoseconds: currentDelay)
+            } catch {
+                break
+            }
             currentDelay = max(minimumSpinDelay, UInt64(Double(currentDelay) * accelerationFactor))
         }
     }
     
     private func stopSpinningWithDeceleration() async {
         await MainActor.run {
-            spinFeedbackGenerator.prepare()
+            spinHaptics().prepare()
         }
         
         var currentDelay = minimumSpinDelay
         for _ in 0..<decelerationSteps {
+            if Task.isCancelled { return }
             await MainActor.run {
                 currentEmoji = slotEmojis.randomElement() ?? "📦"
-                spinFeedbackGenerator.impactOccurred(intensity: 0.35)
+                spinHaptics().impactOccurred(intensity: 0.35)
             }
             
-            try? await Task.sleep(nanoseconds: currentDelay)
+            do {
+                try await Task.sleep(nanoseconds: currentDelay)
+            } catch {
+                return
+            }
             currentDelay = min(initialSpinDelay, UInt64(Double(currentDelay) * decelerationFactor))
         }
+
+        if Task.isCancelled { return }
         
         await MainActor.run {
             // Set final emoji
             currentEmoji = item.emoji ?? "📦"
             
             // Lock-in haptic feedback
-            lockFeedbackGenerator.impactOccurred()
+            lockHaptics().impactOccurred()
             
             // Lock-in animation
             withAnimation(.spring(response: springResponse, dampingFraction: springDamping)) {
@@ -103,5 +114,25 @@ struct SlotMachineEmojiView: View {
                 scale = scaleNormal
             }
         }
+    }
+
+    @MainActor
+    private func spinHaptics() -> UIImpactFeedbackGenerator {
+        if let generator = spinFeedbackGenerator {
+            return generator
+        }
+        let generator = UIImpactFeedbackGenerator(style: .rigid)
+        spinFeedbackGenerator = generator
+        return generator
+    }
+
+    @MainActor
+    private func lockHaptics() -> UIImpactFeedbackGenerator {
+        if let generator = lockFeedbackGenerator {
+            return generator
+        }
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        lockFeedbackGenerator = generator
+        return generator
     }
 }
