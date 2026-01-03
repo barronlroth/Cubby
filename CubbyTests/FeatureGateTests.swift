@@ -6,20 +6,16 @@ import SwiftData
 struct FeatureGateTests {
     @MainActor
     func createTestContainer() throws -> ModelContainer {
-        let schema = Schema([
-            Home.self,
-            StorageLocation.self,
-            InventoryItem.self
-        ])
-
         let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: true
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
         )
 
         return try ModelContainer(
-            for: schema,
-            configurations: [modelConfiguration]
+            for: Home.self,
+            StorageLocation.self,
+            InventoryItem.self,
+            configurations: modelConfiguration
         )
     }
 

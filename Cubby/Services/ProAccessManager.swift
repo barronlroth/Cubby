@@ -57,7 +57,7 @@ final class ProAccessManager: NSObject, ObservableObject {
         let hasApiKey = !apiKey.isEmpty
 
         #if DEBUG
-        if apiKey.isEmpty {
+        if apiKey.isEmpty, !shouldBypassRevenueCat {
             fatalError("Missing RevenueCatPublicApiKey. Set REVENUECAT_PUBLIC_API_KEY in your .xcconfig.")
         }
         #endif

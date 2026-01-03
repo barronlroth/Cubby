@@ -4,7 +4,7 @@ import SwiftData
 @Model
 class InventoryItem {
     var id: UUID = UUID()
-    var title: String
+    var title: String = ""
     var itemDescription: String?
     var photoFileName: String?
     var emoji: String? = nil

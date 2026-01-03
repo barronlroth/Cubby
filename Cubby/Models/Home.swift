@@ -4,7 +4,7 @@ import SwiftData
 @Model
 class Home {
     var id: UUID = UUID()
-    var name: String
+    var name: String = ""
     var createdAt: Date = Date()
     var modifiedAt: Date = Date()
     
