@@ -36,13 +36,10 @@ struct CubbyApp: App {
         let args = ProcessInfo.processInfo.arguments
         let environment = ProcessInfo.processInfo.environment
         let bundlePath = Bundle.main.bundlePath
-        let isRunningTests = environment["XCTestConfigurationFilePath"] != nil
-            || environment["XCTestSessionIdentifier"] != nil
-            || environment["XCTestBundlePath"] != nil
-            || environment["XCInjectBundle"] != nil
-            || environment["XCInjectBundleInto"] != nil
-            || bundlePath.contains("XCTest")
-            || NSClassFromString("XCTestCase") != nil
+        let isRunningTests = CloudKitSyncSettings.isRunningTests(
+            environment: environment,
+            bundlePath: bundlePath
+        ) || NSClassFromString("XCTestCase") != nil
         // Fastlane snapshot passes "-ui_testing"; support both.
         self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
         self.forceOnboardingSnapshot = args.contains("SNAPSHOT_ONBOARDING")

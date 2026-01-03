@@ -14,6 +14,18 @@ struct CloudKitSyncSettings: Equatable {
         case xctest
     }
 
+    static func isRunningTests(
+        environment: [String: String],
+        bundlePath: String
+    ) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["XCInjectBundle"] != nil
+            || environment["XCInjectBundleInto"] != nil
+            || bundlePath.contains("XCTest")
+    }
+
     static func resolve(
         arguments: [String],
         environment: [String: String],
@@ -21,15 +33,9 @@ struct CloudKitSyncSettings: Equatable {
         isUITesting: Bool,
         isRunningTestsOverride: Bool? = nil
     ) -> CloudKitSyncSettings {
-        let isRunningTests = isRunningTestsOverride ?? (
-            environment["XCTestConfigurationFilePath"] != nil
-                || environment["XCTestSessionIdentifier"] != nil
-                || environment["XCTestBundlePath"] != nil
-                || environment["XCInjectBundle"] != nil
-                || environment["XCInjectBundleInto"] != nil
-                || bundlePath.contains("XCTestDevices")
-        )
-        if isRunningTests {
+        let runningTests = isRunningTestsOverride
+            ?? isRunningTests(environment: environment, bundlePath: bundlePath)
+        if runningTests {
             return CloudKitSyncSettings(
                 usesCloudKit: false,
                 isInMemory: true,
