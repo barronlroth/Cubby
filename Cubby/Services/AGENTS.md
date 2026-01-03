@@ -32,10 +32,11 @@ File: `Cubby/Services/ProAccessManager.swift`
 - Computes `isPro` via entitlement: `customerInfo.entitlements["pro"]?.isActive == true`.
 - Configures RevenueCat once at app start and listens for updates via `PurchasesDelegate` so UI flips to Pro immediately after purchase/restore.
 - Uses cached `CustomerInfo` first (fast/offline), then refreshes in the background.
-- Test determinism: forces `isPro = true` and skips configuration when running:
+- Test determinism: skips configuration in UI tests/previews/XCTest and defaults to `isPro = true` unless `FORCE_FREE_TIER`/`FORCE_PRO_TIER` are present.
   - UI tests (`UI-TESTING` / `-ui_testing`)
   - SwiftUI previews (`XCODE_RUNNING_FOR_PREVIEWS`)
   - XCTest (`XCTestConfigurationFilePath`)
+- Debug override: in DEBUG builds, `FORCE_FREE_TIER`/`FORCE_PRO_TIER` can bypass RevenueCat for manual runs.
 
 ### `FeatureGate`
 File: `Cubby/Services/FeatureGate.swift`
@@ -86,4 +87,3 @@ File: `Cubby/Services/PaywallContext.swift`
 ## Dashboard checklist reference
 
 See `docs/revenuecat-setup-checklist.md` for the App Store Connect + RevenueCat configuration required for the paywall to load products.
-

@@ -17,6 +17,9 @@ struct CubbyApp: App {
     private let shouldSeedMockData: Bool
     private let forceOnboardingSnapshot: Bool
     private let shouldSeedItemLimitReachedData: Bool
+    private let shouldSeedFreeTierData: Bool
+    private let shouldSeedEmptyHomeData: Bool
+    private let skipSeeding: Bool
     
     init() {
         let args = ProcessInfo.processInfo.arguments
@@ -24,7 +27,16 @@ struct CubbyApp: App {
         self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
         self.forceOnboardingSnapshot = args.contains("SNAPSHOT_ONBOARDING")
         self.shouldSeedItemLimitReachedData = args.contains("SEED_ITEM_LIMIT_REACHED")
-        self.shouldSeedMockData = !forceOnboardingSnapshot && (isUITesting || args.contains("SEED_MOCK_DATA") || shouldSeedItemLimitReachedData)
+        self.shouldSeedFreeTierData = args.contains("SEED_FREE_TIER")
+        self.shouldSeedEmptyHomeData = args.contains("SEED_EMPTY_HOME")
+        self.skipSeeding = args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
+        self.shouldSeedMockData = !skipSeeding && !forceOnboardingSnapshot && (
+            isUITesting
+                || args.contains("SEED_MOCK_DATA")
+                || shouldSeedItemLimitReachedData
+                || shouldSeedFreeTierData
+                || shouldSeedEmptyHomeData
+        )
 
         if isUITesting, let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
@@ -56,6 +68,10 @@ struct CubbyApp: App {
                 MockDataGenerator.clearAllData(in: modelContainer.mainContext)
                 if shouldSeedItemLimitReachedData {
                     MockDataGenerator.generateItemLimitReachedMockData(in: modelContainer.mainContext)
+                } else if shouldSeedFreeTierData {
+                    MockDataGenerator.generateFreeTierMockData(in: modelContainer.mainContext)
+                } else if shouldSeedEmptyHomeData {
+                    MockDataGenerator.generateEmptyHomeMockData(in: modelContainer.mainContext)
                 } else {
                     MockDataGenerator.generateMockData(in: modelContainer.mainContext)
                 }

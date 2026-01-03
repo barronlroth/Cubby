@@ -24,6 +24,112 @@ struct MockDataGenerator {
         try? modelContext.save()
     }
 
+    static func generateFreeTierMockData(in modelContext: ModelContext) {
+        let reach = Home(name: "Reach")
+        modelContext.insert(reach)
+
+        UserDefaults.standard.set(reach.id.uuidString, forKey: "lastUsedHomeId")
+
+        let armory = StorageLocation(name: "Armory", home: reach)
+        let hangar = StorageLocation(name: "Hangar", home: reach)
+        let operations = StorageLocation(name: "Operations Center", home: reach)
+        let barracks = StorageLocation(name: "Barracks", home: reach)
+        let locker = StorageLocation(name: "Locker", home: reach, parentLocation: barracks)
+
+        modelContext.insert(armory)
+        modelContext.insert(hangar)
+        modelContext.insert(operations)
+        modelContext.insert(barracks)
+        modelContext.insert(locker)
+
+        let assaultRifle = InventoryItem(
+            title: "MA5B Assault Rifle",
+            description: "Standard issue rifle",
+            storageLocation: armory
+        )
+        assaultRifle.emoji = "🔫"
+
+        let battleRifle = InventoryItem(
+            title: "BR55 Battle Rifle",
+            description: "Mid-range precision weapon",
+            storageLocation: armory
+        )
+        battleRifle.emoji = "🔫"
+
+        let magnum = InventoryItem(
+            title: "M6G Magnum",
+            description: "Sidearm for field ops",
+            storageLocation: armory
+        )
+        magnum.emoji = "🔫"
+
+        let mjolnirArmor = InventoryItem(
+            title: "MJOLNIR Armor",
+            description: "Spartan armor set",
+            storageLocation: locker
+        )
+        mjolnirArmor.emoji = "🛡️"
+
+        let energySword = InventoryItem(
+            title: "Energy Sword",
+            description: "Close-quarters weapon",
+            storageLocation: locker
+        )
+        energySword.emoji = "🗡️"
+
+        let pelican = InventoryItem(
+            title: "Pelican Dropship",
+            description: "VTOL transport craft",
+            storageLocation: hangar
+        )
+        pelican.emoji = "🚁"
+
+        let warthog = InventoryItem(
+            title: "Warthog",
+            description: "Recon and transport vehicle",
+            storageLocation: hangar
+        )
+        warthog.emoji = "🚙"
+
+        let cortanaChip = InventoryItem(
+            title: "Cortana AI Chip",
+            description: "AI storage module",
+            storageLocation: operations
+        )
+        cortanaChip.emoji = "💾"
+
+        let navPad = InventoryItem(
+            title: "Nav Data Pad",
+            description: "Mission nav and coordinates",
+            storageLocation: operations
+        )
+        navPad.emoji = "🧭"
+
+        modelContext.insert(assaultRifle)
+        modelContext.insert(battleRifle)
+        modelContext.insert(magnum)
+        modelContext.insert(mjolnirArmor)
+        modelContext.insert(energySword)
+        modelContext.insert(pelican)
+        modelContext.insert(warthog)
+        modelContext.insert(cortanaChip)
+        modelContext.insert(navPad)
+
+        try? modelContext.save()
+    }
+
+    static func generateEmptyHomeMockData(in modelContext: ModelContext) {
+        let home = Home(name: "Empty Home")
+        modelContext.insert(home)
+
+        UserDefaults.standard.set(home.id.uuidString, forKey: "lastUsedHomeId")
+
+        let unsorted = StorageLocation(name: "Unsorted", home: home)
+        modelContext.insert(unsorted)
+
+        try? modelContext.save()
+    }
+
     static func generateMockData(in modelContext: ModelContext) {
         // Create sample homes
         let mainHome = Home(name: "Main Home")

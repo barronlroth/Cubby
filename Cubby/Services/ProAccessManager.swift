@@ -28,7 +28,7 @@ final class ProAccessManager: NSObject, ObservableObject {
 
     override init() {
         let args = ProcessInfo.processInfo.arguments
-        self.isUITestingOverride = args.contains("UI-TESTING") || args.contains("-ui_testing")
+        let isUITestingOverride = args.contains("UI-TESTING") || args.contains("-ui_testing")
         let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let forcedProAccess: Bool? = {
@@ -41,15 +41,20 @@ final class ProAccessManager: NSObject, ObservableObject {
             return nil
         }()
 
+        let shouldBypassRevenueCat: Bool
         if isUITestingOverride || isPreview || isRunningTests {
-            self.isConfigured = false
-            super.init()
-            self.isPro = forcedProAccess ?? true
-            return
+            shouldBypassRevenueCat = true
+        } else {
+            #if DEBUG
+            shouldBypassRevenueCat = forcedProAccess != nil
+            #else
+            shouldBypassRevenueCat = false
+            #endif
         }
 
         let apiKey = (Bundle.main.object(forInfoDictionaryKey: "RevenueCatPublicApiKey") as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasApiKey = !apiKey.isEmpty
 
         #if DEBUG
         if apiKey.isEmpty {
@@ -57,9 +62,18 @@ final class ProAccessManager: NSObject, ObservableObject {
         }
         #endif
 
-        guard !apiKey.isEmpty else {
-            self.isConfigured = false
-            super.init()
+        let shouldConfigureRevenueCat = !shouldBypassRevenueCat && hasApiKey
+
+        self.isUITestingOverride = isUITestingOverride
+        self.isConfigured = shouldConfigureRevenueCat
+        super.init()
+
+        if shouldBypassRevenueCat {
+            self.isPro = forcedProAccess ?? true
+            return
+        }
+
+        guard hasApiKey else {
             self.offeringsErrorMessage = "Purchases aren’t configured in this build. Set REVENUECAT_PUBLIC_API_KEY in your .xcconfig."
             return
         }
@@ -69,9 +83,6 @@ final class ProAccessManager: NSObject, ObservableObject {
         #endif
 
         Purchases.configure(withAPIKey: apiKey)
-
-        self.isConfigured = true
-        super.init()
 
         Purchases.shared.delegate = self
 

@@ -49,6 +49,54 @@ xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
 - SwiftData models automatically generate database schema
 - Test on iPhone 16 Pro simulator for best experience
 
+## Runtime States and Launch Arguments
+
+Cubby reads launch arguments in `Cubby/CubbyApp.swift` and `Cubby/Services/ProAccessManager.swift` to control seeding, onboarding, storage, and Pro gating.
+
+### Data + Onboarding
+- `UI-TESTING` / `-ui_testing`: uses an in-memory SwiftData store, clears `UserDefaults`, and seeds mock data unless `SNAPSHOT_ONBOARDING` or `SKIP_SEEDING`/`SEED_NONE` is present.
+- `SEED_MOCK_DATA`: clears existing SwiftData data, seeds the full mock dataset, and sets `hasCompletedOnboarding = true` (persistent store unless `UI-TESTING` is also set).
+- `SEED_ITEM_LIMIT_REACHED`: clears existing data, seeds 1 home + 10 items to hit the free item limit, and sets `hasCompletedOnboarding = true`.
+- `SEED_FREE_TIER`: clears existing data, seeds 1 home named "Reach" with Halo-themed items (under the free limits), and sets `hasCompletedOnboarding = true`.
+- `SEED_EMPTY_HOME`: clears existing data, seeds 1 empty home + "Unsorted", and sets `hasCompletedOnboarding = true`.
+- `SKIP_SEEDING` / `SEED_NONE`: disables seeding even if `UI-TESTING` is present.
+- `SNAPSHOT_ONBOARDING`: forces onboarding (`hasCompletedOnboarding = false`) and disables seeding, even in `UI-TESTING`.
+- `hasCompletedOnboarding` gate: when false, `OnboardingView` is shown; when true, `HomeSearchContainer` is shown. Onboarding creates the first home + an "Unsorted" location.
+- `lastUsedHomeId` is set during seeding so the UI lands on the primary mock home.
+- Seeding priority: `SEED_ITEM_LIMIT_REACHED` → `SEED_FREE_TIER` → `SEED_EMPTY_HOME` → `SEED_MOCK_DATA`.
+
+### Pro / Paywall Gating
+- `ProAccessManager` uses RevenueCat entitlements in normal runs (`entitlement = pro`). Missing `REVENUECAT_PUBLIC_API_KEY` causes a debug-only crash; release builds show an error message.
+- In UI tests, SwiftUI previews, and XCTest (`UI-TESTING`, `XCODE_RUNNING_FOR_PREVIEWS`, or `XCTestConfigurationFilePath`), RevenueCat is skipped and `isPro` defaults to `true`.
+- `FORCE_FREE_TIER` / `FORCE_PRO_TIER` override `isPro` in UI tests, previews, and XCTest; in DEBUG builds they can also be used for manual runs to bypass RevenueCat.
+- Free limits (`FeatureGate`): 1 home, 10 items per home. If `homeCount > 1` while free, all creation is denied with reason `overLimit` (view/search/edit remains allowed).
+- Paywall reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`. The global sheet is driven by `PaywallContext` in `HomeSearchContainer`; Add Home/Item also show an alert and can forward into the paywall.
+
+### Example Launch Commands
+```bash
+# Normal run (persistent store, onboarding if first launch)
+xcrun simctl launch booted com.barronroth.Cubby
+
+# Seed mock data (persistent store)
+xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
+
+# UI testing defaults (in-memory, seeded)
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING
+
+# Force onboarding snapshot state
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SNAPSHOT_ONBOARDING
+
+# Force paywall at the item limit (free tier)
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_ITEM_LIMIT_REACHED FORCE_FREE_TIER
+
+# Seed a free-tier Halo dataset (1 home "Reach", <10 items)
+xcrun simctl launch booted com.barronroth.Cubby SEED_FREE_TIER
+```
+
+### Gotchas
+- Changing seed behavior requires rebuilding and reinstalling the app on the simulator (new code won’t apply to an old build).
+- Seeding clears existing SwiftData data, but only when the app actually runs the seeding path; if data already exists and seeding isn’t triggered, you’ll still see prior content.
+
 ### Release & Distribution
 - Fastlane is configured in `fastlane/Fastfile` with a `beta` lane that builds `Cubby.xcodeproj`/`Cubby` and uploads to TestFlight using App Store Connect API keys.
 - To ship a beta: export `APP_STORE_CONNECT_API_KEY_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` (and optionally `APP_STORE_CONNECT_API_KEY_KEYFILE_PATH` or `APP_STORE_CONNECT_API_KEY_KEY_CONTENT_BASE64`), then run `fastlane beta` from the repo root.
