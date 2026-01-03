@@ -60,11 +60,10 @@ struct FeatureGate {
             return .denied(.overLimit)
         }
 
-        // Single query: count items where storageLocation.home.id matches
-        let itemCountDescriptor = FetchDescriptor<InventoryItem>(
-            predicate: #Predicate { $0.storageLocation?.home?.id == homeId }
-        )
-        let itemCount = (try? modelContext.fetchCount(itemCountDescriptor)) ?? 0
+        // Avoid fetchCount with nested optional relationship predicates; it can crash on some OS builds.
+        let itemsDescriptor = FetchDescriptor<InventoryItem>()
+        let items = (try? modelContext.fetch(itemsDescriptor)) ?? []
+        let itemCount = items.filter { $0.storageLocation?.home?.id == homeId }.count
 
         if itemCount >= freeMaxItemsPerHome {
             return .denied(.itemLimitReached)
