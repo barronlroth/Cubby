@@ -39,9 +39,7 @@ struct AddItemView: View {
                         .onSubmit {
                             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !trimmed.isEmpty else { return }
-                            if selectedLocation == nil, let def = defaultUnsortedLocation() {
-                                selectedLocation = def
-                            }
+                            applyPreferredLocationIfNeeded()
                             if !isSaving, selectedLocation != nil {
                                 Task { await saveItem() }
                             } else if selectedLocation == nil {
@@ -178,10 +176,7 @@ struct AddItemView: View {
                 } else {
                     DebugLogger.warning("AddItemView - No homeId provided")
                 }
-                // Default to Unsorted when no location preselected
-                if selectedLocation == nil, let def = defaultUnsortedLocation() {
-                    selectedLocation = def
-                }
+                applyPreferredLocationIfNeeded()
             }
             .task {
                 // Slight delay ensures the sheet is fully presented before focusing
@@ -202,15 +197,14 @@ struct AddItemView: View {
         }
     }
     
-    private func defaultUnsortedLocation() -> StorageLocation? {
-        guard let selectedHomeId else { return nil }
-        let descriptor = FetchDescriptor<StorageLocation>(
-            predicate: #Predicate { $0.home?.id == selectedHomeId && $0.name == "Unsorted" }
-        )
-        if let locations = try? modelContext.fetch(descriptor) {
-            return locations.first
+    private func applyPreferredLocationIfNeeded() {
+        if selectedLocation == nil,
+           let preferred = LastUsedLocationService.preferredLocation(
+            for: selectedHomeId,
+            in: modelContext
+           ) {
+            selectedLocation = preferred
         }
-        return nil
     }
 
     private func saveItem() async {
@@ -250,6 +244,7 @@ struct AddItemView: View {
         
         do {
             try modelContext.save()
+            LastUsedLocationService.remember(location: selectedLocation)
             if let pid = newItem.persistentModelID as? PersistentIdentifier {
                 EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
                     for: pid,
