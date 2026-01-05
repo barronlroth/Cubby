@@ -54,15 +54,31 @@ final class ProAccessManager: NSObject, ObservableObject {
 
         let apiKey = (Bundle.main.object(forInfoDictionaryKey: "RevenueCatPublicApiKey") as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasApiKey = !apiKey.isEmpty
+        let looksLikeUnexpandedBuildSetting = apiKey.contains("$(") || apiKey.contains("REVENUECAT_PUBLIC_API_KEY")
+        let looksLikeTestKey = apiKey.hasPrefix("test_")
+        let hasUsableApiKey = !apiKey.isEmpty && !looksLikeUnexpandedBuildSetting
+
+        let apiKeyErrorMessage: String? = {
+            if !hasUsableApiKey {
+                return "Purchases aren’t configured in this build. Set REVENUECAT_PUBLIC_API_KEY in your .xcconfig."
+            }
+            #if DEBUG
+            return nil
+            #else
+            if looksLikeTestKey {
+                return "Purchases aren’t configured in this build. This build is using a RevenueCat test key; use your production Public SDK Key for TestFlight/App Store builds."
+            }
+            return nil
+            #endif
+        }()
 
         #if DEBUG
-        if apiKey.isEmpty {
+        if !hasUsableApiKey {
             fatalError("Missing RevenueCatPublicApiKey. Set REVENUECAT_PUBLIC_API_KEY in your .xcconfig.")
         }
         #endif
 
-        let shouldConfigureRevenueCat = !shouldBypassRevenueCat && hasApiKey
+        let shouldConfigureRevenueCat = !shouldBypassRevenueCat && hasUsableApiKey && apiKeyErrorMessage == nil
 
         self.isUITestingOverride = isUITestingOverride
         self.isConfigured = shouldConfigureRevenueCat
@@ -73,8 +89,8 @@ final class ProAccessManager: NSObject, ObservableObject {
             return
         }
 
-        guard hasApiKey else {
-            self.offeringsErrorMessage = "Purchases aren’t configured in this build. Set REVENUECAT_PUBLIC_API_KEY in your .xcconfig."
+        guard shouldConfigureRevenueCat else {
+            self.offeringsErrorMessage = apiKeyErrorMessage
             return
         }
 

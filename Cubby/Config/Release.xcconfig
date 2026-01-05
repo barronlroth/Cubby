@@ -1,3 +1,6 @@
 // RevenueCat
 // Set this to your RevenueCat Public SDK Key (Project Settings → API Keys).
-REVENUECAT_PUBLIC_API_KEY = test_PxbAcfGRPLIvurSbixuBhiJCxHm
+//
+// IMPORTANT: TestFlight/App Store builds must use a production key (typically starts with "appl_"),
+// not a StoreKit test key (starts with "test_"), or the RevenueCat SDK will crash on launch.
+REVENUECAT_PUBLIC_API_KEY = $(REVENUECAT_PUBLIC_API_KEY_RELEASE)
