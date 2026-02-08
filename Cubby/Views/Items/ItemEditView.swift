@@ -354,7 +354,11 @@ private struct PhotoPreview: View {
 
 #Preview("Item Edit") {
     let schema = Schema([Home.self, StorageLocation.self, InventoryItem.self])
-    let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+    let config = ModelConfiguration(
+        schema: schema,
+        isStoredInMemoryOnly: true,
+        cloudKitDatabase: .none
+    )
     let container = try! ModelContainer(for: schema, configurations: [config])
     let ctx = container.mainContext
 

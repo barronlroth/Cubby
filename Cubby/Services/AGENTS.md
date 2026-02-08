@@ -87,3 +87,33 @@ File: `Cubby/Services/PaywallContext.swift`
 ## Dashboard checklist reference
 
 See `docs/revenuecat-setup-checklist.md` for the App Store Connect + RevenueCat configuration required for the paywall to load products.
+
+# CloudKit Sync (SwiftData)
+
+This folder also contains CloudKit scaffolding for metadata-only sync via SwiftData.
+
+## Core types and responsibilities
+
+### `CloudKitSyncSettings`
+File: `Cubby/Services/CloudKitSyncSettings.swift`
+
+- Determines whether CloudKit is enabled for the current run.
+- Kill switch: launch with `DISABLE_CLOUDKIT` to force a local (non-CloudKit) store.
+- UI tests and XCTest use in-memory stores and disable CloudKit.
+
+### `CloudKitAvailabilityChecker`
+File: `Cubby/Services/CloudKitAvailability.swift`
+
+- Async check for iCloud account availability.
+- Logs a warning when iCloud is unavailable, but does not block app usage.
+
+## Merge behavior (v1)
+
+- Use CloudKit's default conflict resolution (no custom merge engine).
+- `modifiedAt` is used for UI ordering only.
+- Photos are not synced yet (tracked in issue #53).
+
+## Testing guidance
+
+- Unit tests must not hit CloudKit; use `ModelConfiguration(..., cloudKitDatabase: .none)`.
+- Keep CloudKit tests scoped to config/availability logic rather than sync behavior.

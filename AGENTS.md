@@ -19,6 +19,10 @@ Cubby is a home inventory management app for iOS/macOS that helps users track th
 - Users who want to avoid buying duplicate items
 - People seeking better organization of their possessions
 
+## Additional AGENTS
+- `Cubby/Services/AGENTS.md` for service-layer notes (RevenueCat + CloudKit).
+- `CubbyTests/AGENTS.md` for test conventions and SwiftData setup.
+
 ## Essential Commands
 
 ### Building and Running
