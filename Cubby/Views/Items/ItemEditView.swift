@@ -16,6 +16,7 @@ struct ItemEditView: View {
     @State private var existingPhoto: UIImage?
     @State private var selectedPhoto: UIImage?
     @State private var didRemovePhoto = false
+    @State private var isExistingPhotoLoading = false
 
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
@@ -176,7 +177,10 @@ struct ItemEditView: View {
                     }
                 }
             } label: {
-                PhotoPreview(image: previewPhoto)
+                PhotoPreview(
+                    image: previewPhoto,
+                    state: photoPreviewState
+                )
             }
             .accessibilityLabel("Photo actions")
             .accessibilityHint("Change or remove the photo for this item.")
@@ -219,6 +223,14 @@ struct ItemEditView: View {
         previewPhoto != nil || item?.photoFileName != nil
     }
 
+    private var photoPreviewState: SyncedPhotoPresenceState {
+        SyncedPhotoPresenceState.resolve(
+            hasPhotoMetadata: item?.photoFileName != nil && didRemovePhoto == false,
+            hasDisplayImage: previewPhoto != nil,
+            isLoading: isExistingPhotoLoading
+        )
+    }
+
     private func beginTakingPhoto() {
         if UIImagePickerController.isSourceTypeAvailable(.camera) {
             showingCamera = true
@@ -247,12 +259,21 @@ struct ItemEditView: View {
 
     private func loadExistingPhoto(fileName: String?) async {
         guard let fileName else {
-            await MainActor.run { existingPhoto = nil }
+            await MainActor.run {
+                existingPhoto = nil
+                isExistingPhotoLoading = false
+            }
             return
         }
 
+        await MainActor.run {
+            isExistingPhotoLoading = true
+        }
         let loaded = await PhotoService.shared.loadPhoto(fileName: fileName)
-        await MainActor.run { existingPhoto = loaded }
+        await MainActor.run {
+            existingPhoto = loaded
+            isExistingPhotoLoading = false
+        }
 
         if loaded == nil {
             DebugLogger.warning("ItemEditView - Missing photo for fileName: \(fileName)")
@@ -336,6 +357,7 @@ struct ItemEditView: View {
 
 private struct PhotoPreview: View {
     let image: UIImage?
+    let state: SyncedPhotoPresenceState
 
     var body: some View {
         if let image {
@@ -346,8 +368,34 @@ private struct PhotoPreview: View {
                 .frame(maxWidth: .infinity)
                 .clipShape(.rect(cornerRadius: 12))
         } else {
-            Label("Add Photo", systemImage: "camera")
+            switch state {
+            case .loading:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading photo…")
+                }
                 .frame(maxWidth: .infinity, minHeight: 44)
+            case .missingOnDevice:
+                VStack(spacing: 8) {
+                    Label(
+                        state.missingOnDeviceMessage ?? "Photo unavailable",
+                        systemImage: "icloud.slash"
+                    )
+                    .font(.callout.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+
+                    Text("Photo metadata synced, but image files stay local in this release.")
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 72)
+                .accessibilityIdentifier("MissingLocalPhotoMessage")
+            case .noPhoto, .available:
+                Label("Add Photo", systemImage: "camera")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
         }
     }
 }

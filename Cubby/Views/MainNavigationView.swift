@@ -16,6 +16,7 @@ struct MainNavigationView: View {
     @Environment(\.dismissSearch) private var dismissSearch
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
+    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
     
     var body: some View {
@@ -60,6 +61,8 @@ struct MainNavigationView: View {
         .toolbar { toolbarContent }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
+                CloudSyncStatusChip()
+
                 if undoManager.canUndo {
                     HStack(spacing: 4) {
                         Button(action: performUndo) {
@@ -219,6 +222,86 @@ struct MainNavigationView: View {
                 showingUndoToast = false
             }
         }
+    }
+}
+
+private struct CloudSyncStatusChip: View {
+    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
+
+    private struct Presentation {
+        let title: String
+        let symbolName: String
+        let tint: Color
+    }
+
+    private var presentation: Presentation? {
+        let state = cloudSyncCoordinator.state
+        guard state.isCloudKitEnabled else { return nil }
+
+        switch state.mode {
+        case .disabled:
+            return nil
+        case .checking, .syncing:
+            return Presentation(
+                title: "Syncing",
+                symbolName: "arrow.trianglehead.2.clockwise.icloud",
+                tint: .blue
+            )
+        case .synced:
+            return Presentation(
+                title: "Synced",
+                symbolName: "checkmark.icloud",
+                tint: .green
+            )
+        case .offline:
+            return Presentation(
+                title: "Offline",
+                symbolName: "icloud.slash",
+                tint: .orange
+            )
+        case .iCloudUnavailable:
+            return Presentation(
+                title: "iCloud Off",
+                symbolName: "person.crop.circle.badge.exclamationmark",
+                tint: .gray
+            )
+        }
+    }
+
+    var body: some View {
+        if let presentation {
+            Label(presentation.title, systemImage: presentation.symbolName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(presentation.tint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .modifier(CloudSyncChipStyle(tint: presentation.tint))
+                .accessibilityIdentifier("CloudSyncStatusChip")
+        }
+    }
+}
+
+private struct CloudSyncChipStyle: ViewModifier {
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    .regular.tint(tint.opacity(0.2)),
+                    in: .capsule
+                )
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Capsule())
+        }
+        #else
+        content
+            .background(.ultraThinMaterial, in: Capsule())
+        #endif
     }
 }
 

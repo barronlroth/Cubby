@@ -130,6 +130,27 @@ struct MockDataGenerator {
         try? modelContext.save()
     }
 
+    static func generateMissingLocalPhotoMockData(in modelContext: ModelContext) {
+        let home = Home(name: "Main Home")
+        modelContext.insert(home)
+
+        UserDefaults.standard.set(home.id.uuidString, forKey: "lastUsedHomeId")
+
+        let closet = StorageLocation(name: "Closet", home: home)
+        modelContext.insert(closet)
+
+        let missingPhotoItem = InventoryItem(
+            title: "Missing Photo Item",
+            description: "Metadata synced, but local photo file does not exist",
+            storageLocation: closet
+        )
+        missingPhotoItem.photoFileName = "missing-local-photo.jpg"
+        missingPhotoItem.emoji = "📷"
+        modelContext.insert(missingPhotoItem)
+
+        try? modelContext.save()
+    }
+
     static func generateMockData(in modelContext: ModelContext) {
         // Create sample homes
         let mainHome = Home(name: "Main Home")
