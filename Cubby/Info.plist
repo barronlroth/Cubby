@@ -4,6 +4,8 @@
 <dict>
     <key>NSCameraUsageDescription</key>
     <string>Allow Cubby to take photos of your items so you can visually track inventory.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Allow Cubby to access your photo library so you can add existing photos of your items.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>RevenueCatPublicApiKey</key>
