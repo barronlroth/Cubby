@@ -13,6 +13,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == true)
         #expect(settings.reason == .uiTesting)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testUiTestingOverridesDisableFlag() {
@@ -26,6 +29,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == true)
         #expect(settings.reason == .uiTesting)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testDisableLaunchArgumentUsesLocalStore() {
@@ -39,6 +45,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == false)
         #expect(settings.reason == .disabledByLaunchArgument)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testDefaultsToCloudKitWhenNotTesting() {
@@ -52,6 +61,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == true)
         #expect(settings.isInMemory == false)
         #expect(settings.reason == nil)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testXCTestUsesInMemory() {
@@ -65,6 +77,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == true)
         #expect(settings.reason == .xctest)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testXCTestBundlePathUsesInMemory() {
@@ -78,6 +93,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == true)
         #expect(settings.reason == .xctest)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testOverrideForcesInMemory() {
@@ -92,6 +110,9 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == false)
         #expect(settings.isInMemory == true)
         #expect(settings.reason == .xctest)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
     }
 
     @Test func testOverrideAllowsCloudKit() {
@@ -106,5 +127,75 @@ struct CloudKitSyncSettingsTests {
         #expect(settings.usesCloudKit == true)
         #expect(settings.isInMemory == false)
         #expect(settings.reason == nil)
+        #expect(settings.strictStartup == false)
+        #expect(settings.shouldInitializeCloudKitSchema == false)
+        #expect(settings.forcedAvailability == nil)
+    }
+
+    @Test func testStrictStartupFlagEnabled() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.strictStartupLaunchArgument],
+            environment: [:],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.strictStartup == true)
+    }
+
+    @Test func testInitializeSchemaFlagEnabled() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.initializeSchemaLaunchArgument],
+            environment: [:],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.shouldInitializeCloudKitSchema == true)
+    }
+
+    @Test func testForcedAvailabilityAvailableFlag() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.forceAvailabilityAvailableLaunchArgument],
+            environment: [:],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.forcedAvailability == .available)
+    }
+
+    @Test func testForcedAvailabilityNoAccountFlag() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.forceAvailabilityNoAccountLaunchArgument],
+            environment: [:],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.forcedAvailability == .noAccount)
+    }
+
+    @Test func testForcedAvailabilityErrorFlag() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.forceAvailabilityErrorLaunchArgument],
+            environment: [:],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.forcedAvailability == .error)
+    }
+
+    @Test func testForcedAvailabilityAppliesInTestsToo() {
+        let settings = CloudKitSyncSettings.resolve(
+            arguments: [CloudKitSyncSettings.forceAvailabilityRestrictedLaunchArgument],
+            environment: ["XCTestConfigurationFilePath": "/tmp/test.xctestconfig"],
+            bundlePath: "/Applications/Cubby.app",
+            isUITesting: false
+        )
+
+        #expect(settings.reason == .xctest)
+        #expect(settings.forcedAvailability == .restricted)
     }
 }

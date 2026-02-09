@@ -45,7 +45,7 @@ protocol CloudKitAccountStatusProviding {
 struct CloudKitAccountStatusProvider: CloudKitAccountStatusProviding {
     let container: CKContainer
 
-    init(container: CKContainer = .default()) {
+    init(container: CKContainer = CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)) {
         self.container = container
     }
 
@@ -64,8 +64,13 @@ struct CloudKitAccountStatusProvider: CloudKitAccountStatusProviding {
 
 struct CloudKitAvailabilityChecker {
     static func check(
+        forcedAvailability: CloudKitSyncSettings.ForcedAvailability? = nil,
         using provider: CloudKitAccountStatusProviding = CloudKitAccountStatusProvider()
     ) async -> CloudKitAvailability {
+        if let forcedAvailability {
+            return availability(for: forcedAvailability)
+        }
+
         do {
             let status = try await provider.accountStatus()
             switch status {
@@ -88,10 +93,33 @@ struct CloudKitAvailabilityChecker {
     }
 
     static func logIfUnavailable(
+        forcedAvailability: CloudKitSyncSettings.ForcedAvailability? = nil,
         using provider: CloudKitAccountStatusProviding = CloudKitAccountStatusProvider()
     ) async {
-        let availability = await check(using: provider)
+        let availability = await check(
+            forcedAvailability: forcedAvailability,
+            using: provider
+        )
         guard case let .unavailable(reason) = availability else { return }
         DebugLogger.warning("CloudKit unavailable: \(reason.logDescription)")
+    }
+
+    private static func availability(
+        for forced: CloudKitSyncSettings.ForcedAvailability
+    ) -> CloudKitAvailability {
+        switch forced {
+        case .available:
+            return .available
+        case .noAccount:
+            return .unavailable(reason: .noAccount)
+        case .restricted:
+            return .unavailable(reason: .restricted)
+        case .couldNotDetermine:
+            return .unavailable(reason: .couldNotDetermine)
+        case .temporarilyUnavailable:
+            return .unavailable(reason: .temporarilyUnavailable)
+        case .error:
+            return .unavailable(reason: .error)
+        }
     }
 }

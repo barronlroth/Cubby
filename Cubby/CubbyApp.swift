@@ -20,6 +20,7 @@ struct CubbyApp: App {
     private let shouldSeedItemLimitReachedData: Bool
     private let shouldSeedFreeTierData: Bool
     private let shouldSeedEmptyHomeData: Bool
+    private let shouldSeedMissingLocalPhotoData: Bool
     private let skipSeeding: Bool
 
     private static func logModelContainerError(_ message: String, error: Error) {
@@ -46,6 +47,7 @@ struct CubbyApp: App {
         self.shouldSeedItemLimitReachedData = args.contains("SEED_ITEM_LIMIT_REACHED")
         self.shouldSeedFreeTierData = args.contains("SEED_FREE_TIER")
         self.shouldSeedEmptyHomeData = args.contains("SEED_EMPTY_HOME")
+        self.shouldSeedMissingLocalPhotoData = args.contains("SEED_MISSING_LOCAL_PHOTO")
         self.skipSeeding = args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
         self.cloudKitSettings = CloudKitSyncSettings.resolve(
             arguments: args,
@@ -60,6 +62,7 @@ struct CubbyApp: App {
                 || shouldSeedItemLimitReachedData
                 || shouldSeedFreeTierData
                 || shouldSeedEmptyHomeData
+                || shouldSeedMissingLocalPhotoData
         )
 
         if isUITesting, let bundleId = Bundle.main.bundleIdentifier {
@@ -95,6 +98,10 @@ struct CubbyApp: App {
             )
         }
 
+        CloudKitSchemaBootstrapper.initializeIfRequested(
+            settings: cloudKitSettings
+        )
+
         do {
             modelContainer = try ModelContainer(
                 for: schema,
@@ -103,19 +110,25 @@ struct CubbyApp: App {
         } catch {
             #if DEBUG
             Self.logModelContainerError("Failed to create ModelContainer", error: error)
-            do {
-                let fallbackConfiguration = ModelConfiguration(
-                    schema: schema,
-                    isStoredInMemoryOnly: true,
-                    cloudKitDatabase: .none
-                )
-                modelContainer = try ModelContainer(
-                    for: schema,
-                    configurations: [fallbackConfiguration]
-                )
-            } catch {
-                Self.logModelContainerError("Failed to create fallback ModelContainer", error: error)
-                fatalError("Failed to create fallback ModelContainer: \(error)")
+            if CloudKitStartupPolicy.shouldFallbackToInMemoryAfterContainerError(
+                settings: cloudKitSettings
+            ) {
+                do {
+                    let fallbackConfiguration = ModelConfiguration(
+                        schema: schema,
+                        isStoredInMemoryOnly: true,
+                        cloudKitDatabase: .none
+                    )
+                    modelContainer = try ModelContainer(
+                        for: schema,
+                        configurations: [fallbackConfiguration]
+                    )
+                } catch {
+                    Self.logModelContainerError("Failed to create fallback ModelContainer", error: error)
+                    fatalError("Failed to create fallback ModelContainer: \(error)")
+                }
+            } else {
+                fatalError("STRICT_CLOUDKIT_STARTUP is enabled. Failed to create ModelContainer: \(error)")
             }
             #else
             fatalError("Failed to create ModelContainer: \(error)")
@@ -131,6 +144,8 @@ struct CubbyApp: App {
                 MockDataGenerator.generateFreeTierMockData(in: modelContainer.mainContext)
             } else if shouldSeedEmptyHomeData {
                 MockDataGenerator.generateEmptyHomeMockData(in: modelContainer.mainContext)
+            } else if shouldSeedMissingLocalPhotoData {
+                MockDataGenerator.generateMissingLocalPhotoMockData(in: modelContainer.mainContext)
             } else {
                 MockDataGenerator.generateMockData(in: modelContainer.mainContext)
             }
@@ -142,7 +157,7 @@ struct CubbyApp: App {
         WindowGroup {
             Group {
                 if hasCompletedOnboarding {
-                    HomeSearchContainer()
+                    HomeSearchContainer(cloudKitSettings: cloudKitSettings)
                 } else {
                     OnboardingView()
                 }
@@ -150,7 +165,9 @@ struct CubbyApp: App {
             .modelContainer(modelContainer)
             .task {
                 if cloudKitSettings.usesCloudKit {
-                    await CloudKitAvailabilityChecker.logIfUnavailable()
+                    await CloudKitAvailabilityChecker.logIfUnavailable(
+                        forcedAvailability: cloudKitSettings.forcedAvailability
+                    )
                 }
                 await DataCleanupService.shared.performCleanup(
                     modelContext: modelContainer.mainContext

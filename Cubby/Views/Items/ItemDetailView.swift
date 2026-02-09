@@ -43,7 +43,7 @@ struct ItemDetailView: View {
                             ItemDetailPhotoCard(
                                 item: item,
                                 photo: photo,
-                                isLoading: isPhotoLoading,
+                                photoState: photoState(for: item),
                                 height: photoCardHeight
                             )
                         }
@@ -159,6 +159,14 @@ struct ItemDetailView: View {
         guard let raw = item.itemDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else { return nil }
         return raw
+    }
+
+    private func photoState(for item: InventoryItem) -> SyncedPhotoPresenceState {
+        SyncedPhotoPresenceState.resolve(
+            hasPhotoMetadata: item.photoFileName != nil,
+            hasDisplayImage: photo != nil,
+            isLoading: isPhotoLoading
+        )
     }
 
     private func beginMove() {
@@ -279,7 +287,7 @@ private struct ItemDetailHeader: View {
 private struct ItemDetailPhotoCard: View {
     let item: InventoryItem
     let photo: UIImage?
-    let isLoading: Bool
+    let photoState: SyncedPhotoPresenceState
     let height: CGFloat
 
     @ScaledMetric(relativeTo: .title) private var placeholderEmojiSize: CGFloat = 84
@@ -289,17 +297,20 @@ private struct ItemDetailPhotoCard: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.secondary.opacity(0.08))
 
-            if item.photoFileName != nil {
+            switch photoState {
+            case .available:
                 if let photo {
                     Image(uiImage: photo)
                         .resizable()
                         .scaledToFill()
-                } else if isLoading {
-                    ProgressView()
                 } else {
                     placeholder
                 }
-            } else {
+            case .loading:
+                ProgressView()
+            case .missingOnDevice:
+                missingLocalPlaceholder
+            case .noPhoto:
                 placeholder
             }
         }
@@ -315,6 +326,26 @@ private struct ItemDetailPhotoCard: View {
 
             SlotMachineEmojiView(item: item, fontSize: placeholderEmojiSize)
         }
+    }
+
+    private var missingLocalPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.ultraThinMaterial)
+
+            VStack(spacing: 8) {
+                Image(systemName: "icloud.slash")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text(photoState.missingOnDeviceMessage ?? "Photo unavailable")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(16)
+        }
+        .accessibilityIdentifier("MissingLocalPhotoMessage")
     }
 }
 
