@@ -131,7 +131,20 @@ struct CubbyApp: App {
                 fatalError("STRICT_CLOUDKIT_STARTUP is enabled. Failed to create ModelContainer: \(error)")
             }
             #else
-            fatalError("Failed to create ModelContainer: \(error)")
+            Self.logModelContainerError("Failed to create ModelContainer with CloudKit, falling back to local-only", error: error)
+            do {
+                let fallbackConfiguration = ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: false,
+                    cloudKitDatabase: .none
+                )
+                modelContainer = try ModelContainer(
+                    for: schema,
+                    configurations: [fallbackConfiguration]
+                )
+            } catch {
+                fatalError("Failed to create ModelContainer: \(error)")
+            }
             #endif
         }
 
