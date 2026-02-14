@@ -72,7 +72,7 @@ struct ProStatusView: View {
 
                 Section("Legal") {
                     Button {
-                        if let url = URL(string: "https://barronroth.com/cubby/terms") {
+                        if let url = URL(string: "https://alfred.barronroth.com/cubby/terms") {
                             openURL(url)
                         }
                     } label: {
@@ -80,7 +80,7 @@ struct ProStatusView: View {
                     }
 
                     Button {
-                        if let url = URL(string: "https://barronroth.com/cubby/privacy") {
+                        if let url = URL(string: "https://alfred.barronroth.com/cubby/privacy") {
                             openURL(url)
                         }
                     } label: {
