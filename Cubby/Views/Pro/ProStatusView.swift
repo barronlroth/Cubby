@@ -109,8 +109,8 @@ struct ProStatusView: View {
         switch productId {
         case ProAccessManager.annualProductId:
             "Annual"
-        case ProAccessManager.lifetimeProductId:
-            "Lifetime"
+        case ProAccessManager.monthlyProductId:
+            "Monthly"
         default:
             productId
         }

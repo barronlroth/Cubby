@@ -5,7 +5,7 @@ import RevenueCat
 final class ProAccessManager: NSObject, ObservableObject {
     static let proEntitlementId = "pro"
     static let annualProductId = "cubby_pro_annual"
-    static let lifetimeProductId = "cubby_pro_lifetime"
+    static let monthlyProductId = "cubby_pro_monthly"
 
     @Published private(set) var customerInfo: CustomerInfo?
     @Published private(set) var offerings: Offerings?
@@ -117,9 +117,9 @@ final class ProAccessManager: NSObject, ObservableObject {
         return proProductIdentifier == Self.annualProductId
     }
 
-    var hasLifetimePurchase: Bool {
+    var hasActiveMonthlySubscription: Bool {
         guard isPro else { return false }
-        return proProductIdentifier == Self.lifetimeProductId
+        return proProductIdentifier == Self.monthlyProductId
     }
 
     var proProductIdentifier: String? {
