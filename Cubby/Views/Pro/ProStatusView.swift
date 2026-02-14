@@ -69,6 +69,24 @@ struct ProStatusView: View {
                         }
                     }
                 }
+
+                Section("Legal") {
+                    Button {
+                        if let url = URL(string: "https://barronroth.com/cubby/terms") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Terms of Use", systemImage: "doc.text")
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://barronroth.com/cubby/privacy") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+                }
             }
             .navigationTitle("Cubby Pro")
             .navigationBarTitleDisplayMode(.inline)

@@ -7,6 +7,7 @@ struct ProPaywallSheetView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var proAccessManager: ProAccessManager
+    @State private var didTimeout = false
 
     var body: some View {
         NavigationStack {
@@ -23,24 +24,9 @@ struct ProPaywallSheetView: View {
                 .padding(.horizontal, 16)
 
                 if let error = proAccessManager.offeringsErrorMessage {
-                    VStack(spacing: 12) {
-                        Text(error)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-
-                        HStack(spacing: 12) {
-                            Button("Retry") {
-                                Task { await proAccessManager.loadOfferings() }
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button("Restore Purchases") {
-                                Task { await proAccessManager.restorePurchases() }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    .padding(.horizontal, 16)
+                    errorRetryView(message: error)
+                } else if didTimeout {
+                    errorRetryView(message: "Unable to load purchase options. Please check your connection and try again.")
                 } else if proAccessManager.isLoadingOfferings {
                     ProgressView("Loading options…")
                         .padding(.vertical, 24)
@@ -51,6 +37,12 @@ struct ProPaywallSheetView: View {
                         .padding(.vertical, 24)
                         .task {
                             await proAccessManager.loadOfferings()
+                        }
+                        .task {
+                            try? await Task.sleep(for: .seconds(10))
+                            if proAccessManager.isLoadingOfferings || proAccessManager.offerings?.current == nil {
+                                didTimeout = true
+                            }
                         }
                 }
 
@@ -74,6 +66,28 @@ struct ProPaywallSheetView: View {
                 }
             }
         }
+    }
+
+    private func errorRetryView(message: String) -> some View {
+        VStack(spacing: 12) {
+            Text(message)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 12) {
+                Button("Try Again") {
+                    didTimeout = false
+                    Task { await proAccessManager.loadOfferings() }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Restore Purchases") {
+                    Task { await proAccessManager.restorePurchases() }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 16)
     }
 
     private var title: String {
