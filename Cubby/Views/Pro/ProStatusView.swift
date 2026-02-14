@@ -69,6 +69,24 @@ struct ProStatusView: View {
                         }
                     }
                 }
+
+                Section("Legal") {
+                    Button {
+                        if let url = URL(string: "https://alfred.barronroth.com/cubby/terms") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Terms of Use", systemImage: "doc.text")
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://alfred.barronroth.com/cubby/privacy") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+                }
             }
             .navigationTitle("Cubby Pro")
             .navigationBarTitleDisplayMode(.inline)
@@ -91,8 +109,8 @@ struct ProStatusView: View {
         switch productId {
         case ProAccessManager.annualProductId:
             "Annual"
-        case ProAccessManager.lifetimeProductId:
-            "Lifetime"
+        case ProAccessManager.monthlyProductId:
+            "Monthly"
         default:
             productId
         }
