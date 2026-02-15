@@ -32,6 +32,27 @@ Out of scope (v1):
 - Custom conflict-resolution engine
 - Web/admin collaboration tooling
 
+## 2.1 Product Policy Decisions (Locked)
+
+Subscription sharing model (v1):
+
+- Use Apple-native Family Sharing for paid access.
+- Do not implement custom "home sponsor unlocks all participants" logic in v1.
+- Result: household members in the same Apple Family can share one subscription; non-family participants still need their own paid access where gated.
+
+Migration policy:
+
+- Use best-effort migration from existing local SwiftData data.
+- If migration fails, fall back to a controlled reset path and recreate a clean store.
+- Because current user count is near zero, fail-safe reset is acceptable for v1.
+
+Rollout gate policy:
+
+- Use a two-layer rollout gate:
+  - Distribution gate: phased App Store/TestFlight rollout.
+  - Runtime gate: server-driven feature flag (`sharedHomesEnabled`) fetched from a lightweight remote config source, defaulting to `false` when unavailable on first launch.
+- Keep an emergency kill-switch path so shared-home UI and write paths can be disabled without waiting for a new binary.
+
 ## 3) High-Level Architecture
 
 ## 3.1 Persistence Layer
@@ -183,6 +204,15 @@ New files likely:
 - Remote-change/state sync polish
 - Error handling and recovery UX
 
+## 7.5 Migration Execution Policy (Best Effort)
+
+- Attempt one-shot migration at first launch on the new stack.
+- On success: mark migration complete and continue normally.
+- On failure:
+  - Capture structured error telemetry/logging.
+  - Show a concise user-facing recovery message.
+  - Execute reset fallback and continue with clean data store.
+
 ## 8) Legacy User and Rollout Behavior
 
 Given very low current user count:
@@ -194,6 +224,25 @@ Compatibility notes:
 - Older clients (pre-sharing) won’t handle shared-home UX.
 - Keep schema changes additive; avoid destructive model changes.
 - Gate sharing UI and operations by minimum app version where necessary.
+
+## 8.1 Rollout Gate Details
+
+Definition:
+
+- "Rollout gate" means controlling exposure of shared homes independently from code shipping.
+
+Recommended implementation:
+
+- Gate read/write entry points behind `SharedHomesGateService`.
+- `SharedHomesGateService` resolves enabled state from:
+  1. Remote flag (`sharedHomesEnabled`) with cached value + TTL.
+  2. Local emergency override for internal builds/tests.
+  3. Safe default `false` when no remote value exists yet.
+
+Why this is recommended:
+
+- Lets us ship dark, enable for a small cohort, and instantly disable if production issues appear.
+- Reduces blast radius during first collaboration rollout.
 
 ## 9) Test Strategy
 
@@ -220,6 +269,17 @@ Compatibility notes:
 - Feature-gate counts and paywall triggers
 - Last-used home and location restore behavior
 
+## 9.4 TDD Quality Gate (Required)
+
+- Every implementation slice must follow Red -> Green -> Refactor:
+  1. Add/modify tests first and run suite to confirm failures for the new behavior.
+  2. Implement minimal code to make tests pass.
+  3. Refactor while keeping tests green.
+- PRs must include evidence of both states:
+  - failing test output before implementation
+  - passing test output after implementation
+- Shared-homes feature work is blocked from merge without this evidence.
+
 ## 10) Risks and Mitigations
 
 Risk: Migration regressions in existing CRUD  
@@ -240,3 +300,4 @@ Mitigation: document policy in code/tests (recommend owner-based limits)
 - Read-only mode enforced correctly
 - No blocker regressions in existing non-sharing user journeys
 - Monitoring/logging sufficient to diagnose share accept/sync failures
+- TDD gate evidence present for all merged shared-home slices
