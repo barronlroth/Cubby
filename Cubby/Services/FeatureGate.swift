@@ -32,6 +32,25 @@ struct GateResult: Equatable {
 struct FeatureGate {
     static let freeMaxHomes = 1
     static let freeMaxItemsPerHome = 10
+    nonisolated static let useCoreDataSharingStackLaunchArgument = "USE_CORE_DATA_SHARING_STACK"
+
+    nonisolated static func shouldUseCoreDataSharingStack(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        if let rawValue = environment[useCoreDataSharingStackLaunchArgument] {
+            switch rawValue.lowercased() {
+            case "1", "true", "yes", "y", "on":
+                return true
+            case "0", "false", "no", "n", "off":
+                return false
+            default:
+                break
+            }
+        }
+
+        return arguments.contains(useCoreDataSharingStackLaunchArgument)
+    }
 
     static func canCreateHome(modelContext: ModelContext, isPro: Bool) -> GateResult {
         guard !isPro else { return .allowed }
