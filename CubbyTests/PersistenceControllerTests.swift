@@ -31,8 +31,10 @@ struct PersistenceControllerTests {
             return
         }
 
-        let options = privateStore.options?[NSPersistentCloudKitContainerOptionsKey] as? NSPersistentCloudKitContainerOptions
-        #expect(options?.databaseScope == .private)
+        let description = controller.persistentContainer.persistentStoreDescriptions.first {
+            $0.url == privateStore.url
+        }
+        #expect(description?.cloudKitContainerOptions?.databaseScope == .private)
     }
 
     @Test
@@ -43,8 +45,10 @@ struct PersistenceControllerTests {
             return
         }
 
-        let options = sharedStore.options?[NSPersistentCloudKitContainerOptionsKey] as? NSPersistentCloudKitContainerOptions
-        #expect(options?.databaseScope == .shared)
+        let description = controller.persistentContainer.persistentStoreDescriptions.first {
+            $0.url == sharedStore.url
+        }
+        #expect(description?.cloudKitContainerOptions?.databaseScope == .shared)
     }
 
     @Test
@@ -76,9 +80,8 @@ struct PersistenceControllerTests {
     @Test
     func test_viewContext_usesCorrectMergePolicy() throws {
         let controller = try makeController()
-        #expect(
-            controller.persistentContainer.viewContext.mergePolicy.mergeType
-                == .mergeByPropertyObjectTrumpMergePolicyType
-        )
+        let policy = controller.persistentContainer.viewContext.mergePolicy
+        #expect(policy is NSMergePolicy)
+        #expect((policy as? NSMergePolicy)?.mergeType == .mergeByPropertyObjectTrumpMergePolicyType)
     }
 }

@@ -116,24 +116,7 @@ final class PersistenceController {
         if objectIDs.isEmpty {
             return [:]
         }
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var fetchedShares: [NSManagedObjectID: CKShare] = [:]
-        var fetchError: Error?
-
-        persistentContainer.fetchShares(matching: objectIDs) { shares, error in
-            if let shares {
-                fetchedShares = shares
-            }
-            fetchError = error
-            semaphore.signal()
-        }
-
-        semaphore.wait()
-        if let fetchError {
-            throw fetchError
-        }
-        return fetchedShares
+        return try persistentContainer.fetchShares(matching: objectIDs)
     }
 }
 
