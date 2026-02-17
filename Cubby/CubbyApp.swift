@@ -7,9 +7,15 @@
 
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct CubbyApp: App {
+#if canImport(UIKit)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+#endif
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     let modelContainer: ModelContainer
