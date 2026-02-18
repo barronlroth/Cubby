@@ -28,6 +28,8 @@ struct CubbyApp: App {
     private let shouldSeedEmptyHomeData: Bool
     private let shouldSeedMissingLocalPhotoData: Bool
     private let skipSeeding: Bool
+    private let coreDataPersistenceController: PersistenceController?
+    private let coreDataRemoteChangeHandler: RemoteChangeHandler?
 
     private static func logModelContainerError(_ message: String, error: Error) {
         let nsError = error as NSError
@@ -170,6 +172,56 @@ struct CubbyApp: App {
             }
             UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         }
+
+        var configuredPersistenceController: PersistenceController?
+        var configuredRemoteChangeHandler: RemoteChangeHandler?
+        if FeatureGate.shouldUseCoreDataSharingStack(arguments: args, environment: environment) {
+            do {
+                let persistenceController = try PersistenceController(
+                    inMemory: cloudKitSettings.isInMemory
+                )
+                let sourceContainer = modelContainer
+
+                let migrationService = DataMigrationService(
+                    persistenceController: persistenceController,
+                    sourceContainerProvider: { sourceContainer }
+                )
+                _ = migrationService.runMigrationIfNeeded()
+
+                let remoteChangeHandler = RemoteChangeHandler(
+                    persistenceController: persistenceController
+                )
+                configuredPersistenceController = persistenceController
+                configuredRemoteChangeHandler = remoteChangeHandler
+
+                #if canImport(UIKit)
+                AppDelegate.makeHomeSharingService = {
+                    HomeSharingService(persistenceController: persistenceController)
+                }
+                AppDelegate.makeSharingErrorHandler = {
+                    SharingErrorHandler()
+                }
+                #endif
+            } catch {
+                DebugLogger.error("Failed to initialize Core Data sharing stack: \(error)")
+                #if canImport(UIKit)
+                AppDelegate.makeHomeSharingService = { nil }
+                AppDelegate.makeSharingErrorHandler = {
+                    SharingErrorHandler()
+                }
+                #endif
+            }
+        } else {
+            #if canImport(UIKit)
+            AppDelegate.makeHomeSharingService = { nil }
+            AppDelegate.makeSharingErrorHandler = {
+                SharingErrorHandler()
+            }
+            #endif
+        }
+
+        coreDataPersistenceController = configuredPersistenceController
+        coreDataRemoteChangeHandler = configuredRemoteChangeHandler
     }
     
     var body: some Scene {
@@ -183,6 +235,8 @@ struct CubbyApp: App {
             }
             .modelContainer(modelContainer)
             .task {
+                coreDataRemoteChangeHandler?.start()
+
                 if cloudKitSettings.usesCloudKit {
                     await CloudKitAvailabilityChecker.logIfUnavailable(
                         forcedAvailability: cloudKitSettings.forcedAvailability
@@ -191,6 +245,9 @@ struct CubbyApp: App {
                 await DataCleanupService.shared.performCleanup(
                     modelContext: modelContainer.mainContext
                 )
+            }
+            .onDisappear {
+                coreDataRemoteChangeHandler?.stop()
             }
         }
     }

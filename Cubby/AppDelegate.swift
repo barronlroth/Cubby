@@ -7,8 +7,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
     static var makeHomeSharingService: () -> (any HomeSharingServiceProtocol)? = {
         nil
     }
+    static var makeSharingErrorHandler: () -> (any SharingErrorHandlerProtocol)? = {
+        SharingErrorHandler()
+    }
 
     var homeSharingService: (any HomeSharingServiceProtocol)?
+    var sharingErrorHandler: (any SharingErrorHandlerProtocol)?
 
     func application(
         _ application: UIApplication,
@@ -18,6 +22,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
         _ = launchOptions
         if homeSharingService == nil {
             homeSharingService = Self.makeHomeSharingService()
+        }
+        if sharingErrorHandler == nil {
+            sharingErrorHandler = Self.makeSharingErrorHandler()
         }
         return true
     }
@@ -42,6 +49,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
         if homeSharingService == nil {
             homeSharingService = Self.makeHomeSharingService()
         }
+        if sharingErrorHandler == nil {
+            sharingErrorHandler = Self.makeSharingErrorHandler()
+        }
 
         guard let homeSharingService else {
             DebugLogger.warning(
@@ -54,7 +64,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
             do {
                 try await homeSharingService.acceptShareInvitation(from: metadata)
             } catch {
-                DebugLogger.error("Failed to accept CloudKit share invitation: \(error)")
+                if let sharingErrorHandler {
+                    let presentation = sharingErrorHandler.handleShareAcceptanceFailure(error)
+                    DebugLogger.error(
+                        "Failed to accept CloudKit share invitation: \(error). Message: \(presentation.message)"
+                    )
+                } else {
+                    DebugLogger.error("Failed to accept CloudKit share invitation: \(error)")
+                }
             }
         }
     }

@@ -102,7 +102,7 @@ final class PersistenceController {
             switch participant.permission {
             case .readWrite:
                 return true
-            case .none, .readOnly:
+            case .none, .readOnly, .unknown:
                 return false
             @unknown default:
                 return false
@@ -117,6 +117,38 @@ final class PersistenceController {
             return [:]
         }
         return try persistentContainer.fetchShares(matching: objectIDs)
+    }
+
+    func resetStores() throws {
+        let coordinator = persistentContainer.persistentStoreCoordinator
+        let stores = coordinator.persistentStores
+
+        for store in stores {
+            guard let storeURL = store.url else { continue }
+            let options = persistentContainer.persistentStoreDescriptions.first {
+                $0.url?.standardizedFileURL == storeURL.standardizedFileURL
+            }?.options
+
+            try coordinator.remove(store)
+            try coordinator.destroyPersistentStore(
+                at: storeURL,
+                type: .sqlite,
+                options: options
+            )
+
+            removeSQLiteSidecarFiles(for: storeURL)
+        }
+
+        var loadError: Error?
+        persistentContainer.loadPersistentStores { _, error in
+            if let error {
+                loadError = error
+            }
+        }
+
+        if let loadError {
+            throw loadError
+        }
     }
 }
 
@@ -162,6 +194,15 @@ private extension PersistenceController {
         let normalizedExpectedURL = expectedURL.standardizedFileURL
         return persistentContainer.persistentStoreCoordinator.persistentStores.first { store in
             store.url?.standardizedFileURL == normalizedExpectedURL
+        }
+    }
+
+    func removeSQLiteSidecarFiles(for storeURL: URL) {
+        let path = storeURL.path
+        let sidecars = ["-wal", "-shm"]
+        for suffix in sidecars {
+            let sidecarURL = URL(fileURLWithPath: path + suffix)
+            try? FileManager.default.removeItem(at: sidecarURL)
         }
     }
 }
