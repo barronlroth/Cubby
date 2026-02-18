@@ -8,6 +8,8 @@
     <string>Allow Cubby to access your photo library so you can add existing photos of your items.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>CKSharingSupported</key>
+    <true/>
     <key>RevenueCatPublicApiKey</key>
     <string>$(REVENUECAT_PUBLIC_API_KEY)</string>
     <key>UIBackgroundModes</key>

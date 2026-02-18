@@ -14,8 +14,8 @@ protocol HomeSharingServiceProtocol {
 // Phase 1 should make PersistenceController conform to this.
 protocol CloudKitSharingPersistenceControlling: AnyObject {
     var persistentContainer: NSPersistentCloudKitContainer { get }
-    var privatePersistentStore: NSPersistentStore? { get }
-    var sharedPersistentStore: NSPersistentStore? { get }
+    func privatePersistentStore() -> NSPersistentStore?
+    func sharedPersistentStore() -> NSPersistentStore?
 }
 
 enum HomeSharingServiceError: Error, Equatable {
@@ -89,7 +89,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         }
 
-        if let privatePersistentStore = persistenceController.privatePersistentStore {
+        if let privatePersistentStore = persistenceController.privatePersistentStore() {
             try persistUpdatedShare(share, in: privatePersistentStore)
         }
 
@@ -133,7 +133,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
     }
 
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
-        guard let sharedPersistentStore = persistenceController.sharedPersistentStore else {
+        guard let sharedPersistentStore = persistenceController.sharedPersistentStore() else {
             throw HomeSharingServiceError.missingSharedPersistentStore
         }
 
@@ -213,3 +213,5 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 }
+
+extension PersistenceController: CloudKitSharingPersistenceControlling {}
