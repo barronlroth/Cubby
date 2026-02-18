@@ -14,8 +14,8 @@ protocol HomeSharingServiceProtocol {
 // Phase 1 should make PersistenceController conform to this.
 protocol CloudKitSharingPersistenceControlling: AnyObject {
     var persistentContainer: NSPersistentCloudKitContainer { get }
-    var privatePersistentStore: NSPersistentStore? { get }
-    var sharedPersistentStore: NSPersistentStore? { get }
+    func privatePersistentStore() -> NSPersistentStore?
+    func sharedPersistentStore() -> NSPersistentStore?
 }
 
 enum HomeSharingServiceError: Error, Equatable {
@@ -63,6 +63,53 @@ struct SharePermission: Equatable {
     }
 }
 
+extension HomeSharingServiceProtocol {
+    func permission(for home: Home) -> SharePermission {
+        guard let share = fetchShare(for: home),
+              let participant = share.currentUserParticipant else {
+            return SharePermission(role: .owner)
+        }
+
+        if participant.role == .owner {
+            return SharePermission(role: .owner)
+        }
+
+        if participant.permission == .readWrite {
+            return SharePermission(role: .readWriteParticipant)
+        }
+
+        return SharePermission(role: .readOnlyParticipant)
+    }
+
+    func canCreateLocations(in home: Home) -> Bool {
+        permission(for: home).canCreateLocations
+    }
+
+    func canDeleteLocations(in home: Home) -> Bool {
+        permission(for: home).canDeleteLocations
+    }
+
+    func canAddItems(in home: Home) -> Bool {
+        permission(for: home).canAddItems
+    }
+
+    func canEditItems(in home: Home) -> Bool {
+        permission(for: home).canEditItems
+    }
+
+    func canDeleteItems(in home: Home) -> Bool {
+        permission(for: home).canDeleteItems
+    }
+
+    func isOwnedByCurrentUser(_ home: Home) -> Bool {
+        permission(for: home).role == .owner
+    }
+
+    func isSharedWithCurrentUser(_ home: Home) -> Bool {
+        isShared(home) && !isOwnedByCurrentUser(home)
+    }
+}
+
 final class HomeSharingService: HomeSharingServiceProtocol {
     private let persistenceController: any CloudKitSharingPersistenceControlling
     let ckContainer: CKContainer
@@ -89,7 +136,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         }
 
-        if let privatePersistentStore = persistenceController.privatePersistentStore {
+        if let privatePersistentStore = persistenceController.privatePersistentStore() {
             try persistUpdatedShare(share, in: privatePersistentStore)
         }
 
@@ -133,7 +180,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
     }
 
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
-        guard let sharedPersistentStore = persistenceController.sharedPersistentStore else {
+        guard let sharedPersistentStore = persistenceController.sharedPersistentStore() else {
             throw HomeSharingServiceError.missingSharedPersistentStore
         }
 
@@ -213,3 +260,5 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 }
+
+extension PersistenceController: CloudKitSharingPersistenceControlling {}

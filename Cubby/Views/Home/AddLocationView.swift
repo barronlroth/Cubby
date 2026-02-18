@@ -6,13 +6,27 @@ struct AddLocationView: View {
     let parentLocation: StorageLocation?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @State private var locationName = ""
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var resolvedHome: Home?
     
     var body: some View {
         NavigationStack {
             Form {
+                if canCreateLocationsInHome == false {
+                    Section {
+                        Label(
+                            "You have read-only access to this shared home.",
+                            systemImage: "lock.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Location Details") {
                     TextField("Location Name", text: $locationName)
                         .textInputAutocapitalization(.words)
@@ -50,7 +64,7 @@ struct AddLocationView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveLocation() }
-                        .disabled(locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canCreateLocationsInHome)
                 }
             }
             .alert("Error", isPresented: $showingError) {
@@ -58,36 +72,26 @@ struct AddLocationView: View {
             } message: {
                 Text(errorMessage)
             }
+            .onAppear {
+                resolvedHome = fetchHomeForCurrentSelection()
+            }
         }
     }
     
     private func saveLocation() {
         print("🔍 AddLocationView.saveLocation - homeId: \(String(describing: homeId))")
-        
-        // First, try to get the home from the parent location if available
-        var home: Home?
-        
-        if let parentLocation {
-            home = parentLocation.home
-            print("🔍 AddLocationView - Got home from parent: \(String(describing: home?.name))")
-        } else if let homeId {
-            // Fetch the home directly from the model context
-            let descriptor = FetchDescriptor<Home>(
-                predicate: #Predicate { $0.id == homeId }
-            )
-            
-            do {
-                let homes = try modelContext.fetch(descriptor)
-                print("🔍 AddLocationView - Fetched \(homes.count) homes for ID: \(homeId)")
-                home = homes.first
-            } catch {
-                print("❌ AddLocationView - Fetch failed: \(error)")
-                errorMessage = "Failed to fetch home: \(error.localizedDescription)"
-                showingError = true
-                return
-            }
+
+        if resolvedHome == nil {
+            resolvedHome = fetchHomeForCurrentSelection()
         }
-        
+
+        guard canCreateLocationsInHome else {
+            errorMessage = "You have read-only access and can’t add locations in this shared home."
+            showingError = true
+            return
+        }
+
+        let home = resolvedHome
         guard let home else {
             print("❌ AddLocationView - No home found, homeId: \(String(describing: homeId))")
             errorMessage = "Unable to find the selected home. Please try again."
@@ -129,6 +133,36 @@ struct AddLocationView: View {
         } catch {
             errorMessage = "Failed to save location: \(error.localizedDescription)"
             showingError = true
+        }
+    }
+
+    private var canCreateLocationsInHome: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = resolvedHome ?? fetchHomeForCurrentSelection() else { return false }
+        guard let homeSharingService else { return true }
+        return homeSharingService.canCreateLocations(in: home)
+    }
+
+    private func fetchHomeForCurrentSelection() -> Home? {
+        if let parentLocation {
+            return parentLocation.home
+        }
+
+        guard let homeId else {
+            return nil
+        }
+
+        let descriptor = FetchDescriptor<Home>(
+            predicate: #Predicate { $0.id == homeId }
+        )
+
+        do {
+            let homes = try modelContext.fetch(descriptor)
+            print("🔍 AddLocationView - Fetched \(homes.count) homes for ID: \(homeId)")
+            return homes.first
+        } catch {
+            print("❌ AddLocationView - Fetch failed: \(error)")
+            return nil
         }
     }
     
