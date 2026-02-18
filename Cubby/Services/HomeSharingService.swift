@@ -204,7 +204,11 @@ final class HomeSharingService: HomeSharingServiceProtocol {
     }
 
     private func managedObject(for home: Home) -> NSManagedObject? {
-        (home as AnyObject) as? NSManagedObject
+        let context = persistenceController.persistentContainer.viewContext
+        let request = NSFetchRequest<NSManagedObject>(entityName: "CDHome")
+        request.predicate = NSPredicate(format: "id == %@", home.id as CVarArg)
+        request.fetchLimit = 1
+        return try? context.fetch(request).first
     }
 
     private func managedObjectID(for home: Home) -> NSManagedObjectID? {
