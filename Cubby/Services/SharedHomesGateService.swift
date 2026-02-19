@@ -58,7 +58,12 @@ private extension SharedHomesGateService {
             return value
         }
 
-        return arguments.contains(runtimeLaunchArgument)
+        if arguments.contains(runtimeLaunchArgument) {
+            return true
+        }
+
+        // Enabled by default when distribution flag is on
+        return true
     }
 
     static func resolveLocalOverride(
