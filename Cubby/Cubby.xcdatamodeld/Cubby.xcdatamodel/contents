@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="CDHome" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="modifiedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <relationship name="storageLocations" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CDStorageLocation" inverseName="home" inverseEntity="CDStorageLocation"/>
+    </entity>
+    <entity name="CDInventoryItem" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="emoji" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isPendingAiEmoji" optional="NO" attributeType="Boolean" usesScalarValueType="YES" defaultValueString="NO"/>
+        <attribute name="itemDescription" optional="YES" attributeType="String"/>
+        <attribute name="modifiedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="photoFileName" optional="YES" attributeType="String"/>
+        <attribute name="tags" optional="NO" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="NSArray"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <relationship name="storageLocation" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDStorageLocation" inverseName="items" inverseEntity="CDStorageLocation"/>
+    </entity>
+    <entity name="CDStorageLocation" representedClassName="NSManagedObject" syncable="YES">
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="depth" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="modifiedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <relationship name="childLocations" optional="YES" toMany="YES" deletionRule="Deny" destinationEntity="CDStorageLocation" inverseName="parentLocation" inverseEntity="CDStorageLocation"/>
+        <relationship name="home" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDHome" inverseName="storageLocations" inverseEntity="CDHome"/>
+        <relationship name="items" optional="YES" toMany="YES" deletionRule="Deny" destinationEntity="CDInventoryItem" inverseName="storageLocation" inverseEntity="CDInventoryItem"/>
+        <relationship name="parentLocation" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDStorageLocation" inverseName="childLocations" inverseEntity="CDStorageLocation"/>
+    </entity>
+    <elements>
+        <element name="CDHome" positionX="-63" positionY="-18" width="128" height="120"/>
+        <element name="CDInventoryItem" positionX="-63" positionY="198" width="128" height="195"/>
+        <element name="CDStorageLocation" positionX="180" positionY="-18" width="128" height="195"/>
+    </elements>
+</model>

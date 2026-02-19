@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import SwiftData
+import CloudKit
 
 struct LocationSection: Identifiable {
     let id: UUID
@@ -30,7 +31,11 @@ struct HomeView: View {
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
     @State private var showingProStatus = false
+    @State private var activeShareSheet: HomeShareSheetContext?
+    @State private var shareErrorMessage: String?
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     
     private var locationSections: [LocationSection] {
         let homeItems = allItems.filter { item in
@@ -84,6 +89,20 @@ struct HomeView: View {
         return result
     }
 
+    private var isSharedHomesEnabled: Bool {
+        sharedHomesGateService.isEnabled()
+    }
+
+    private var canShowShareButton: Bool {
+        guard isSharedHomesEnabled,
+              let selectedHome,
+              let homeSharingService else {
+            return false
+        }
+
+        return homeSharingService.isOwnedByCurrentUser(selectedHome)
+    }
+
     var body: some View {
         let sections = displayedSections
 
@@ -93,37 +112,90 @@ struct HomeView: View {
             .background(appBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingAddLocation) {
-            if let homeId = selectedHome?.id {
-                AddLocationView(homeId: homeId, parentLocation: nil)
+            .sheet(isPresented: $showingAddLocation) {
+                if let homeId = selectedHome?.id {
+                    AddLocationView(homeId: homeId, parentLocation: nil)
+                }
             }
-        }
-        .sheet(isPresented: $showingAddHome) {
-            AddHomeView(selectedHome: $selectedHome)
-        }
-        .sheet(isPresented: $showingProStatus) {
-            ProStatusView()
-        }
-        .sheet(isPresented: $showingAddItem) {
-            if let homeId = selectedHome?.id {
-                AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+            .sheet(isPresented: $showingAddHome) {
+                AddHomeView(selectedHome: $selectedHome)
             }
-        }
-        .onChange(of: selectedHome?.id) { _, _ in
-            searchText = ""
-        }
+            .sheet(isPresented: $showingProStatus) {
+                ProStatusView()
+            }
+            .sheet(isPresented: $showingAddItem) {
+                if let homeId = selectedHome?.id {
+                    AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+                }
+            }
+            .sheet(item: $activeShareSheet) { context in
+#if canImport(UIKit)
+                CloudSharingControllerRepresentable(
+                    share: context.share,
+                    container: shareContainer,
+                    title: context.title,
+                    onError: { error in
+                        shareErrorMessage = error.localizedDescription
+                    }
+                )
+#else
+                Text("Sharing is unavailable on this platform.")
+#endif
+            }
+            .alert(
+                "Share Home Error",
+                isPresented: Binding(
+                    get: { shareErrorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            shareErrorMessage = nil
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(shareErrorMessage ?? "Unable to share this home.")
+            }
+            .onChange(of: selectedHome?.id) { _, _ in
+                searchText = ""
+            }
     }
 
     // MARK: - Header
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HomePicker(
-                selectedHome: $selectedHome,
-                showingAddHome: $showingAddHome,
-                showingProStatus: $showingProStatus
-            )
+            HStack(spacing: 12) {
+                HomePicker(
+                    selectedHome: $selectedHome,
+                    showingAddHome: $showingAddHome,
+                    showingProStatus: $showingProStatus
+                )
                 .buttonStyle(.plain)
-                .padding(.top, 8)
+
+                Spacer(minLength: 8)
+
+                if canShowShareButton {
+                    Button(action: handleShareHomeTapped) {
+                        Label("Share Home", systemImage: "person.2.badge.plus")
+                            .labelStyle(.iconOnly)
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Share Home")
+                }
+            }
+            .padding(.top, 8)
+
+            if let selectedHome,
+               let homeSharingService,
+               isSharedHomesEnabled,
+               homeSharingService.isShared(selectedHome) {
+                SharedHomeStatusRow(
+                    isSharedWithYou: homeSharingService.isSharedWithCurrentUser(selectedHome),
+                    participantSummary: participantSummary(for: selectedHome)
+                )
+            }
         }
         .padding(.horizontal, 16)
     }
@@ -167,6 +239,72 @@ struct HomeView: View {
 
         return false
     }
+
+    private func handleShareHomeTapped() {
+        guard let selectedHome,
+              let homeSharingService else {
+            return
+        }
+
+        do {
+            let share = try homeSharingService.shareHome(selectedHome)
+            activeShareSheet = HomeShareSheetContext(
+                share: share,
+                title: selectedHome.name
+            )
+        } catch HomeSharingServiceError.homeAlreadyShared {
+            if let existingShare = homeSharingService.fetchShare(for: selectedHome) {
+                activeShareSheet = HomeShareSheetContext(
+                    share: existingShare,
+                    title: selectedHome.name
+                )
+            } else {
+                shareErrorMessage = "The home is already shared, but the share could not be loaded."
+            }
+        } catch {
+            shareErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func participantSummary(for home: Home) -> String? {
+        guard let homeSharingService else { return nil }
+
+        let participants = homeSharingService.participants(for: home)
+        guard !participants.isEmpty else { return "Shared" }
+
+        let participantNames = participants
+            .compactMap(formattedParticipantName(for:))
+            .filter { !$0.isEmpty }
+        if participantNames.isEmpty {
+            return "Shared with \(participants.count) people"
+        }
+
+        if participantNames.count <= 2 {
+            return "Shared with " + participantNames.joined(separator: ", ")
+        }
+
+        let leadingNames = participantNames.prefix(2).joined(separator: ", ")
+        let additionalCount = participantNames.count - 2
+        return "Shared with \(leadingNames) +\(additionalCount)"
+    }
+
+    private func formattedParticipantName(for participant: CKShare.Participant) -> String? {
+        guard let nameComponents = participant.userIdentity.nameComponents else {
+            return nil
+        }
+
+        let formatter = PersonNameComponentsFormatter()
+        formatter.style = .default
+        return formatter.string(from: nameComponents)
+    }
+
+    private var shareContainer: CKContainer {
+        if let concreteService = homeSharingService as? HomeSharingService {
+            return concreteService.ckContainer
+        }
+
+        return CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
     
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
@@ -208,6 +346,45 @@ struct HomeView: View {
     }
 }
 
+private struct HomeShareSheetContext: Identifiable {
+    let id = UUID()
+    let share: CKShare
+    let title: String
+}
+
+private struct SharedHomeStatusRow: View {
+    let isSharedWithYou: Bool
+    let participantSummary: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if isSharedWithYou {
+                Text("Shared with you")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.12))
+                    .foregroundStyle(.blue)
+                    .clipShape(Capsule())
+            } else {
+                Text("Shared")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12))
+                    .foregroundStyle(.secondary)
+                    .clipShape(Capsule())
+            }
+
+            if let participantSummary {
+                Text(participantSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 struct HomePicker: View {
     @Query private var homes: [Home]
     @Binding var selectedHome: Home?
@@ -216,13 +393,32 @@ struct HomePicker: View {
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @EnvironmentObject private var proAccessManager: ProAccessManager
     
     var body: some View {
         Menu {
             ForEach(homes) { home in
                 Button(action: { selectedHome = home }) {
-                    Label(home.name, systemImage: selectedHome?.id == home.id ? "checkmark" : "")
+                    HStack(spacing: 8) {
+                        Text(home.name)
+
+                        if let badgeText = shareBadgeText(for: home) {
+                            Text(badgeText)
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+
+                        Spacer()
+
+                        if selectedHome?.id == home.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
                 }
             }
             Divider()
@@ -258,6 +454,20 @@ struct HomePicker: View {
             return
         }
         showingAddHome = true
+    }
+
+    private func shareBadgeText(for home: Home) -> String? {
+        guard sharedHomesGateService.isEnabled(),
+              let homeSharingService,
+              homeSharingService.isShared(home) else {
+            return nil
+        }
+
+        if homeSharingService.isSharedWithCurrentUser(home) {
+            return "Shared with you"
+        }
+
+        return "Shared"
     }
 }
 

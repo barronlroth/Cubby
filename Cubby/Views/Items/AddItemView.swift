@@ -9,6 +9,8 @@ struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @EnvironmentObject private var proAccessManager: ProAccessManager
     
     @State private var title = ""
@@ -31,6 +33,17 @@ struct AddItemView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if canAddItemsToSelectedHome == false {
+                    Section {
+                        Label(
+                            "You have read-only access to this shared home.",
+                            systemImage: "lock.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Item Details") {
                     TextField("Title", text: $title)
                         .textInputAutocapitalization(.words)
@@ -130,7 +143,7 @@ struct AddItemView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await saveItem() } }
-                        .disabled(title.isEmpty || selectedLocation == nil || isSaving)
+                        .disabled(title.isEmpty || selectedLocation == nil || isSaving || !canAddItemsToSelectedHome)
                 }
             }
             .alert("Cubby Pro Required", isPresented: $showingGateAlert) {
@@ -183,7 +196,7 @@ struct AddItemView: View {
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 await MainActor.run { titleIsFocused = true }
             }
-            .disabled(isSaving)
+            .disabled(isSaving || !canAddItemsToSelectedHome)
             .overlay {
                 if isSaving {
                     Color.black.opacity(0.3)
@@ -208,6 +221,8 @@ struct AddItemView: View {
     }
 
     private func saveItem() async {
+        guard canAddItemsToSelectedHome else { return }
+
         let gate = FeatureGate.canCreateItem(homeId: selectedHomeId, modelContext: modelContext, isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
             DebugLogger.info("FeatureGate denied item creation: \(gate.reason?.description ?? "unknown")")
@@ -293,6 +308,15 @@ struct AddItemView: View {
     }
     
     @Environment(\.colorScheme) private var colorScheme
+
+    private var canAddItemsToSelectedHome: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard selectedHomeId != nil else { return true }
+        guard let selectedHome else { return false }
+        guard let homeSharingService else { return true }
+        return homeSharingService.canAddItems(in: selectedHome)
+    }
+
     private var appBackground: Color {
         if colorScheme == .light, UIColor(named: "AppBackground") != nil {
             return Color("AppBackground")
