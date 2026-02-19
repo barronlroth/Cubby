@@ -49,7 +49,12 @@ struct FeatureGate {
             }
         }
 
-        return arguments.contains(useCoreDataSharingStackLaunchArgument)
+        if arguments.contains(useCoreDataSharingStackLaunchArgument) {
+            return true
+        }
+
+        // Core Data sharing stack enabled by default
+        return true
     }
 
     static func canCreateHome(modelContext: ModelContext, isPro: Bool) -> GateResult {
