@@ -99,7 +99,7 @@ struct ProStatusView: View {
                 await proAccessManager.refresh()
             }
             .sheet(isPresented: $showingPaywall) {
-                ProPaywallSheetView(context: PaywallContext(reason: .overLimit))
+                ProPaywallSheetView(context: PaywallContext(reason: .manualUpgrade))
                     .environmentObject(proAccessManager)
             }
         }

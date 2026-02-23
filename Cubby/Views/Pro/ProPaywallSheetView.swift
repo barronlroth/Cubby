@@ -164,6 +164,8 @@ struct ProPaywallSheetView: View {
             "Add More Items with Cubby Pro"
         case .overLimit:
             "Upgrade to Keep Creating"
+        case .manualUpgrade:
+            "Upgrade to Cubby Pro"
         }
     }
 
@@ -175,6 +177,8 @@ struct ProPaywallSheetView: View {
             "Free includes up to 10 items. Pro unlocks unlimited items."
         case .overLimit:
             "You’re over the Free limit. Upgrade to Pro or delete down to continue creating."
+        case .manualUpgrade:
+            "Unlock unlimited homes and items with Cubby Pro."
         }
     }
 }
