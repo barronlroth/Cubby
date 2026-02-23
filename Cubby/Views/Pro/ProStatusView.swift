@@ -1,4 +1,3 @@
-import RevenueCatUI
 import StoreKit
 import SwiftUI
 
@@ -72,7 +71,7 @@ struct ProStatusView: View {
 
                 Section("Legal") {
                     Button {
-                        if let url = URL(string: "https://alfred.barronroth.com/cubby/terms") {
+                        if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                             openURL(url)
                         }
                     } label: {
@@ -100,7 +99,8 @@ struct ProStatusView: View {
                 await proAccessManager.refresh()
             }
             .sheet(isPresented: $showingPaywall) {
-                PaywallView(displayCloseButton: true)
+                ProPaywallSheetView(context: PaywallContext(reason: .overLimit))
+                    .environmentObject(proAccessManager)
             }
         }
     }

@@ -1,5 +1,5 @@
+import RevenueCat
 import RevenueCatUI
-import StoreKit
 import SwiftUI
 
 struct ProPaywallSheetView: View {
@@ -53,6 +53,8 @@ struct ProPaywallSheetView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                 }
+
+                complianceSection
             }
             .padding(.vertical, 16)
             .toolbar {
@@ -90,6 +92,70 @@ struct ProPaywallSheetView: View {
         .padding(.horizontal, 16)
     }
 
+    private var complianceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Subscription Information")
+                .font(.headline)
+
+            if subscriptionDetails.isEmpty {
+                Text("Subscription title, length, and price are shown in the purchase options above.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(subscriptionDetails, id: \.self) { detail in
+                    Text("• \(detail)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period. Manage or cancel in your App Store account settings.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 16) {
+                if let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+                    Link("Terms of Use (EULA)", destination: termsURL)
+                }
+                if let privacyURL = URL(string: "https://alfred.barronroth.com/cubby/privacy") {
+                    Link("Privacy Policy", destination: privacyURL)
+                }
+            }
+            .font(.footnote)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+    }
+
+    private var subscriptionDetails: [String] {
+        proAccessManager.availablePackages
+            .filter { $0.storeProduct.productCategory == .subscription }
+            .map { package in
+                let product = package.storeProduct
+                let title = product.localizedTitle.isEmpty ? package.identifier : product.localizedTitle
+                return "\(title): \(product.localizedPriceString) every \(subscriptionLengthDescription(product.subscriptionPeriod))"
+            }
+    }
+
+    private func subscriptionLengthDescription(_ period: SubscriptionPeriod?) -> String {
+        guard let period else { return "period" }
+        let unit: String
+        switch period.unit {
+        case .day:
+            unit = period.value == 1 ? "day" : "days"
+        case .week:
+            unit = period.value == 1 ? "week" : "weeks"
+        case .month:
+            unit = period.value == 1 ? "month" : "months"
+        case .year:
+            unit = period.value == 1 ? "year" : "years"
+        @unknown default:
+            unit = "period"
+        }
+        return "\(period.value) \(unit)"
+    }
+
     private var title: String {
         switch context.reason {
         case .homeLimitReached:
@@ -112,4 +178,3 @@ struct ProPaywallSheetView: View {
         }
     }
 }
-
