@@ -36,7 +36,10 @@ struct ItemDetailView: View {
                         ItemDetailHeader(
                             item: item,
                             badgeSize: headerBadgeSize,
-                            emojiSize: headerEmojiSize
+                            emojiSize: headerEmojiSize,
+                            onEmojiTap: {
+                                presentedSheet = .emoji
+                            }
                         )
 
                         if item.photoFileName != nil {
@@ -122,6 +125,10 @@ struct ItemDetailView: View {
                         )
                     case .edit:
                         ItemEditView(itemId: itemId)
+                    case .emoji:
+                        EmojiSelectionView(selectedEmoji: item.emoji ?? EmojiPicker.emoji(for: item.id)) { emoji in
+                            applyManualEmoji(emoji)
+                        }
                     }
                 }
                 .task(id: item.photoFileName) {
@@ -192,6 +199,22 @@ struct ItemDetailView: View {
         }
     }
 
+    private func applyManualEmoji(_ emoji: String) {
+        guard let item else { return }
+        guard item.emoji != emoji || item.isPendingAiEmoji else { return }
+
+        item.emoji = emoji
+        item.isPendingAiEmoji = false
+        item.modifiedAt = Date()
+
+        do {
+            try modelContext.save()
+        } catch {
+            DebugLogger.error("ItemDetailView - Failed to save manual emoji: \(error)")
+            userFacingError = .persistence(action: "save emoji", error: error)
+        }
+    }
+
     private func deleteItem() {
         guard let item else { return }
         undoManager.recordDeletion(item: item)
@@ -241,11 +264,13 @@ struct ItemDetailView: View {
 private enum PresentedSheet: Identifiable {
     case move
     case edit
+    case emoji
 
     var id: Int {
         switch self {
         case .move: 1
         case .edit: 2
+        case .emoji: 3
         }
     }
 }
@@ -254,15 +279,27 @@ private struct ItemDetailHeader: View {
     let item: InventoryItem
     let badgeSize: CGFloat
     let emojiSize: CGFloat
+    let onEmojiTap: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(iconBackground)
-                    .frame(width: badgeSize, height: badgeSize)
-                SlotMachineEmojiView(item: item, fontSize: emojiSize)
+            Button(action: onEmojiTap) {
+                ZStack {
+                    Circle()
+                        .fill(iconBackground)
+                        .frame(width: badgeSize, height: badgeSize)
+                    SlotMachineEmojiView(item: item, fontSize: emojiSize)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, Color.accentColor)
+                        .offset(x: 4, y: 4)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Change emoji")
+            .accessibilityHint("Opens emoji picker for this item.")
 
             Text(item.title)
                 .font(CubbyTypography.itemTitleSerif)
