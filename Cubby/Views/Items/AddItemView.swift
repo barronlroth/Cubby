@@ -281,18 +281,21 @@ struct AddItemView: View {
         do {
             try modelContext.save()
             LastUsedLocationService.remember(location: selectedLocation)
-            if let pid = newItem.persistentModelID as? PersistentIdentifier {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: pid,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
-            } else {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: newItem.persistentModelID,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
+            // Only run AI emoji enhancement if user didn't manually pick one
+            if selectedEmoji == nil {
+                if let pid = newItem.persistentModelID as? PersistentIdentifier {
+                    EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                        for: pid,
+                        title: newItem.title,
+                        modelContext: modelContext
+                    )
+                } else {
+                    EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                        for: newItem.persistentModelID,
+                        title: newItem.title,
+                        modelContext: modelContext
+                    )
+                }
             }
             dismiss()
         } catch {
