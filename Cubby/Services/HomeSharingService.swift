@@ -5,6 +5,7 @@ import Foundation
 protocol HomeSharingServiceProtocol {
     func shareHome(_ home: Home) throws -> CKShare
     func fetchShare(for home: Home) -> CKShare?
+    func permission(for home: Home) -> SharePermission
     func canEdit(_ home: Home) -> Bool
     func isShared(_ home: Home) -> Bool
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
@@ -23,6 +24,69 @@ enum HomeSharingServiceError: Error, Equatable {
     case unsupportedHomeModel
     case shareCreationFailed
     case missingSharedPersistentStore
+}
+
+enum DebugMockSharingMode: Equatable, CustomStringConvertible {
+    case disabled
+    case owner
+    case readWriteParticipant
+    case readOnlyParticipant
+    case mixed
+
+    static let launchArgument = "MOCK_SHARED_HOMES"
+    static let ownerLaunchArgument = "MOCK_SHARED_HOMES_OWNER"
+    static let readWriteLaunchArgument = "MOCK_SHARED_HOMES_READ_WRITE"
+    static let readOnlyLaunchArgument = "MOCK_SHARED_HOMES_READ_ONLY"
+    static let mixedLaunchArgument = "MOCK_SHARED_HOMES_MIXED"
+    static let environmentKey = "MOCK_SHARED_HOMES"
+
+    var isEnabled: Bool {
+        self != .disabled
+    }
+
+    var description: String {
+        switch self {
+        case .disabled: "disabled"
+        case .owner: "owner"
+        case .readWriteParticipant: "readWriteParticipant"
+        case .readOnlyParticipant: "readOnlyParticipant"
+        case .mixed: "mixed"
+        }
+    }
+
+    static func resolve(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> DebugMockSharingMode {
+        if arguments.contains(ownerLaunchArgument) { return .owner }
+        if arguments.contains(readWriteLaunchArgument) { return .readWriteParticipant }
+        if arguments.contains(readOnlyLaunchArgument) { return .readOnlyParticipant }
+        if arguments.contains(mixedLaunchArgument) { return .mixed }
+        if arguments.contains(launchArgument) { return .mixed }
+
+        if let rawValue = environment[environmentKey] {
+            return parse(rawValue) ?? .disabled
+        }
+
+        return .disabled
+    }
+
+    private static func parse(_ rawValue: String) -> DebugMockSharingMode? {
+        switch rawValue.lowercased() {
+        case "0", "false", "off", "no", "n", "disabled", "none":
+            .disabled
+        case "owner":
+            .owner
+        case "readwrite", "read_write", "rw", "participant", "participant_rw":
+            .readWriteParticipant
+        case "readonly", "read_only", "ro", "participant_ro":
+            .readOnlyParticipant
+        case "1", "true", "on", "yes", "y", "enabled", "mixed":
+            .mixed
+        default:
+            nil
+        }
+    }
 }
 
 struct SharePermission: Equatable {
@@ -107,6 +171,74 @@ extension HomeSharingServiceProtocol {
 
     func isSharedWithCurrentUser(_ home: Home) -> Bool {
         isShared(home) && !isOwnedByCurrentUser(home)
+    }
+}
+
+final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
+    private let mode: DebugMockSharingMode
+
+    init(mode: DebugMockSharingMode) {
+        self.mode = mode
+    }
+
+    func shareHome(_ home: Home) throws -> CKShare {
+        makeShare(for: home)
+    }
+
+    func fetchShare(for home: Home) -> CKShare? {
+        guard mode.isEnabled else { return nil }
+        return makeShare(for: home)
+    }
+
+    func permission(for home: Home) -> SharePermission {
+        SharePermission(role: role(for: home))
+    }
+
+    func canEdit(_ home: Home) -> Bool {
+        permission(for: home).canMutate
+    }
+
+    func isShared(_ home: Home) -> Bool {
+        _ = home
+        return mode.isEnabled
+    }
+
+    func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
+        _ = metadata
+    }
+
+    func participants(for home: Home) -> [CKShare.Participant] {
+        _ = home
+        return []
+    }
+}
+
+private extension DebugMockHomeSharingService {
+    func role(for home: Home) -> SharePermission.Role {
+        switch mode {
+        case .disabled, .owner:
+            return .owner
+        case .readWriteParticipant:
+            return .readWriteParticipant
+        case .readOnlyParticipant:
+            return .readOnlyParticipant
+        case .mixed:
+            // Makes seeded "Main Home" behave as owner and the rest as collaborators.
+            if home.name.localizedCaseInsensitiveContains("main") {
+                return .owner
+            }
+            return .readWriteParticipant
+        }
+    }
+
+    func makeShare(for home: Home) -> CKShare {
+        let rootRecord = CKRecord(recordType: "CDHome")
+        rootRecord["id"] = home.id.uuidString as CKRecordValue
+        let share = CKShare(rootRecord: rootRecord)
+        if home.name.isEmpty == false {
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        }
+        return share
     }
 }
 

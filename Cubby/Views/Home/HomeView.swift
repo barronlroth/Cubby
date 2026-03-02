@@ -36,6 +36,7 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.homeSharingService) private var homeSharingService
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
+    private let debugMockSharingMode = DebugMockSharingMode.resolve()
     
     private var locationSections: [LocationSection] {
         let homeItems = allItems.filter { item in
@@ -93,6 +94,10 @@ struct HomeView: View {
         sharedHomesGateService.isEnabled()
     }
 
+    private var isMockSharingModeEnabled: Bool {
+        debugMockSharingMode.isEnabled
+    }
+
     private var canShowShareButton: Bool {
         guard isSharedHomesEnabled,
               let selectedHome,
@@ -130,14 +135,18 @@ struct HomeView: View {
             }
             .sheet(item: $activeShareSheet) { context in
 #if canImport(UIKit)
-                CloudSharingControllerRepresentable(
-                    share: context.share,
-                    container: shareContainer,
-                    title: context.title,
-                    onError: { error in
-                        shareErrorMessage = error.localizedDescription
-                    }
-                )
+                if isMockSharingModeEnabled {
+                    MockSharePreviewSheet(title: context.title)
+                } else {
+                    CloudSharingControllerRepresentable(
+                        share: context.share,
+                        container: shareContainer,
+                        title: context.title,
+                        onError: { error in
+                            shareErrorMessage = error.localizedDescription
+                        }
+                    )
+                }
 #else
                 Text("Sharing is unavailable on this platform.")
 #endif
@@ -246,6 +255,15 @@ struct HomeView: View {
             return
         }
 
+        if isMockSharingModeEnabled {
+            let share = makeMockShare(for: selectedHome)
+            activeShareSheet = HomeShareSheetContext(
+                share: share,
+                title: selectedHome.name
+            )
+            return
+        }
+
         do {
             let share = try homeSharingService.shareHome(selectedHome)
             activeShareSheet = HomeShareSheetContext(
@@ -270,7 +288,7 @@ struct HomeView: View {
         guard let homeSharingService else { return nil }
 
         let participants = homeSharingService.participants(for: home)
-        guard !participants.isEmpty else { return "Shared" }
+        guard !participants.isEmpty else { return nil }
 
         let participantNames = participants
             .compactMap(formattedParticipantName(for:))
@@ -304,6 +322,16 @@ struct HomeView: View {
         }
 
         return CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
+
+    private func makeMockShare(for home: Home) -> CKShare {
+        let rootRecord = CKRecord(recordType: "CDHome")
+        rootRecord["id"] = home.id.uuidString as CKRecordValue
+        let share = CKShare(rootRecord: rootRecord)
+        if home.name.isEmpty == false {
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        }
+        return share
     }
     
     @ViewBuilder
@@ -351,6 +379,35 @@ private struct HomeShareSheetContext: Identifiable {
     let share: CKShare
     let title: String
 }
+
+#if canImport(UIKit)
+private struct MockSharePreviewSheet: View {
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Mock Share Preview")
+                    .font(.headline)
+                Text("Home: \(title)")
+                Text("This is a UX-only mock. Real invite/accept flow requires iCloud + CloudKit sharing.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Share Home")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+#endif
 
 private struct SharedHomeStatusRow: View {
     let isSharedWithYou: Bool

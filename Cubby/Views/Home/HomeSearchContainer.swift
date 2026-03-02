@@ -15,6 +15,12 @@ struct HomeSearchContainer: View {
 
     init(cloudKitSettings: CloudKitSyncSettings) {
         self.cloudKitSettings = cloudKitSettings
+        let args = ProcessInfo.processInfo.arguments
+        let environment = ProcessInfo.processInfo.environment
+        let mockSharingMode = DebugMockSharingMode.resolve(
+            arguments: args,
+            environment: environment
+        )
         _cloudSyncCoordinator = StateObject(
             wrappedValue: CloudSyncCoordinator(
                 isCloudKitEnabled: cloudKitSettings.usesCloudKit
@@ -23,10 +29,28 @@ struct HomeSearchContainer: View {
             )
         )
 
-        let resolvedSharedHomesGateService: any SharedHomesGateServiceProtocol = SharedHomesGateService()
+        let resolvedSharedHomesGateService: any SharedHomesGateServiceProtocol
+        if mockSharingMode.isEnabled {
+            resolvedSharedHomesGateService = SharedHomesGateService(
+                arguments: args,
+                environment: environment,
+                distributionEnabled: true,
+                runtimeOverride: true,
+                localOverride: true,
+                allowLocalOverride: true
+            )
+            DebugLogger.warning("Running with debug mock sharing mode: \(mockSharingMode)")
+        } else {
+            resolvedSharedHomesGateService = SharedHomesGateService(
+                arguments: args,
+                environment: environment
+            )
+        }
         self.sharedHomesGateService = resolvedSharedHomesGateService
 
-        if resolvedSharedHomesGateService.isEnabled(),
+        if mockSharingMode.isEnabled {
+            self.homeSharingService = DebugMockHomeSharingService(mode: mockSharingMode)
+        } else if resolvedSharedHomesGateService.isEnabled(),
            PersistenceController.isCoreDataSharingStackEnabled {
             let service = HomeSharingService(persistenceController: PersistenceController.shared)
             self.homeSharingService = service

@@ -13,10 +13,10 @@ class StorageLocation {
     
     var parentLocation: StorageLocation?
     
-    @Relationship(deleteRule: .deny, inverse: \StorageLocation.parentLocation)
+    @Relationship(deleteRule: .nullify, inverse: \StorageLocation.parentLocation)
     var childLocations: [StorageLocation]? = []
     
-    @Relationship(deleteRule: .deny, inverse: \InventoryItem.storageLocation)
+    @Relationship(deleteRule: .nullify, inverse: \InventoryItem.storageLocation)
     var items: [InventoryItem]? = []
     
     var fullPath: String {

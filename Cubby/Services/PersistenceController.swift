@@ -158,10 +158,13 @@ private extension PersistenceController {
     }
 
     static func loadManagedObjectModel() throws -> NSManagedObjectModel {
-        let bundles = [Bundle.main, Bundle(for: PersistenceController.self)] + Bundle.allBundles + Bundle.allFrameworks
-        if let model = NSManagedObjectModel.mergedModel(from: bundles),
-           model.entitiesByName["CDHome"] != nil {
-            return model
+        let candidateBundles = [Bundle.main, Bundle(for: PersistenceController.self)]
+        for bundle in candidateBundles {
+            if let modelURL = bundle.url(forResource: Self.modelName, withExtension: "momd"),
+               let model = NSManagedObjectModel(contentsOf: modelURL),
+               model.entitiesByName["CDHome"] != nil {
+                return model
+            }
         }
 
         throw NSError(
