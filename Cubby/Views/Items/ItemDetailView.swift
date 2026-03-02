@@ -7,6 +7,8 @@ struct ItemDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @StateObject private var undoManager = UndoManager.shared
 
     @State private var presentedSheet: PresentedSheet?
@@ -67,33 +69,35 @@ struct ItemDetailView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button {
-                                beginMove()
-                            } label: {
-                                Label("Move Item", systemImage: "shippingbox")
-                            }
+                    if canMutateItem {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Button {
+                                    beginMove()
+                                } label: {
+                                    Label("Move Item", systemImage: "shippingbox")
+                                }
 
-                            Button {
-                                presentedSheet = .edit
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
+                                Button {
+                                    presentedSheet = .edit
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
 
-                            Divider()
+                                Divider()
 
-                            Button(role: .destructive) {
-                                showingDeleteConfirmation = true
+                                Button(role: .destructive) {
+                                    showingDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Image(systemName: "ellipsis")
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(.rect)
+                                    .accessibilityLabel("More actions")
+                                    .accessibilityHint("Move, edit, or delete this item.")
                             }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(.rect)
-                                .accessibilityLabel("More actions")
-                                .accessibilityHint("Move, edit, or delete this item.")
                         }
                     }
                 }
@@ -154,6 +158,13 @@ struct ItemDetailView: View {
 
     private var item: InventoryItem? { items.first }
 
+    private var canMutateItem: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = item?.storageLocation?.home else { return true }
+        guard let homeSharingService else { return true }
+        return homeSharingService.canEditItems(in: home)
+    }
+
     private var descriptionText: String? {
         guard let item else { return nil }
         guard let raw = item.itemDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -170,6 +181,7 @@ struct ItemDetailView: View {
     }
 
     private func beginMove() {
+        guard canMutateItem else { return }
         guard let item else { return }
         pendingMoveLocation = item.storageLocation
         pendingMoveHomeId = item.storageLocation?.home?.id
@@ -177,6 +189,7 @@ struct ItemDetailView: View {
     }
 
     private func commitMoveIfNeeded() {
+        guard canMutateItem else { return }
         guard let item else { return }
         guard let pendingMoveLocation else { return }
         guard pendingMoveLocation.id != item.storageLocation?.id else { return }
@@ -193,6 +206,7 @@ struct ItemDetailView: View {
     }
 
     private func deleteItem() {
+        guard canMutateItem else { return }
         guard let item else { return }
         undoManager.recordDeletion(item: item)
         modelContext.delete(item)

@@ -7,6 +7,8 @@ struct ItemEditView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
 
     @State private var title = ""
     @State private var itemDescription = ""
@@ -79,12 +81,22 @@ struct ItemEditView: View {
 
     private func editForm(for item: InventoryItem) -> some View {
         Form {
+            if canEditCurrentItem == false {
+                Section {
+                    Label(
+                        "You have read-only access to this shared home.",
+                        systemImage: "lock.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+            }
             titleSection
             descriptionSection
             photoSection
             tagsSection
         }
-        .disabled(isSaving)
+        .disabled(isSaving || !canEditCurrentItem)
         .overlay {
             if isSaving {
                 ProgressView("Saving…")
@@ -104,7 +116,7 @@ struct ItemEditView: View {
                     Task { await saveEdits(for: item) }
                 }
                 .fontWeight(.semibold)
-                .disabled(!canSave)
+                .disabled(!canSave || !canEditCurrentItem)
             }
         }
     }
@@ -208,9 +220,17 @@ struct ItemEditView: View {
 
     private var canSave: Bool {
         guard !isSaving else { return false }
+        guard canEditCurrentItem else { return false }
         if case .failure = titleValidation { return false }
         if case .failure = descriptionValidation { return false }
         return item != nil
+    }
+
+    private var canEditCurrentItem: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = item?.storageLocation?.home else { return true }
+        guard let homeSharingService else { return true }
+        return homeSharingService.canEditItems(in: home)
     }
 
     private var previewPhoto: UIImage? {
@@ -281,6 +301,7 @@ struct ItemEditView: View {
     }
 
     private func saveEdits(for item: InventoryItem) async {
+        guard canEditCurrentItem else { return }
         guard canSave else { return }
 
         isSaving = true

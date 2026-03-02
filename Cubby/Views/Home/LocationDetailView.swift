@@ -8,6 +8,8 @@ struct LocationDetailView: View {
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.homeSharingService) private var homeSharingService
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @EnvironmentObject private var proAccessManager: ProAccessManager
     
     private var items: [InventoryItem] {
@@ -16,6 +18,13 @@ struct LocationDetailView: View {
     
     private var childLocations: [StorageLocation] {
         location.childLocations ?? []
+    }
+
+    private var canMutateLocation: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = location.home else { return true }
+        guard let homeSharingService else { return true }
+        return homeSharingService.canEdit(home)
     }
     
     var body: some View {
@@ -28,7 +37,7 @@ struct LocationDetailView: View {
                             Text("Nested Locations")
                                 .font(.headline)
                             Spacer()
-                            if location.depth < StorageLocation.maxNestingDepth {
+                            if canMutateLocation, location.depth < StorageLocation.maxNestingDepth {
                                 Button(action: { showingAddLocation = true }) {
                                     Image(systemName: "plus.circle.fill")
                                         .foregroundStyle(.tint)
@@ -98,18 +107,20 @@ struct LocationDetailView: View {
         .navigationTitle(location.name)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(action: handleAddItemTapped) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                    if location.depth < StorageLocation.maxNestingDepth {
-                        Button(action: { showingAddLocation = true }) {
-                            Label("Add Nested Location", systemImage: "folder.badge.plus")
+            if canMutateLocation {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button(action: handleAddItemTapped) {
+                            Label("Add Item", systemImage: "plus")
                         }
+                        if location.depth < StorageLocation.maxNestingDepth {
+                            Button(action: { showingAddLocation = true }) {
+                                Label("Add Nested Location", systemImage: "folder.badge.plus")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "plus")
                     }
-                } label: {
-                    Image(systemName: "plus")
                 }
             }
         }
@@ -135,6 +146,7 @@ struct LocationDetailView: View {
     }
 
     private func handleAddItemTapped() {
+        guard canMutateLocation else { return }
         let gate = FeatureGate.canCreateItem(
             homeId: location.home?.id,
             modelContext: modelContext,
