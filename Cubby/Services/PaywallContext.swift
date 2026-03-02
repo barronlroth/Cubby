@@ -6,6 +6,7 @@ struct PaywallContext: Identifiable, Equatable {
         case homeLimitReached
         case itemLimitReached
         case overLimit
+        case manualUpgrade
     }
 
     let id = UUID()
@@ -22,4 +23,3 @@ extension EnvironmentValues {
         set { self[ActivePaywallKey.self] = newValue }
     }
 }
-

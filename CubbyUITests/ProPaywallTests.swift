@@ -33,5 +33,24 @@ final class ProPaywallTests: XCTestCase {
         }
 
         XCTAssertTrue(paywallTitle.exists)
+
+        let termsLink = app.buttons["Terms of Use (EULA)"]
+        let privacyLink = app.buttons["Privacy Policy"]
+        if !termsLink.exists || !privacyLink.exists {
+            app.swipeUp()
+        }
+
+        XCTAssertTrue(termsLink.waitForExistence(timeout: 10))
+        XCTAssertTrue(privacyLink.waitForExistence(timeout: 10))
+
+        let paywallScreenshot = XCTAttachment(screenshot: app.screenshot())
+        paywallScreenshot.name = "Paywall shown"
+        paywallScreenshot.lifetime = .keepAlways
+        add(paywallScreenshot)
+
+        let fullScreenPaywallScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        fullScreenPaywallScreenshot.name = "Paywall shown full screen"
+        fullScreenPaywallScreenshot.lifetime = .keepAlways
+        add(fullScreenPaywallScreenshot)
     }
 }

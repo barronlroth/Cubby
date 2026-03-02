@@ -288,6 +288,8 @@ struct AddItemView: View {
             "You’re over the Free limit. Upgrade to Pro or delete down to continue creating."
         case .homeLimitReached:
             "Upgrade to Cubby Pro to add more."
+        case .manualUpgrade:
+            "Upgrade to Cubby Pro to unlock unlimited homes and items."
         }
     }
 
