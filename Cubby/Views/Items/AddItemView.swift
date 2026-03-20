@@ -16,6 +16,7 @@ struct AddItemView: View {
     @State private var selectedLocation: StorageLocation?
     @State private var selectedImage: UIImage?
     @State private var showingLocationPicker = false
+    @State private var showingEmojiPicker = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
     @State private var cameraUnavailableAlert = false
@@ -27,6 +28,7 @@ struct AddItemView: View {
     @FocusState private var titleIsFocused: Bool
     @State private var showingGateAlert = false
     @State private var gatePaywallReason: PaywallContext.Reason = .itemLimitReached
+    @State private var selectedEmoji: String?
     
     var body: some View {
         NavigationStack {
@@ -65,6 +67,30 @@ struct AddItemView: View {
                         }
                     }
                     .foregroundColor(.primary)
+                }
+
+                Section("Emoji") {
+                    Button(action: { showingEmojiPicker = true }) {
+                        HStack(spacing: 12) {
+                            Text("Item Emoji")
+                            Spacer()
+                            if let selectedEmoji {
+                                Text(selectedEmoji)
+                                    .font(.system(size: 28))
+                                    .padding(6)
+                                    .background(.thinMaterial)
+                                    .clipShape(Circle())
+                            } else {
+                                Label("Auto", systemImage: "sparkles")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
                 }
                 
                 Section("Tags") {
@@ -147,6 +173,11 @@ struct AddItemView: View {
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
+            .sheet(isPresented: $showingEmojiPicker) {
+                EmojiSelectionView(selectedEmoji: selectedEmoji) { emoji in
+                    selectedEmoji = emoji
+                }
+            }
             .sheet(isPresented: $showingCamera) {
                 ImagePicker(selectedImage: $selectedImage, sourceType: .camera)
             }
@@ -226,8 +257,13 @@ struct AddItemView: View {
             storageLocation: selectedLocation
         )
         newItem.tagsSet = tags
-        newItem.emoji = EmojiPicker.emoji(for: newItem.id)
-        if FoundationModelEmojiService.isSupported {
+        if let selectedEmoji {
+            newItem.emoji = selectedEmoji
+            newItem.isPendingAiEmoji = false
+        } else {
+            newItem.emoji = EmojiPicker.emoji(for: newItem.id)
+        }
+        if selectedEmoji == nil, FoundationModelEmojiService.isSupported {
             newItem.isPendingAiEmoji = true
         }
         
@@ -245,18 +281,21 @@ struct AddItemView: View {
         do {
             try modelContext.save()
             LastUsedLocationService.remember(location: selectedLocation)
-            if let pid = newItem.persistentModelID as? PersistentIdentifier {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: pid,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
-            } else {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: newItem.persistentModelID,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
+            // Only run AI emoji enhancement if user didn't manually pick one
+            if selectedEmoji == nil {
+                if let pid = newItem.persistentModelID as? PersistentIdentifier {
+                    EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                        for: pid,
+                        title: newItem.title,
+                        modelContext: modelContext
+                    )
+                } else {
+                    EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                        for: newItem.persistentModelID,
+                        title: newItem.title,
+                        modelContext: modelContext
+                    )
+                }
             }
             dismiss()
         } catch {
