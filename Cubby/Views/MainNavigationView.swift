@@ -16,7 +16,6 @@ struct MainNavigationView: View {
     @Environment(\.dismissSearch) private var dismissSearch
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
     
     var body: some View {
@@ -60,9 +59,7 @@ struct MainNavigationView: View {
         }
         .toolbar { toolbarContent }
         .overlay(alignment: .topTrailing) {
-            VStack(alignment: .trailing, spacing: 8) {
-                CloudSyncStatusChip()
-
+            Group {
                 if undoManager.canUndo {
                     HStack(spacing: 4) {
                         Button(action: performUndo) {
@@ -82,7 +79,7 @@ struct MainNavigationView: View {
                             .foregroundColor(.white)
                             .clipShape(Capsule())
                         }
-                        
+
                         Button(action: { undoManager.dismissUndo() }) {
                             Image(systemName: "xmark")
                                 .font(.caption)
@@ -93,9 +90,9 @@ struct MainNavigationView: View {
                         }
                     }
                     .transition(.scale.combined(with: .opacity))
+                    .padding(.top, 8)
                 }
             }
-            .padding(.top, 8)
             .animation(.spring(response: 0.3), value: undoManager.canUndo)
             .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
@@ -221,116 +218,6 @@ struct MainNavigationView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 showingUndoToast = false
             }
-        }
-    }
-}
-
-/// A transient sync status indicator inspired by Apple's Notes/Reminders approach.
-/// - "Synced" shows briefly after sync completes, then fades away.
-/// - "Syncing" only appears if sync takes longer than a short delay.
-/// - Error states (offline, iCloud off) persist until resolved.
-private struct CloudSyncStatusChip: View {
-    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
-    @State private var isVisible = false
-    @State private var hideTask: Task<Void, Never>?
-    @State private var syncingDelayTask: Task<Void, Never>?
-    @State private var showSyncing = false
-
-    private enum Presentation {
-        case syncing
-        case synced
-        case offline
-        case iCloudOff
-
-        var symbolName: String {
-            switch self {
-            case .syncing: "arrow.trianglehead.2.clockwise.icloud"
-            case .synced: "checkmark.icloud"
-            case .offline: "icloud.slash"
-            case .iCloudOff: "exclamationmark.icloud"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .syncing: .secondary
-            case .synced: .secondary
-            case .offline: .orange
-            case .iCloudOff: .gray
-            }
-        }
-
-        var isPersistent: Bool {
-            switch self {
-            case .offline, .iCloudOff: true
-            case .syncing, .synced: false
-            }
-        }
-    }
-
-    private var presentation: Presentation? {
-        let state = cloudSyncCoordinator.state
-        guard state.isCloudKitEnabled else { return nil }
-
-        switch state.mode {
-        case .disabled: return nil
-        case .checking, .syncing: return showSyncing ? .syncing : nil
-        case .synced: return .synced
-        case .offline: return .offline
-        case .iCloudUnavailable: return .iCloudOff
-        }
-    }
-
-    var body: some View {
-        Group {
-            if isVisible, let presentation {
-                HStack(spacing: 4) {
-                    Image(systemName: presentation.symbolName)
-                        .font(.caption2)
-                        .symbolEffect(.pulse, isActive: presentation == .syncing)
-                }
-                .foregroundStyle(presentation.tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.ultraThinMaterial, in: Capsule())
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                .accessibilityIdentifier("CloudSyncStatusChip")
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: isVisible)
-        .animation(.easeInOut(duration: 0.25), value: cloudSyncCoordinator.state.mode)
-        .onChange(of: cloudSyncCoordinator.state.mode) { _, newMode in
-            handleModeChange(newMode)
-        }
-    }
-
-    private func handleModeChange(_ mode: CloudSyncState.Mode) {
-        hideTask?.cancel()
-        syncingDelayTask?.cancel()
-        showSyncing = false
-
-        switch mode {
-        case .disabled:
-            isVisible = false
-        case .checking, .syncing:
-            // Only show syncing indicator if it takes more than 1s
-            syncingDelayTask = Task {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                guard !Task.isCancelled else { return }
-                showSyncing = true
-                isVisible = true
-            }
-        case .synced:
-            // Flash briefly then hide
-            isVisible = true
-            hideTask = Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard !Task.isCancelled else { return }
-                isVisible = false
-            }
-        case .offline, .iCloudUnavailable:
-            // Persist until resolved
-            isVisible = true
         }
     }
 }

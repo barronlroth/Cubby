@@ -228,7 +228,10 @@ struct CubbyApp: App {
         WindowGroup {
             Group {
                 if hasCompletedOnboarding {
-                    HomeSearchContainer(cloudKitSettings: cloudKitSettings)
+                    HomeSearchContainer(
+                        cloudKitSettings: cloudKitSettings,
+                        persistenceController: coreDataPersistenceController
+                    )
                 } else {
                     OnboardingView()
                 }

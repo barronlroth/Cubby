@@ -185,13 +185,7 @@ struct HomeView: View {
                 Spacer(minLength: 8)
 
                 if canShowShareButton {
-                    Button(action: handleShareHomeTapped) {
-                        Label("Share Home", systemImage: "person.2.badge.plus")
-                            .labelStyle(.iconOnly)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Share Home")
+                    ShareHomeButton(action: handleShareHomeTapped)
                 }
             }
             .padding(.top, 8)
@@ -439,6 +433,39 @@ private struct SharedHomeStatusRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+private struct ShareHomeButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(.circle)
+        }
+        .modifier(ShareHomeButtonStyle())
+        .accessibilityLabel("Share Home")
+    }
+}
+
+private struct ShareHomeButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+        } else {
+            content
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+        }
+        #else
+        content
+        #endif
     }
 }
 

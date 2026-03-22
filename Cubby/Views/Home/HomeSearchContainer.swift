@@ -2,31 +2,27 @@ import SwiftUI
 
 struct HomeSearchContainer: View {
     let cloudKitSettings: CloudKitSyncSettings
+    let persistenceController: PersistenceController?
 
-    @Environment(\.scenePhase) private var scenePhase
     @State private var searchText: String = ""
     @State private var showingAddItem = false
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
     @StateObject private var proAccessManager = ProAccessManager()
-    @StateObject private var cloudSyncCoordinator: CloudSyncCoordinator
     private let sharedHomesGateService: any SharedHomesGateServiceProtocol
     private let homeSharingService: (any HomeSharingServiceProtocol)?
 
-    init(cloudKitSettings: CloudKitSyncSettings) {
+    init(
+        cloudKitSettings: CloudKitSyncSettings,
+        persistenceController: PersistenceController? = nil
+    ) {
         self.cloudKitSettings = cloudKitSettings
+        self.persistenceController = persistenceController
         let args = ProcessInfo.processInfo.arguments
         let environment = ProcessInfo.processInfo.environment
         let mockSharingMode = DebugMockSharingMode.resolve(
             arguments: args,
             environment: environment
-        )
-        _cloudSyncCoordinator = StateObject(
-            wrappedValue: CloudSyncCoordinator(
-                isCloudKitEnabled: cloudKitSettings.usesCloudKit
-                    || cloudKitSettings.forcedAvailability != nil,
-                forcedAvailability: cloudKitSettings.forcedAvailability
-            )
         )
 
         let resolvedSharedHomesGateService: any SharedHomesGateServiceProtocol
@@ -51,8 +47,9 @@ struct HomeSearchContainer: View {
         if mockSharingMode.isEnabled {
             self.homeSharingService = DebugMockHomeSharingService(mode: mockSharingMode)
         } else if resolvedSharedHomesGateService.isEnabled(),
-           PersistenceController.isCoreDataSharingStackEnabled {
-            let service = HomeSharingService(persistenceController: PersistenceController.shared)
+                  PersistenceController.isCoreDataSharingStackEnabled,
+                  let persistenceController {
+            let service = HomeSharingService(persistenceController: persistenceController)
             self.homeSharingService = service
         } else {
             self.homeSharingService = nil
@@ -73,22 +70,12 @@ struct HomeSearchContainer: View {
             canAddItem: $canAddItem
         )
         .environmentObject(proAccessManager)
-        .environmentObject(cloudSyncCoordinator)
         .environment(\.activePaywall, $activePaywall)
         .environment(\.sharedHomesGateService, sharedHomesGateService)
         .environment(\.homeSharingService, homeSharingService)
         .sheet(item: $activePaywall) { context in
             ProPaywallSheetView(context: context)
                 .environmentObject(proAccessManager)
-        }
-        .task {
-            cloudSyncCoordinator.handleScenePhase(scenePhase)
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            cloudSyncCoordinator.handleScenePhase(newPhase)
-        }
-        .onDisappear {
-            cloudSyncCoordinator.stop()
         }
     }
 }
