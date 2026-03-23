@@ -5,6 +5,14 @@ import Foundation
 import UIKit
 #endif
 
+private enum HomeSharingServiceConstants {
+    static let exportTimeout: TimeInterval = 20
+}
+
+private final class CloudKitExportObserverBox: @unchecked Sendable {
+    var observer: NSObjectProtocol?
+}
+
 protocol HomeSharingServiceProtocol {
     func shareHome(_ home: AppHome) async throws -> CKShare
     func fetchShare(for home: AppHome) -> CKShare?
@@ -27,6 +35,7 @@ enum HomeSharingServiceError: Error, Equatable {
     case unsupportedHomeModel
     case shareCreationFailed
     case missingSharedPersistentStore
+    case shareExportTimedOut
 }
 
 enum DebugMockSharingMode: Equatable, CustomStringConvertible {
@@ -266,6 +275,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
             throw HomeSharingServiceError.unsupportedHomeModel
         }
 
+        let exportStartDate = Date()
         let share = try await createShare(for: managedObject)
         if home.name.isEmpty == false {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
@@ -277,6 +287,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         if let privatePersistentStore = persistenceController.privatePersistentStore() {
             try await persistUpdatedShare(share, in: privatePersistentStore)
         }
+        try await waitForPrivateStoreExport(startingAfter: exportStartDate)
 
         return share
     }
@@ -390,6 +401,77 @@ final class HomeSharingService: HomeSharingServiceProtocol {
                 }
             }
         }
+    }
+
+    private func waitForPrivateStoreExport(startingAfter startDate: Date) async throws {
+        let timeoutNanoseconds = UInt64(HomeSharingServiceConstants.exportTimeout * 1_000_000_000)
+        let privateStoreIdentifier = currentPrivateStoreIdentifier()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { [persistentContainer = persistenceController.persistentContainer] in
+                let notificationCenter = NotificationCenter.default
+                let observerBox = CloudKitExportObserverBox()
+
+                try await withTaskCancellationHandler(operation: {
+                    try await withCheckedThrowingContinuation { continuation in
+                        observerBox.observer = notificationCenter.addObserver(
+                            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+                            object: persistentContainer,
+                            queue: nil
+                        ) { notification in
+                            guard let event = notification.userInfo?[
+                                NSPersistentCloudKitContainer.eventNotificationUserInfoKey
+                            ] as? NSPersistentCloudKitContainer.Event else {
+                                return
+                            }
+
+                            guard event.type == .export,
+                                  event.endDate != nil,
+                                  event.startDate >= startDate else {
+                                return
+                            }
+
+                            if let privateStoreIdentifier,
+                               event.storeIdentifier != privateStoreIdentifier {
+                                return
+                            }
+
+                            if let observer = observerBox.observer {
+                                notificationCenter.removeObserver(observer)
+                                observerBox.observer = nil
+                            }
+
+                            if event.succeeded {
+                                continuation.resume(returning: ())
+                            } else {
+                                continuation.resume(
+                                    throwing: event.error ?? HomeSharingServiceError.shareCreationFailed
+                                )
+                            }
+                        }
+                    }
+                }, onCancel: {
+                    if let observer = observerBox.observer {
+                        notificationCenter.removeObserver(observer)
+                        observerBox.observer = nil
+                    }
+                })
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw HomeSharingServiceError.shareExportTimedOut
+            }
+
+            guard let _ = try await group.next() else {
+                return
+            }
+            group.cancelAll()
+        }
+    }
+
+    private func currentPrivateStoreIdentifier() -> String? {
+        persistenceController.privatePersistentStore()?.identifier
     }
 }
 
