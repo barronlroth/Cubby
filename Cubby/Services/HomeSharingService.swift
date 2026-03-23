@@ -1,6 +1,9 @@
 import CloudKit
 import CoreData
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 protocol HomeSharingServiceProtocol {
     func shareHome(_ home: AppHome) async throws -> CKShare
@@ -266,6 +269,9 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         let share = try await createShare(for: managedObject)
         if home.name.isEmpty == false {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        }
+        if let thumbnailData = ShareThumbnailProvider.pngData() {
+            share[CKShare.SystemFieldKey.thumbnailImageData] = thumbnailData as CKRecordValue
         }
 
         if let privatePersistentStore = persistenceController.privatePersistentStore() {

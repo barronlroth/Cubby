@@ -129,29 +129,23 @@ struct HomeView: View {
                             }
                         )
                     case let .new(homeID):
-                        CloudSharingControllerRepresentable(
+                        CloudShareActivityControllerRepresentable(
                             title: context.title,
-                            preparationHandler: { completion in
-                                Task { @MainActor in
-                                    do {
-                                        let share = try await appStore.shareHome(homeID: homeID)
-                                        completion(share, appStore.shareContainer, nil)
-                                    } catch HomeSharingServiceError.homeAlreadyShared {
-                                        if let existingShare = appStore.existingShare(homeID: homeID) {
-                                            completion(existingShare, appStore.shareContainer, nil)
-                                        } else {
-                                            let error = HomeSharingServiceError.shareCreationFailed
-                                            shareErrorMessage = error.localizedDescription
-                                            completion(nil, nil, error)
-                                        }
-                                    } catch {
-                                        shareErrorMessage = error.localizedDescription
-                                        completion(nil, nil, error)
+                            container: appStore.shareContainer,
+                            preparationHandler: {
+                                do {
+                                    return try await appStore.shareHome(homeID: homeID)
+                                } catch HomeSharingServiceError.homeAlreadyShared {
+                                    if let existingShare = await MainActor.run(body: {
+                                        appStore.existingShare(homeID: homeID)
+                                    }) {
+                                        return existingShare
                                     }
+
+                                    throw HomeSharingServiceError.shareCreationFailed
                                 }
                             },
-                            onSave: { appStore.refresh() },
-                            onStopSharing: { appStore.refresh() },
+                            onComplete: { appStore.refresh() },
                             onError: { error in
                                 shareErrorMessage = error.localizedDescription
                             }
@@ -204,8 +198,7 @@ struct HomeView: View {
                isSharedHomesEnabled,
                selectedHome.isShared {
                 SharedHomeStatusRow(
-                    isSharedWithYou: !selectedHome.isOwnedByCurrentUser,
-                    participantSummary: selectedHome.participantSummary
+                    isSharedWithYou: !selectedHome.isOwnedByCurrentUser
                 )
             }
         }
@@ -375,24 +368,15 @@ private struct MockSharePreviewSheet: View {
 
 private struct SharedHomeStatusRow: View {
     let isSharedWithYou: Bool
-    let participantSummary: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(isSharedWithYou ? "Shared with you" : "Shared")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background((isSharedWithYou ? Color.blue : Color.secondary).opacity(0.12))
-                .foregroundStyle(isSharedWithYou ? .blue : .secondary)
-                .clipShape(Capsule())
-
-            if let participantSummary {
-                Text(participantSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        Text(isSharedWithYou ? "Shared with you" : "Shared")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background((isSharedWithYou ? Color.blue : Color.secondary).opacity(0.12))
+            .foregroundStyle(isSharedWithYou ? .blue : .secondary)
+            .clipShape(Capsule())
     }
 }
 
