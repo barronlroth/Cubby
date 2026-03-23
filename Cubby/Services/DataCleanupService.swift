@@ -1,18 +1,25 @@
 import Foundation
-import SwiftData
+import CoreData
 
 class DataCleanupService {
     static let shared = DataCleanupService()
     
-    func performCleanup(modelContext: ModelContext) async {
-        await cleanupOrphanedPhotos(modelContext: modelContext)
+    func performCleanup(persistenceController: PersistenceController) async {
+        await cleanupOrphanedPhotos(persistenceController: persistenceController)
     }
     
-    private func cleanupOrphanedPhotos(modelContext: ModelContext) async {
-        let descriptor = FetchDescriptor<InventoryItem>()
-        guard let items = try? modelContext.fetch(descriptor) else { return }
-        
-        let activePhotoNames = Set(items.compactMap { $0.photoFileName })
+    private func cleanupOrphanedPhotos(persistenceController: PersistenceController) async {
+        let request = NSFetchRequest<NSDictionary>(entityName: "CDInventoryItem")
+        request.resultType = .dictionaryResultType
+        request.propertiesToFetch = ["photoFileName"]
+
+        guard let rows = try? persistenceController.persistentContainer.viewContext.fetch(request) else {
+            return
+        }
+
+        let activePhotoNames = Set(
+            rows.compactMap { $0["photoFileName"] as? String }
+        )
         
         let photosURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent("ItemPhotos")

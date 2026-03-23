@@ -1,16 +1,11 @@
 import Foundation
-import SwiftData
 
 @MainActor
 class UndoManager: ObservableObject {
     static let shared = UndoManager()
     
     private struct DeletedItem {
-        let item: InventoryItem
-        let locationId: UUID
-        let title: String
-        let description: String?
-        let photoFileName: String?
+        let snapshot: AppDeletedItemSnapshot
         let timestamp: Date
     }
     
@@ -23,13 +18,9 @@ class UndoManager: ObservableObject {
     
     private init() {}
     
-    func recordDeletion(item: InventoryItem) {
+    func recordDeletion(snapshot: AppDeletedItemSnapshot) {
         let deletedItem = DeletedItem(
-            item: item,
-            locationId: item.storageLocation?.id ?? UUID(),
-            title: item.title,
-            description: item.itemDescription,
-            photoFileName: item.photoFileName,
+            snapshot: snapshot,
             timestamp: Date()
         )
         
@@ -38,7 +29,7 @@ class UndoManager: ObservableObject {
         if deletedItems.count > maxUndoItems {
             // Remove oldest item and its photo if exists
             let removed = deletedItems.removeFirst()
-            if let photoFileName = removed.photoFileName {
+            if let photoFileName = removed.snapshot.photoFileName {
                 Task {
                     await PhotoService.shared.deletePhoto(fileName: photoFileName)
                 }
@@ -49,44 +40,23 @@ class UndoManager: ObservableObject {
         startAutoHideTimer()
     }
     
-    func undo(in context: ModelContext) -> Bool {
+    func undo(using appStore: AppStore) -> Bool {
         guard let lastDeleted = deletedItems.popLast() else { return false }
         
         // Cancel the auto-hide timer since user manually undid
         cancelAutoHideTimer()
         
-        // Find the storage location
-        let locationId = lastDeleted.locationId
-        let descriptor = FetchDescriptor<StorageLocation>(
-            predicate: #Predicate { location in
-                location.id == locationId
-            }
-        )
-        
-        guard let locations = try? context.fetch(descriptor),
-              let location = locations.first else {
-            // Location no longer exists, can't restore
+        guard appStore.location(id: lastDeleted.snapshot.storageLocationID) != nil else {
             canUndo = !deletedItems.isEmpty
             return false
         }
-        
-        // Recreate the item
-        let newItem = InventoryItem(
-            title: lastDeleted.title,
-            description: lastDeleted.description,
-            storageLocation: location
-        )
-        newItem.photoFileName = lastDeleted.photoFileName
-        
-        context.insert(newItem)
-        
+
         do {
-            try context.save()
+            try appStore.restoreDeletedItem(lastDeleted.snapshot)
             canUndo = !deletedItems.isEmpty
             return true
         } catch {
             print("Failed to undo deletion: \(error)")
-            // Restore the deleted item to the stack since undo failed
             deletedItems.append(lastDeleted)
             return false
         }
@@ -98,7 +68,7 @@ class UndoManager: ObservableObject {
         
         // Clean up any photos from the undo stack
         for item in deletedItems {
-            if let photoFileName = item.photoFileName {
+            if let photoFileName = item.snapshot.photoFileName {
                 Task {
                     await PhotoService.shared.deletePhoto(fileName: photoFileName)
                 }
@@ -110,7 +80,7 @@ class UndoManager: ObservableObject {
     
     var undoDescription: String? {
         guard let lastDeleted = deletedItems.last else { return nil }
-        return "Undo delete \"\(lastDeleted.title)\""
+        return "Undo delete \"\(lastDeleted.snapshot.title)\""
     }
     
     func dismissUndo() {
@@ -124,11 +94,13 @@ class UndoManager: ObservableObject {
         
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            
-            self.timeRemaining -= 1
-            
-            if self.timeRemaining <= 0 {
-                self.dismissUndo()
+
+            Task { @MainActor in
+                self.timeRemaining -= 1
+
+                if self.timeRemaining <= 0 {
+                    self.dismissUndo()
+                }
             }
         }
     }

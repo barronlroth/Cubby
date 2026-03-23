@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 
-@MainActor
 enum GateReason: Equatable, CustomStringConvertible {
     case homeLimitReached
     case itemLimitReached
@@ -16,7 +15,6 @@ enum GateReason: Equatable, CustomStringConvertible {
     }
 }
 
-@MainActor
 struct GateResult: Equatable {
     let isAllowed: Bool
     let reason: GateReason?
@@ -28,7 +26,16 @@ struct GateResult: Equatable {
     }
 }
 
-@MainActor
+enum ShareManagementAccess: Equatable {
+    case hidden
+    case upgradeRequired
+    case allowed
+
+    var showsAffordance: Bool {
+        self != .hidden
+    }
+}
+
 struct FeatureGate {
     static let freeMaxHomes = 1
     static let freeMaxItemsPerHome = 10
@@ -57,11 +64,78 @@ struct FeatureGate {
         return true
     }
 
+    @MainActor
     static func canCreateHome(modelContext: ModelContext, isPro: Bool) -> GateResult {
-        guard !isPro else { return .allowed }
+        canCreateHome(
+            homeCountProvider: {
+                let homeCountDescriptor = FetchDescriptor<Home>()
+                return (try? modelContext.fetchCount(homeCountDescriptor)) ?? 0
+            },
+            isPro: isPro
+        )
+    }
 
-        let homeCountDescriptor = FetchDescriptor<Home>()
-        let homeCount = (try? modelContext.fetchCount(homeCountDescriptor)) ?? 0
+    @MainActor
+    static func canCreateHome(dataSource: any FeatureGateDataSource, isPro: Bool) -> GateResult {
+        canCreateHome(
+            homeCountProvider: { (try? dataSource.ownerHomeCount()) ?? 0 },
+            isPro: isPro
+        )
+    }
+
+    @MainActor
+    static func canCreateItem(homeId: UUID?, modelContext: ModelContext, isPro: Bool) -> GateResult {
+        canCreateItem(
+            homeId: homeId,
+            homeCountProvider: {
+                let homeCountDescriptor = FetchDescriptor<Home>()
+                return (try? modelContext.fetchCount(homeCountDescriptor)) ?? 0
+            },
+            itemCountProvider: { homeId in
+                let itemsDescriptor = FetchDescriptor<InventoryItem>()
+                let items = (try? modelContext.fetch(itemsDescriptor)) ?? []
+                return items.filter { $0.storageLocation?.home?.id == homeId }.count
+            },
+            isPro: isPro
+        )
+    }
+
+    @MainActor
+    static func canCreateItem(homeId: UUID?, dataSource: any FeatureGateDataSource, isPro: Bool) -> GateResult {
+        canCreateItem(
+            homeId: homeId,
+            homeCountProvider: { (try? dataSource.ownerHomeCount()) ?? 0 },
+            itemCountProvider: { homeId in
+                (try? dataSource.ownerItemCount(for: homeId)) ?? 0
+            },
+            isPro: isPro
+        )
+    }
+
+    static func shareManagementAccess(
+        for home: AppHome?,
+        isPro: Bool,
+        sharedHomesEnabled: Bool
+    ) -> ShareManagementAccess {
+        guard sharedHomesEnabled,
+              let home,
+              home.isOwnedByCurrentUser else {
+            return .hidden
+        }
+
+        guard isPro else {
+            return .upgradeRequired
+        }
+
+        return .allowed
+    }
+
+    private static func canCreateHome(
+        homeCountProvider: () -> Int,
+        isPro: Bool
+    ) -> GateResult {
+        guard !isPro else { return .allowed }
+        let homeCount = homeCountProvider()
 
         if homeCount > freeMaxHomes {
             return .denied(.overLimit)
@@ -74,20 +148,21 @@ struct FeatureGate {
         return .allowed
     }
 
-    static func canCreateItem(homeId: UUID?, modelContext: ModelContext, isPro: Bool) -> GateResult {
+    private static func canCreateItem(
+        homeId: UUID?,
+        homeCountProvider: () -> Int,
+        itemCountProvider: (UUID) -> Int,
+        isPro: Bool
+    ) -> GateResult {
         guard !isPro else { return .allowed }
         guard let homeId else { return .allowed }
 
-        let homeCountDescriptor = FetchDescriptor<Home>()
-        let homeCount = (try? modelContext.fetchCount(homeCountDescriptor)) ?? 0
+        let homeCount = homeCountProvider()
         if homeCount > freeMaxHomes {
             return .denied(.overLimit)
         }
 
-        // Avoid fetchCount with nested optional relationship predicates; it can crash on some OS builds.
-        let itemsDescriptor = FetchDescriptor<InventoryItem>()
-        let items = (try? modelContext.fetch(itemsDescriptor)) ?? []
-        let itemCount = items.filter { $0.storageLocation?.home?.id == homeId }.count
+        let itemCount = itemCountProvider(homeId)
 
         if itemCount >= freeMaxItemsPerHome {
             return .denied(.itemLimitReached)

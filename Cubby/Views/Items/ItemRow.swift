@@ -1,12 +1,11 @@
 import SwiftUI
 import UIKit
-import SwiftData
 
 struct ItemRow: View {
-    let item: InventoryItem
+    let item: AppInventoryItem
     let showLocation: Bool
 
-    init(item: InventoryItem, showLocation: Bool = true) {
+    init(item: AppInventoryItem, showLocation: Bool = true) {
         self.item = item
         self.showLocation = showLocation
     }
@@ -19,7 +18,12 @@ struct ItemRow: View {
                     Circle()
                         .fill(iconBackground)
                         .frame(width: 48, height: 48)
-                    SlotMachineEmojiView(item: item, fontSize: 24)
+                    SlotMachineEmojiView(
+                        emoji: item.emoji,
+                        isPendingAiEmoji: item.isPendingAiEmoji,
+                        fallbackSeed: item.id,
+                        fontSize: 24
+                    )
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -40,7 +44,7 @@ struct ItemRow: View {
                         HStack(spacing: 4) {
                             Image(systemName: "location.fill")
                                 .font(.caption2)
-                            Text(item.storageLocation?.fullPath ?? "Unknown")
+                            Text(item.storageLocationPath ?? "Unknown")
                                 .font(.caption)
                                 .lineLimit(1)
                                 .truncationMode(.tail)

@@ -30,6 +30,9 @@ struct CubbyApp: App {
     private let skipSeeding: Bool
     private let coreDataPersistenceController: PersistenceController?
     private let coreDataRemoteChangeHandler: RemoteChangeHandler?
+    private let appStore: AppStore?
+    private let sharedHomesGateService: any SharedHomesGateServiceProtocol
+    private let homeSharingService: (any HomeSharingServiceProtocol)?
 
     private static func logModelContainerError(_ message: String, error: Error) {
         let nsError = error as NSError
@@ -41,6 +44,7 @@ struct CubbyApp: App {
         }
     }
     
+    @MainActor
     init() {
         let args = ProcessInfo.processInfo.arguments
         let environment = ProcessInfo.processInfo.environment
@@ -173,8 +177,33 @@ struct CubbyApp: App {
             UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         }
 
+        let mockSharingMode = DebugMockSharingMode.resolve(
+            arguments: args,
+            environment: environment
+        )
+        let resolvedSharedHomesGateService: any SharedHomesGateServiceProtocol
+        if mockSharingMode.isEnabled {
+            resolvedSharedHomesGateService = SharedHomesGateService(
+                arguments: args,
+                environment: environment,
+                distributionEnabled: true,
+                runtimeOverride: true,
+                localOverride: true,
+                allowLocalOverride: true
+            )
+            DebugLogger.warning("Running with debug mock sharing mode: \(mockSharingMode)")
+        } else {
+            resolvedSharedHomesGateService = SharedHomesGateService(
+                arguments: args,
+                environment: environment
+            )
+        }
+        sharedHomesGateService = resolvedSharedHomesGateService
+
         var configuredPersistenceController: PersistenceController?
         var configuredRemoteChangeHandler: RemoteChangeHandler?
+        var configuredHomeSharingService: (any HomeSharingServiceProtocol)?
+        var configuredAppStore: AppStore?
         if FeatureGate.shouldUseCoreDataSharingStack(arguments: args, environment: environment) {
             do {
                 let persistenceController = try PersistenceController(
@@ -191,12 +220,28 @@ struct CubbyApp: App {
                 let remoteChangeHandler = RemoteChangeHandler(
                     persistenceController: persistenceController
                 )
+                let resolvedHomeSharingService: (any HomeSharingServiceProtocol)?
+                if mockSharingMode.isEnabled {
+                    resolvedHomeSharingService = DebugMockHomeSharingService(mode: mockSharingMode)
+                } else if resolvedSharedHomesGateService.isEnabled(),
+                          PersistenceController.isCoreDataSharingStackEnabled {
+                    resolvedHomeSharingService = HomeSharingService(persistenceController: persistenceController)
+                } else {
+                    resolvedHomeSharingService = nil
+                }
+
+                let repository = CoreDataAppRepository(
+                    persistenceController: persistenceController,
+                    shareService: resolvedHomeSharingService
+                )
+                configuredAppStore = AppStore(repository: repository)
                 configuredPersistenceController = persistenceController
                 configuredRemoteChangeHandler = remoteChangeHandler
+                configuredHomeSharingService = resolvedHomeSharingService
 
                 #if canImport(UIKit)
                 AppDelegate.makeHomeSharingService = {
-                    HomeSharingService(persistenceController: persistenceController)
+                    resolvedHomeSharingService
                 }
                 AppDelegate.makeSharingErrorHandler = {
                     SharingErrorHandler()
@@ -222,21 +267,30 @@ struct CubbyApp: App {
 
         coreDataPersistenceController = configuredPersistenceController
         coreDataRemoteChangeHandler = configuredRemoteChangeHandler
+        homeSharingService = configuredHomeSharingService
+        appStore = configuredAppStore
     }
     
     var body: some Scene {
         WindowGroup {
             Group {
-                if hasCompletedOnboarding {
-                    HomeSearchContainer(
-                        cloudKitSettings: cloudKitSettings,
-                        persistenceController: coreDataPersistenceController
-                    )
+                if let appStore {
+                    Group {
+                        if hasCompletedOnboarding {
+                            HomeSearchContainer(
+                                cloudKitSettings: cloudKitSettings,
+                                sharedHomesGateService: sharedHomesGateService,
+                                homeSharingService: homeSharingService
+                            )
+                        } else {
+                            OnboardingView()
+                        }
+                    }
+                    .environmentObject(appStore)
                 } else {
-                    OnboardingView()
+                    RuntimeInitializationFailureView()
                 }
             }
-            .modelContainer(modelContainer)
             .task {
                 coreDataRemoteChangeHandler?.start()
 
@@ -245,13 +299,25 @@ struct CubbyApp: App {
                         forcedAvailability: cloudKitSettings.forcedAvailability
                     )
                 }
-                await DataCleanupService.shared.performCleanup(
-                    modelContext: modelContainer.mainContext
-                )
+                if let coreDataPersistenceController {
+                    await DataCleanupService.shared.performCleanup(
+                        persistenceController: coreDataPersistenceController
+                    )
+                }
             }
             .onDisappear {
                 coreDataRemoteChangeHandler?.stop()
             }
         }
+    }
+}
+
+private struct RuntimeInitializationFailureView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Cubby Couldn’t Start",
+            systemImage: "exclamationmark.triangle",
+            description: Text("The shared-home data stack failed to initialize. Relaunch the app to try again.")
+        )
     }
 }

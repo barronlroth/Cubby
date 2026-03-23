@@ -1,27 +1,32 @@
 import SwiftUI
-import SwiftData
 
 struct StorageLocationRow: View {
-    let location: StorageLocation
+    let location: AppStorageLocation
     @Binding var expandedLocations: Set<UUID>
-    @Binding var selectedLocation: StorageLocation?
+    @Binding var selectedLocation: AppStorageLocation?
+
     @State private var showingAddLocation = false
     @State private var showingDeleteAlert = false
     @State private var deletionErrorMessage: String?
-    @Environment(\.modelContext) private var modelContext
-    
+
+    @EnvironmentObject private var appStore: AppStore
+
     private var isExpanded: Bool {
         expandedLocations.contains(location.id)
     }
-    
+
+    private var childLocations: [AppStorageLocation] {
+        appStore.childLocations(of: location.id)
+    }
+
     private var hasChildren: Bool {
-        !(location.childLocations?.isEmpty ?? true)
+        !childLocations.isEmpty
     }
-    
+
     private var itemCount: Int {
-        location.items?.count ?? 0
+        location.itemCount
     }
-    
+
     var body: some View {
         DisclosureGroup(
             isExpanded: Binding(
@@ -36,7 +41,7 @@ struct StorageLocationRow: View {
             )
         ) {
             if hasChildren {
-                ForEach(location.childLocations ?? []) { childLocation in
+                ForEach(childLocations) { childLocation in
                     StorageLocationRow(
                         location: childLocation,
                         expandedLocations: $expandedLocations,
@@ -49,7 +54,7 @@ struct StorageLocationRow: View {
             locationLabel
         }
         .sheet(isPresented: $showingAddLocation) {
-            AddLocationView(homeId: location.home?.id, parentLocation: location)
+            AddLocationView(homeId: location.homeID, parentLocation: location)
         }
         .alert("Delete Location", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
@@ -67,17 +72,17 @@ struct StorageLocationRow: View {
             Text(deletionErrorMessage ?? "")
         }
     }
-    
+
     private var locationLabel: some View {
         HStack {
             Image(systemName: hasChildren ? "folder.fill" : "folder")
                 .foregroundStyle(.tint)
-            
+
             Text(location.name)
                 .font(.body)
-            
+
             Spacer()
-            
+
             if itemCount > 0 {
                 Text("\(itemCount)")
                     .font(.caption)
@@ -99,7 +104,7 @@ struct StorageLocationRow: View {
             }
             .disabled(!location.canDelete)
             .accessibilityHint("Only empty leaf locations can be deleted.")
-            
+
             Button {
                 showingAddLocation = true
             } label: {
@@ -113,7 +118,7 @@ struct StorageLocationRow: View {
             } label: {
                 Label("Add Nested Location", systemImage: "folder.badge.plus")
             }
-            
+
             Button(role: .destructive) {
                 showingDeleteAlert = true
             } label: {
@@ -123,12 +128,12 @@ struct StorageLocationRow: View {
             .accessibilityHint("Only empty leaf locations can be deleted.")
         }
     }
-    
+
     private func deleteLocation() {
         do {
             try StorageLocationDeletionService.deleteLocationIfAllowed(
                 locationId: location.id,
-                modelContext: modelContext
+                appStore: appStore
             )
         } catch let error as StorageLocationDeletionError {
             deletionErrorMessage = error.localizedDescription

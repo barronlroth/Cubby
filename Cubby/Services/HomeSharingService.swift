@@ -3,13 +3,13 @@ import CoreData
 import Foundation
 
 protocol HomeSharingServiceProtocol {
-    func shareHome(_ home: Home) throws -> CKShare
-    func fetchShare(for home: Home) -> CKShare?
-    func permission(for home: Home) -> SharePermission
-    func canEdit(_ home: Home) -> Bool
-    func isShared(_ home: Home) -> Bool
+    func shareHome(_ home: AppHome) throws -> CKShare
+    func fetchShare(for home: AppHome) -> CKShare?
+    func permission(for home: AppHome) -> SharePermission
+    func canEdit(_ home: AppHome) -> Bool
+    func isShared(_ home: AppHome) -> Bool
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
-    func participants(for home: Home) -> [CKShare.Participant]
+    func participants(for home: AppHome) -> [CKShare.Participant]
 }
 
 // Phase 1 should make PersistenceController conform to this.
@@ -89,8 +89,8 @@ enum DebugMockSharingMode: Equatable, CustomStringConvertible {
     }
 }
 
-struct SharePermission: Equatable {
-    enum Role: Equatable {
+struct SharePermission: Equatable, Hashable {
+    enum Role: Equatable, Hashable {
         case owner
         case readWriteParticipant
         case readOnlyParticipant
@@ -128,7 +128,7 @@ struct SharePermission: Equatable {
 }
 
 extension HomeSharingServiceProtocol {
-    func permission(for home: Home) -> SharePermission {
+    func permission(for home: AppHome) -> SharePermission {
         guard let share = fetchShare(for: home),
               let participant = share.currentUserParticipant else {
             return SharePermission(role: .owner)
@@ -145,31 +145,31 @@ extension HomeSharingServiceProtocol {
         return SharePermission(role: .readOnlyParticipant)
     }
 
-    func canCreateLocations(in home: Home) -> Bool {
+    func canCreateLocations(in home: AppHome) -> Bool {
         permission(for: home).canCreateLocations
     }
 
-    func canDeleteLocations(in home: Home) -> Bool {
+    func canDeleteLocations(in home: AppHome) -> Bool {
         permission(for: home).canDeleteLocations
     }
 
-    func canAddItems(in home: Home) -> Bool {
+    func canAddItems(in home: AppHome) -> Bool {
         permission(for: home).canAddItems
     }
 
-    func canEditItems(in home: Home) -> Bool {
+    func canEditItems(in home: AppHome) -> Bool {
         permission(for: home).canEditItems
     }
 
-    func canDeleteItems(in home: Home) -> Bool {
+    func canDeleteItems(in home: AppHome) -> Bool {
         permission(for: home).canDeleteItems
     }
 
-    func isOwnedByCurrentUser(_ home: Home) -> Bool {
+    func isOwnedByCurrentUser(_ home: AppHome) -> Bool {
         permission(for: home).role == .owner
     }
 
-    func isSharedWithCurrentUser(_ home: Home) -> Bool {
+    func isSharedWithCurrentUser(_ home: AppHome) -> Bool {
         isShared(home) && !isOwnedByCurrentUser(home)
     }
 }
@@ -181,24 +181,24 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         self.mode = mode
     }
 
-    func shareHome(_ home: Home) throws -> CKShare {
+    func shareHome(_ home: AppHome) throws -> CKShare {
         makeShare(for: home)
     }
 
-    func fetchShare(for home: Home) -> CKShare? {
+    func fetchShare(for home: AppHome) -> CKShare? {
         guard mode.isEnabled else { return nil }
         return makeShare(for: home)
     }
 
-    func permission(for home: Home) -> SharePermission {
+    func permission(for home: AppHome) -> SharePermission {
         SharePermission(role: role(for: home))
     }
 
-    func canEdit(_ home: Home) -> Bool {
+    func canEdit(_ home: AppHome) -> Bool {
         permission(for: home).canMutate
     }
 
-    func isShared(_ home: Home) -> Bool {
+    func isShared(_ home: AppHome) -> Bool {
         _ = home
         return mode.isEnabled
     }
@@ -207,14 +207,14 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         _ = metadata
     }
 
-    func participants(for home: Home) -> [CKShare.Participant] {
+    func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
     }
 }
 
 private extension DebugMockHomeSharingService {
-    func role(for home: Home) -> SharePermission.Role {
+    func role(for home: AppHome) -> SharePermission.Role {
         switch mode {
         case .disabled, .owner:
             return .owner
@@ -231,7 +231,7 @@ private extension DebugMockHomeSharingService {
         }
     }
 
-    func makeShare(for home: Home) -> CKShare {
+    func makeShare(for home: AppHome) -> CKShare {
         let rootRecord = CKRecord(recordType: "CDHome")
         rootRecord["id"] = home.id.uuidString as CKRecordValue
         let share = CKShare(rootRecord: rootRecord)
@@ -254,7 +254,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         self.ckContainer = ckContainer
     }
 
-    func shareHome(_ home: Home) throws -> CKShare {
+    func shareHome(_ home: AppHome) throws -> CKShare {
         guard fetchShare(for: home) == nil else {
             throw HomeSharingServiceError.homeAlreadyShared
         }
@@ -275,7 +275,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         return share
     }
 
-    func fetchShare(for home: Home) -> CKShare? {
+    func fetchShare(for home: AppHome) -> CKShare? {
         guard let objectID = managedObjectID(for: home) else {
             return nil
         }
@@ -291,7 +291,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 
-    func canEdit(_ home: Home) -> Bool {
+    func canEdit(_ home: AppHome) -> Bool {
         guard let share = fetchShare(for: home) else {
             return true
         }
@@ -307,7 +307,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         return currentParticipant.permission == .readWrite
     }
 
-    func isShared(_ home: Home) -> Bool {
+    func isShared(_ home: AppHome) -> Bool {
         fetchShare(for: home) != nil
     }
 
@@ -331,11 +331,11 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 
-    func participants(for home: Home) -> [CKShare.Participant] {
+    func participants(for home: AppHome) -> [CKShare.Participant] {
         fetchShare(for: home)?.participants ?? []
     }
 
-    private func managedObject(for home: Home) -> NSManagedObject? {
+    private func managedObject(for home: AppHome) -> NSManagedObject? {
         let context = persistenceController.persistentContainer.viewContext
         let request = NSFetchRequest<NSManagedObject>(entityName: "CDHome")
         request.predicate = NSPredicate(format: "id == %@", home.id as CVarArg)
@@ -343,7 +343,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         return try? context.fetch(request).first
     }
 
-    private func managedObjectID(for home: Home) -> NSManagedObjectID? {
+    private func managedObjectID(for home: AppHome) -> NSManagedObjectID? {
         managedObject(for: home)?.objectID
     }
 

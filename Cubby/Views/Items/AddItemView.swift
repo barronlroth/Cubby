@@ -1,35 +1,35 @@
 import SwiftUI
-import SwiftData
 import UIKit
 
 struct AddItemView: View {
     let selectedHomeId: UUID?
-    var preselectedLocation: StorageLocation? = nil
-    
+    var preselectedLocation: AppStorageLocation? = nil
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.activePaywall) private var activePaywall
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.homeSharingService) private var homeSharingService
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @EnvironmentObject private var proAccessManager: ProAccessManager
-    
+    @EnvironmentObject private var appStore: AppStore
+
     @State private var title = ""
     @State private var itemDescription = ""
-    @State private var selectedLocation: StorageLocation?
+    @State private var selectedLocation: AppStorageLocation?
     @State private var selectedImage: UIImage?
     @State private var showingLocationPicker = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
     @State private var cameraUnavailableAlert = false
     @State private var isSaving = false
-    @State private var selectedHome: Home?
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
-    @Query private var allItems: [InventoryItem]
     @FocusState private var titleIsFocused: Bool
     @State private var showingGateAlert = false
     @State private var gatePaywallReason: PaywallContext.Reason = .itemLimitReached
-    
+
+    private var selectedHome: AppHome? {
+        appStore.home(id: selectedHomeId)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -59,12 +59,12 @@ struct AddItemView: View {
                                 showingLocationPicker = true
                             }
                         }
-                    
+
                     TextField("Description", text: $itemDescription, axis: .vertical)
                         .lineLimit(3...6)
                         .textInputAutocapitalization(.sentences)
                 }
-                
+
                 Section("Location") {
                     Button(action: { showingLocationPicker = true }) {
                         HStack {
@@ -79,7 +79,7 @@ struct AddItemView: View {
                     }
                     .foregroundColor(.primary)
                 }
-                
+
                 Section("Tags") {
                     TagInputView(
                         tags: $tags,
@@ -87,7 +87,7 @@ struct AddItemView: View {
                         suggestions: tagSuggestions
                     )
                 }
-                
+
                 Section("Photo") {
                     if let selectedImage {
                         Image(uiImage: selectedImage)
@@ -96,7 +96,7 @@ struct AddItemView: View {
                             .frame(maxHeight: 200)
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                        
+
                         Button("Remove Photo", role: .destructive) {
                             self.selectedImage = nil
                         }
@@ -122,40 +122,19 @@ struct AddItemView: View {
                         }
                     }
                 }
-            .alert("Camera Unavailable", isPresented: $cameraUnavailableAlert) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("The camera is not available on this device.")
             }
-            }
-            .scrollContentBackground(.hidden)
-            .background(appBackground)
-            .navigationTitle("")
+            .navigationTitle("Add Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Add Item")
-                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
-                        .foregroundStyle(.primary)
-                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await saveItem() } }
-                        .disabled(title.isEmpty || selectedLocation == nil || isSaving || !canAddItemsToSelectedHome)
+                    Button("Save") {
+                        Task { await saveItem() }
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedLocation == nil || !canAddItemsToSelectedHome)
                 }
-            }
-            .alert("Cubby Pro Required", isPresented: $showingGateAlert) {
-                Button("Upgrade") {
-                    presentUpgrade()
-                }
-                Button("Restore Purchases") {
-                    Task { await proAccessManager.restorePurchases() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(gateAlertMessage)
             }
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
@@ -166,33 +145,25 @@ struct AddItemView: View {
             .sheet(isPresented: $showingPhotoPicker) {
                 PhotoLibraryPicker(selectedImage: $selectedImage)
             }
+            .alert("Camera Unavailable", isPresented: $cameraUnavailableAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The camera is not available on this device.")
+            }
+            .alert("Cubby Pro Required", isPresented: $showingGateAlert) {
+                Button("Upgrade") { presentUpgrade() }
+                Button("Restore Purchases") {
+                    Task { await proAccessManager.restorePurchases() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(gateAlertMessage)
+            }
             .onAppear {
-                DebugLogger.info("AddItemView.onAppear - homeId: \(String(describing: selectedHomeId))")
-                if let preselectedLocation {
-                    selectedLocation = preselectedLocation
-                }
-                // Fetch the home when view appears
-                if let selectedHomeId {
-                    DebugLogger.info("AddItemView - Fetching home with ID: \(selectedHomeId)")
-                    let descriptor = FetchDescriptor<Home>(
-                        predicate: #Predicate { $0.id == selectedHomeId }
-                    )
-                    if let homes = try? modelContext.fetch(descriptor) {
-                        DebugLogger.info("AddItemView - Fetched \(homes.count) homes")
-                        selectedHome = homes.first
-                        if selectedHome == nil {
-                            DebugLogger.error("AddItemView - No home found for ID: \(selectedHomeId)")
-                        } else {
-                            DebugLogger.success("AddItemView - Home found: \(selectedHome!.name)")
-                        }
-                    }
-                } else {
-                    DebugLogger.warning("AddItemView - No homeId provided")
-                }
+                selectedLocation = preselectedLocation
                 applyPreferredLocationIfNeeded()
             }
             .task {
-                // Slight delay ensures the sheet is fully presented before focusing
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 await MainActor.run { titleIsFocused = true }
             }
@@ -209,73 +180,37 @@ struct AddItemView: View {
             }
         }
     }
-    
+
     private func applyPreferredLocationIfNeeded() {
-        if selectedLocation == nil,
-           let preferred = LastUsedLocationService.preferredLocation(
-            for: selectedHomeId,
-            in: modelContext
-           ) {
-            selectedLocation = preferred
+        if selectedLocation == nil {
+            selectedLocation = appStore.preferredLocation(for: selectedHomeId)
         }
     }
 
     private func saveItem() async {
         guard canAddItemsToSelectedHome else { return }
 
-        let gate = FeatureGate.canCreateItem(homeId: selectedHomeId, modelContext: modelContext, isPro: proAccessManager.isPro)
+        let gate = appStore.canCreateItem(homeID: selectedHomeId, isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
-            DebugLogger.info("FeatureGate denied item creation: \(gate.reason?.description ?? "unknown")")
             gatePaywallReason = gate.reason == .overLimit ? .overLimit : .itemLimitReached
             showingGateAlert = true
             return
         }
 
         guard let selectedLocation else { return }
-        
         isSaving = true
-        
-        let newItem = InventoryItem(
-            title: title.titleCased(),
-            description: itemDescription.isEmpty ? nil : itemDescription.trimmingCharacters(in: .whitespacesAndNewlines),
-            storageLocation: selectedLocation
-        )
-        newItem.tagsSet = tags
-        newItem.emoji = EmojiPicker.emoji(for: newItem.id)
-        if FoundationModelEmojiService.isSupported {
-            newItem.isPendingAiEmoji = true
-        }
-        
-        if let selectedImage {
-            do {
-                let fileName = try await PhotoService.shared.savePhoto(selectedImage)
-                newItem.photoFileName = fileName
-            } catch {
-                print("Failed to save photo: \(error)")
-            }
-        }
-        
-        modelContext.insert(newItem)
-        
+
         do {
-            try modelContext.save()
-            LastUsedLocationService.remember(location: selectedLocation)
-            if let pid = newItem.persistentModelID as? PersistentIdentifier {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: pid,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
-            } else {
-                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: newItem.persistentModelID,
-                    title: newItem.title,
-                    modelContext: modelContext
-                )
-            }
+            _ = try await appStore.createItem(
+                title: title.titleCased(),
+                itemDescription: itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                storageLocationID: selectedLocation.id,
+                tags: tags,
+                selectedImage: selectedImage
+            )
             dismiss()
         } catch {
-            print("Failed to save item: \(error)")
+            DebugLogger.error("Failed to save item: \(error)")
             isSaving = false
         }
     }
@@ -301,29 +236,23 @@ struct AddItemView: View {
             activePaywall.wrappedValue = PaywallContext(reason: reason)
         }
     }
-    
+
     private var tagSuggestions: [String] {
         TagSuggestionService.suggestions(
             for: tagInput,
-            existingTags: allItems.flatMap(\.tags)
+            existingTags: appStore.allKnownTags()
         )
     }
-    
-    @Environment(\.colorScheme) private var colorScheme
 
     private var canAddItemsToSelectedHome: Bool {
         guard sharedHomesGateService.isEnabled() else { return true }
-        guard selectedHomeId != nil else { return true }
         guard let selectedHome else { return false }
-        guard let homeSharingService else { return true }
-        return homeSharingService.canAddItems(in: selectedHome)
+        return selectedHome.permission.canAddItems
     }
+}
 
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

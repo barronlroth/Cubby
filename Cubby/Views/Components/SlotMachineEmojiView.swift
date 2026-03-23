@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct SlotMachineEmojiView: View {
-    let item: InventoryItem
+    let emoji: String?
+    let isPendingAiEmoji: Bool
+    let fallbackSeed: UUID
     let fontSize: CGFloat
     
     @State private var currentEmoji: String
@@ -24,19 +26,26 @@ struct SlotMachineEmojiView: View {
     // A curated list of emojis for the slot machine effect
     private let slotEmojis = ["🍎", "🚀", "🎸", "📚", "⚽️", "🍕", "🎨", "🎮", "✈️", "💡", "📷", "🧸", "🔑", "📦", "💎"]
     
-    init(item: InventoryItem, fontSize: CGFloat = 24) {
-        self.item = item
+    init(
+        emoji: String?,
+        isPendingAiEmoji: Bool,
+        fallbackSeed: UUID,
+        fontSize: CGFloat = 24
+    ) {
+        self.emoji = emoji
+        self.isPendingAiEmoji = isPendingAiEmoji
+        self.fallbackSeed = fallbackSeed
         self.fontSize = fontSize
-        _currentEmoji = State(initialValue: item.emoji ?? "📦")
+        _currentEmoji = State(initialValue: emoji ?? EmojiPicker.emoji(for: fallbackSeed))
     }
     
     var body: some View {
         Text(currentEmoji)
             .font(.system(size: fontSize))
             .scaleEffect(scale)
-            .blur(radius: item.isPendingAiEmoji ? 0.5 : 0)
-            .task(id: item.isPendingAiEmoji) {
-                if item.isPendingAiEmoji {
+            .blur(radius: isPendingAiEmoji ? 0.5 : 0)
+            .task(id: isPendingAiEmoji) {
+                if isPendingAiEmoji {
                     wasSpinning = true
                     await spinWithAcceleration()
                 } else {
@@ -44,13 +53,13 @@ struct SlotMachineEmojiView: View {
                         wasSpinning = false
                         await stopSpinningWithDeceleration()
                     } else {
-                        currentEmoji = item.emoji ?? "📦"
+                        currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
                     }
                 }
             }
-            .onChange(of: item.emoji) { _, newEmoji in
-                if !item.isPendingAiEmoji {
-                    currentEmoji = newEmoji ?? "📦"
+            .onChange(of: emoji) { _, newEmoji in
+                if !isPendingAiEmoji {
+                    currentEmoji = newEmoji ?? EmojiPicker.emoji(for: fallbackSeed)
                 }
             }
     }
@@ -101,7 +110,7 @@ struct SlotMachineEmojiView: View {
         
         await MainActor.run {
             // Set final emoji
-            currentEmoji = item.emoji ?? "📦"
+            currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
             
             // Lock-in haptic feedback
             lockHaptics().impactOccurred()

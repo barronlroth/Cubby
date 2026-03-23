@@ -7,7 +7,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_shareHome_createsShareForPrivateHome() throws {
         let service = MockHomeSharingService()
-        let home = Home(name: "Primary Home")
+        let home = makeHome(name: "Primary Home")
 
         let share = try service.shareHome(home)
         let fetchedShare = service.fetchShare(for: home)
@@ -19,7 +19,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_shareHome_failsForAlreadySharedHome() throws {
         let service = MockHomeSharingService()
-        let home = Home(name: "Already Shared")
+        let home = makeHome(name: "Already Shared")
         _ = try service.shareHome(home)
 
         do {
@@ -33,7 +33,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_fetchShare_returnsNilForUnsharedHome() {
         let service = MockHomeSharingService()
-        let home = Home(name: "Private Home")
+        let home = makeHome(name: "Private Home")
 
         #expect(service.fetchShare(for: home) == nil)
     }
@@ -41,7 +41,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_fetchShare_returnsShareForSharedHome() throws {
         let service = MockHomeSharingService()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         let shared = try service.shareHome(home)
 
         let fetched = service.fetchShare(for: home)
@@ -52,7 +52,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_canEdit_returnsTrueForOwnedHome() {
         let service = MockHomeSharingService()
-        let home = Home(name: "Owned Home")
+        let home = makeHome(name: "Owned Home")
 
         #expect(service.canEdit(home))
     }
@@ -60,7 +60,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_canEdit_returnsTrueForReadWriteParticipant() {
         let service = MockHomeSharingService()
-        let home = Home(name: "Read Write")
+        let home = makeHome(name: "Read Write")
         service.setRole(.readWriteParticipant, for: home)
 
         #expect(service.canEdit(home))
@@ -69,7 +69,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_canEdit_returnsFalseForReadOnlyParticipant() {
         let service = MockHomeSharingService()
-        let home = Home(name: "Read Only")
+        let home = makeHome(name: "Read Only")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canEdit(home) == false)
@@ -78,7 +78,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_isShared_returnsFalseForPrivateHome() {
         let service = MockHomeSharingService()
-        let home = Home(name: "Private Home")
+        let home = makeHome(name: "Private Home")
 
         #expect(service.isShared(home) == false)
     }
@@ -86,7 +86,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_isShared_returnsTrueForSharedHome() throws {
         let service = MockHomeSharingService()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         _ = try service.shareHome(home)
 
         #expect(service.isShared(home))
@@ -95,7 +95,7 @@ struct HomeSharingServiceTests {
     @Test
     func test_acceptShareInvitation_addsHomeToSharedStore() async throws {
         let service = MockHomeSharingService()
-        let incomingHome = Home(name: "Incoming Shared Home")
+        let incomingHome = makeHome(name: "Incoming Shared Home")
         service.homeToAddOnAccept = incomingHome
 
         try await service.acceptShareInvitation(
@@ -109,15 +109,28 @@ struct HomeSharingServiceTests {
     private func makeShareMetadataPlaceholder() -> CKShare.Metadata {
         unsafeBitCast(NSObject(), to: CKShare.Metadata.self)
     }
+
+    private func makeHome(name: String) -> AppHome {
+        AppHome(
+            id: UUID(),
+            name: name,
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
+    }
 }
 
 private final class MockHomeSharingService: HomeSharingServiceProtocol {
-    var homeToAddOnAccept: Home?
+    var homeToAddOnAccept: AppHome?
     private(set) var sharedHomeIDs = Set<UUID>()
     private var sharesByHomeID: [UUID: CKShare] = [:]
     private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
 
-    func shareHome(_ home: Home) throws -> CKShare {
+    func shareHome(_ home: AppHome) throws -> CKShare {
         if sharesByHomeID[home.id] != nil {
             throw HomeSharingServiceError.homeAlreadyShared
         }
@@ -130,18 +143,18 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
         return share
     }
 
-    func fetchShare(for home: Home) -> CKShare? {
+    func fetchShare(for home: AppHome) -> CKShare? {
         sharesByHomeID[home.id]
     }
 
-    func canEdit(_ home: Home) -> Bool {
+    func canEdit(_ home: AppHome) -> Bool {
         guard let role = rolesByHomeID[home.id] else {
             return true
         }
         return SharePermission(role: role).canMutate
     }
 
-    func isShared(_ home: Home) -> Bool {
+    func isShared(_ home: AppHome) -> Bool {
         sharesByHomeID[home.id] != nil || sharedHomeIDs.contains(home.id)
     }
 
@@ -156,12 +169,12 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
         rolesByHomeID[homeToAddOnAccept.id] = .readWriteParticipant
     }
 
-    func participants(for home: Home) -> [CKShare.Participant] {
+    func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
     }
 
-    func setRole(_ role: SharePermission.Role, for home: Home) {
+    func setRole(_ role: SharePermission.Role, for home: AppHome) {
         rolesByHomeID[home.id] = role
     }
 }

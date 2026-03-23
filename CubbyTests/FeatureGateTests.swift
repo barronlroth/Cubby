@@ -1,9 +1,23 @@
+import Foundation
 import Testing
 import SwiftData
 @testable import Cubby
 
 @Suite("Feature Gate Tests")
 struct FeatureGateTests {
+    private struct FeatureGateDataSourceStub: FeatureGateDataSource {
+        var homeCount: Int
+        var itemCountsByHomeID: [UUID: Int] = [:]
+
+        func ownerHomeCount() throws -> Int {
+            homeCount
+        }
+
+        func ownerItemCount(for homeID: UUID) throws -> Int {
+            itemCountsByHomeID[homeID, default: 0]
+        }
+    }
+
     @MainActor
     func createTestContainer() throws -> ModelContainer {
         let modelConfiguration = ModelConfiguration(
@@ -214,5 +228,127 @@ struct FeatureGateTests {
 
         let result = FeatureGate.canCreateItem(homeId: nil, modelContext: context, isPro: false)
         #expect(result.isAllowed)
+    }
+
+    @Test("Free collaborator with one owned home and many shared homes can still add items in a shared home")
+    @MainActor
+    func testFreeCollaboratorSharedHomesDoNotBlockSharedItemCreation() async throws {
+        let personalHomeID = UUID()
+        let sharedHomeID = UUID()
+        let dataSource = FeatureGateDataSourceStub(
+            homeCount: 1,
+            itemCountsByHomeID: [
+                personalHomeID: 10,
+                sharedHomeID: 0
+            ]
+        )
+
+        let result = FeatureGate.canCreateItem(homeId: sharedHomeID, dataSource: dataSource, isPro: false)
+
+        #expect(result.isAllowed)
+        #expect(result.reason == nil)
+    }
+
+    @Test("Free collaborator with one owned home and many shared homes is still blocked from creating a second personal home")
+    @MainActor
+    func testFreeCollaboratorStillRespectsOwnedHomeLimit() async throws {
+        let dataSource = FeatureGateDataSourceStub(homeCount: 1)
+
+        let result = FeatureGate.canCreateHome(dataSource: dataSource, isPro: false)
+
+        #expect(result.isAllowed == false)
+        #expect(result.reason == .homeLimitReached)
+    }
+
+    @Test("Pro owner can manage sharing")
+    @MainActor
+    func testProOwnerCanManageSharing() async throws {
+        let home = AppHome(
+            id: UUID(),
+            name: "Owned Home",
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
+
+        let result = FeatureGate.shareManagementAccess(
+            for: home,
+            isPro: true,
+            sharedHomesEnabled: true
+        )
+
+        #expect(result == .allowed)
+    }
+
+    @Test("Free owner needs Pro to manage sharing")
+    @MainActor
+    func testFreeOwnerNeedsUpgradeToManageSharing() async throws {
+        let home = AppHome(
+            id: UUID(),
+            name: "Owned Home",
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
+
+        let result = FeatureGate.shareManagementAccess(
+            for: home,
+            isPro: false,
+            sharedHomesEnabled: true
+        )
+
+        #expect(result == .upgradeRequired)
+    }
+
+    @Test("Collaborator cannot manage sharing even when Pro")
+    @MainActor
+    func testCollaboratorCannotManageSharingEvenWhenPro() async throws {
+        let home = AppHome(
+            id: UUID(),
+            name: "Shared With Me",
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: true,
+            isOwnedByCurrentUser: false,
+            permission: SharePermission(role: .readWriteParticipant),
+            participantSummary: "2 people"
+        )
+
+        let result = FeatureGate.shareManagementAccess(
+            for: home,
+            isPro: true,
+            sharedHomesEnabled: true
+        )
+
+        #expect(result == .hidden)
+    }
+
+    @Test("Sharing affordance stays hidden when shared homes are disabled")
+    @MainActor
+    func testShareManagementAccessHiddenWhenFeatureDisabled() async throws {
+        let home = AppHome(
+            id: UUID(),
+            name: "Owned Home",
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
+
+        let result = FeatureGate.shareManagementAccess(
+            for: home,
+            isPro: true,
+            sharedHomesEnabled: false
+        )
+
+        #expect(result == .hidden)
     }
 }

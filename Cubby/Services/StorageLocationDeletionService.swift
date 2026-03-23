@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 
-@MainActor
 enum StorageLocationDeletionError: LocalizedError, Equatable {
     case locationNotFound
     case hasChildren(Int)
@@ -22,8 +21,12 @@ enum StorageLocationDeletionError: LocalizedError, Equatable {
     }
 }
 
-@MainActor
 struct StorageLocationDeletionService {
+    @MainActor
+    static func deleteLocationIfAllowed(locationId: UUID, appStore: AppStore) throws {
+        try appStore.deleteLocation(id: locationId)
+    }
+
     static func deleteLocationIfAllowed(locationId: UUID, modelContext: ModelContext) throws {
         let childCountDescriptor = FetchDescriptor<StorageLocation>(
             predicate: #Predicate { $0.parentLocation?.id == locationId }
@@ -57,4 +60,3 @@ struct StorageLocationDeletionService {
         }
     }
 }
-

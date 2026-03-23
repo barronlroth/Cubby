@@ -121,7 +121,7 @@ struct ProStatusView: View {
         #if os(iOS)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             do {
-                try await AppStore.showManageSubscriptions(in: windowScene)
+                try await StoreKit.AppStore.showManageSubscriptions(in: windowScene)
                 return
             } catch { }
         }

@@ -6,6 +6,18 @@ enum LastUsedLocationService {
     private static let lastUsedHomeIdKey = "lastUsedStorageLocationHomeId"
 
     static func remember(
+        location: AppStorageLocation?,
+        userDefaults: UserDefaults = .standard
+    ) {
+        guard let location else {
+            clear(userDefaults: userDefaults)
+            return
+        }
+        userDefaults.set(location.id.uuidString, forKey: lastUsedLocationIdKey)
+        userDefaults.set(location.homeID.uuidString, forKey: lastUsedHomeIdKey)
+    }
+
+    static func remember(
         location: StorageLocation,
         userDefaults: UserDefaults = .standard
     ) {
@@ -15,6 +27,22 @@ enum LastUsedLocationService {
         } else {
             userDefaults.removeObject(forKey: lastUsedHomeIdKey)
         }
+    }
+
+    static func preferredLocation(
+        for homeId: UUID?,
+        availableLocations: [AppStorageLocation],
+        userDefaults: UserDefaults = .standard
+    ) -> AppStorageLocation? {
+        if let restored = restoreLastUsedLocation(
+            for: homeId,
+            availableLocations: availableLocations,
+            userDefaults: userDefaults
+        ) {
+            return restored
+        }
+
+        return unsortedLocation(for: homeId, availableLocations: availableLocations)
     }
 
     static func preferredLocation(
@@ -31,6 +59,37 @@ enum LastUsedLocationService {
         }
 
         return unsortedLocation(for: homeId, in: modelContext)
+    }
+
+    static func restoreLastUsedLocation(
+        for homeId: UUID?,
+        availableLocations: [AppStorageLocation],
+        userDefaults: UserDefaults = .standard
+    ) -> AppStorageLocation? {
+        guard
+            let locationIdString = userDefaults.string(forKey: lastUsedLocationIdKey),
+            let locationId = UUID(uuidString: locationIdString)
+        else {
+            return nil
+        }
+
+        if let storedHomeIdString = userDefaults.string(forKey: lastUsedHomeIdKey),
+           let storedHomeId = UUID(uuidString: storedHomeIdString),
+           let homeId,
+           storedHomeId != homeId {
+            return nil
+        }
+
+        guard let restored = availableLocations.first(where: { $0.id == locationId })
+        else {
+            return nil
+        }
+
+        if let homeId, restored.homeID != homeId {
+            return nil
+        }
+
+        return restored
     }
 
     static func restoreLastUsedLocation(
@@ -78,15 +137,20 @@ enum LastUsedLocationService {
 
     private static func unsortedLocation(
         for homeId: UUID?,
+        availableLocations: [AppStorageLocation]
+    ) -> AppStorageLocation? {
+        guard let homeId else { return nil }
+        return availableLocations.first { $0.homeID == homeId && $0.name == "Unsorted" }
+    }
+
+    private static func unsortedLocation(
+        for homeId: UUID?,
         in modelContext: ModelContext
     ) -> StorageLocation? {
         guard let homeId else { return nil }
         let descriptor = FetchDescriptor<StorageLocation>(
             predicate: #Predicate { $0.home?.id == homeId && $0.name == "Unsorted" }
         )
-        if let locations = try? modelContext.fetch(descriptor) {
-            return locations.first
-        }
-        return nil
+        return try? modelContext.fetch(descriptor).first
     }
 }

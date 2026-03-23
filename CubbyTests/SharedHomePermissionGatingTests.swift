@@ -7,7 +7,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_addItem_blockedForReadOnlyParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canAddItems(in: home) == false)
@@ -16,7 +16,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_editItem_blockedForReadOnlyParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canEditItems(in: home) == false)
@@ -25,7 +25,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_deleteItem_blockedForReadOnlyParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canDeleteItems(in: home) == false)
@@ -34,7 +34,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_addLocation_blockedForReadOnlyParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canCreateLocations(in: home) == false)
@@ -43,7 +43,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_deleteLocation_blockedForReadOnlyParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readOnlyParticipant, for: home)
 
         #expect(service.canDeleteLocations(in: home) == false)
@@ -52,7 +52,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_addItem_allowedForReadWriteParticipant() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Shared Home")
+        let home = makeHome(name: "Shared Home")
         service.setRole(.readWriteParticipant, for: home)
 
         #expect(service.canAddItems(in: home))
@@ -61,7 +61,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_addItem_allowedForOwner() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Owned Home")
+        let home = makeHome(name: "Owned Home")
         service.setRole(.owner, for: home)
 
         #expect(service.canAddItems(in: home))
@@ -70,7 +70,7 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_editItem_allowedForOwner() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Owned Home")
+        let home = makeHome(name: "Owned Home")
         service.setRole(.owner, for: home)
 
         #expect(service.canEditItems(in: home))
@@ -79,33 +79,45 @@ struct SharedHomePermissionGatingTests {
     @Test
     func test_deleteItem_allowedForOwner() {
         let service = PermissionGatingHomeSharingServiceMock()
-        let home = Home(name: "Owned Home")
+        let home = makeHome(name: "Owned Home")
         service.setRole(.owner, for: home)
 
         #expect(service.canDeleteItems(in: home))
+    }
+    private func makeHome(name: String) -> AppHome {
+        AppHome(
+            id: UUID(),
+            name: name,
+            createdAt: Date(),
+            modifiedAt: Date(),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
     }
 }
 
 private final class PermissionGatingHomeSharingServiceMock: HomeSharingServiceProtocol {
     private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
 
-    func shareHome(_ home: Home) throws -> CKShare {
+    func shareHome(_ home: AppHome) throws -> CKShare {
         let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
         share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         return share
     }
 
-    func fetchShare(for home: Home) -> CKShare? {
+    func fetchShare(for home: AppHome) -> CKShare? {
         _ = home
         return nil
     }
 
-    func canEdit(_ home: Home) -> Bool {
+    func canEdit(_ home: AppHome) -> Bool {
         let role = rolesByHomeID[home.id] ?? .owner
         return SharePermission(role: role).canMutate
     }
 
-    func isShared(_ home: Home) -> Bool {
+    func isShared(_ home: AppHome) -> Bool {
         rolesByHomeID[home.id] != nil
     }
 
@@ -113,32 +125,32 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         _ = metadata
     }
 
-    func participants(for home: Home) -> [CKShare.Participant] {
+    func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
     }
 
-    func canCreateLocations(in home: Home) -> Bool {
+    func canCreateLocations(in home: AppHome) -> Bool {
         canEdit(home)
     }
 
-    func canDeleteLocations(in home: Home) -> Bool {
+    func canDeleteLocations(in home: AppHome) -> Bool {
         canEdit(home)
     }
 
-    func canAddItems(in home: Home) -> Bool {
+    func canAddItems(in home: AppHome) -> Bool {
         canEdit(home)
     }
 
-    func canEditItems(in home: Home) -> Bool {
+    func canEditItems(in home: AppHome) -> Bool {
         canEdit(home)
     }
 
-    func canDeleteItems(in home: Home) -> Bool {
+    func canDeleteItems(in home: AppHome) -> Bool {
         canEdit(home)
     }
 
-    func setRole(_ role: SharePermission.Role, for home: Home) {
+    func setRole(_ role: SharePermission.Role, for home: AppHome) {
         rolesByHomeID[home.id] = role
     }
 }
