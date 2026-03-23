@@ -38,6 +38,23 @@ enum HomeSharingServiceError: Error, Equatable {
     case shareExportTimedOut
 }
 
+extension HomeSharingServiceError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .homeAlreadyShared:
+            return "This home is already shared."
+        case .unsupportedHomeModel:
+            return "This home could not be prepared for sharing."
+        case .shareCreationFailed:
+            return "Cubby could not create the share invite."
+        case .missingSharedPersistentStore:
+            return "Cubby could not access the shared iCloud store."
+        case .shareExportTimedOut:
+            return "Cubby took too long to prepare the share invite. Please try again."
+        }
+    }
+}
+
 enum DebugMockSharingMode: Equatable, CustomStringConvertible {
     case disabled
     case owner

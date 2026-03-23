@@ -7,8 +7,8 @@ import UIKit
 
 struct CloudShareActivityControllerRepresentable: UIViewControllerRepresentable {
     let title: String
+    let share: CKShare
     let container: CKContainer
-    let preparationHandler: @Sendable () async throws -> CKShare
     var onComplete: (() -> Void)?
     var onError: ((Error) -> Void)?
 
@@ -22,11 +22,10 @@ struct CloudShareActivityControllerRepresentable: UIViewControllerRepresentable 
         sharingOptions.allowsAccessRequests = false
 
         itemProvider.registerCKShare(
+            share,
             container: container,
             allowedSharingOptions: sharingOptions
-        ) {
-            try await preparationHandler()
-        }
+        )
 
         let configuration = UIActivityItemsConfiguration(itemProviders: [itemProvider])
         let metadata = LPLinkMetadata()
