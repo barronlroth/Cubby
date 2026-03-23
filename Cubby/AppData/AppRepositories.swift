@@ -31,7 +31,7 @@ protocol ItemRepository {
 protocol ShareRepository {
     var ckContainer: CKContainer { get }
 
-    func share(for homeID: UUID) throws -> CKShare
+    func share(for homeID: UUID) async throws -> CKShare
     func existingShare(for homeID: UUID) -> CKShare?
     func permission(for homeID: UUID) -> SharePermission
     func participants(for homeID: UUID) -> [CKShare.Participant]

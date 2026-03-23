@@ -101,7 +101,7 @@ struct SharedHomePermissionGatingTests {
 private final class PermissionGatingHomeSharingServiceMock: HomeSharingServiceProtocol {
     private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
 
-    func shareHome(_ home: AppHome) throws -> CKShare {
+    func shareHome(_ home: AppHome) async throws -> CKShare {
         let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
         share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         return share

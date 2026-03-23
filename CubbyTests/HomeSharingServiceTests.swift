@@ -5,11 +5,11 @@ import Testing
 
 struct HomeSharingServiceTests {
     @Test
-    func test_shareHome_createsShareForPrivateHome() throws {
+    func test_shareHome_createsShareForPrivateHome() async throws {
         let service = MockHomeSharingService()
         let home = makeHome(name: "Primary Home")
 
-        let share = try service.shareHome(home)
+        let share = try await service.shareHome(home)
         let fetchedShare = service.fetchShare(for: home)
 
         #expect(share.recordID.recordName == fetchedShare?.recordID.recordName)
@@ -17,13 +17,13 @@ struct HomeSharingServiceTests {
     }
 
     @Test
-    func test_shareHome_failsForAlreadySharedHome() throws {
+    func test_shareHome_failsForAlreadySharedHome() async throws {
         let service = MockHomeSharingService()
         let home = makeHome(name: "Already Shared")
-        _ = try service.shareHome(home)
+        _ = try await service.shareHome(home)
 
         do {
-            _ = try service.shareHome(home)
+            _ = try await service.shareHome(home)
             Issue.record("Expected already-shared error")
         } catch let error as HomeSharingServiceError {
             #expect(error == .homeAlreadyShared)
@@ -39,10 +39,10 @@ struct HomeSharingServiceTests {
     }
 
     @Test
-    func test_fetchShare_returnsShareForSharedHome() throws {
+    func test_fetchShare_returnsShareForSharedHome() async throws {
         let service = MockHomeSharingService()
         let home = makeHome(name: "Shared Home")
-        let shared = try service.shareHome(home)
+        let shared = try await service.shareHome(home)
 
         let fetched = service.fetchShare(for: home)
 
@@ -84,10 +84,10 @@ struct HomeSharingServiceTests {
     }
 
     @Test
-    func test_isShared_returnsTrueForSharedHome() throws {
+    func test_isShared_returnsTrueForSharedHome() async throws {
         let service = MockHomeSharingService()
         let home = makeHome(name: "Shared Home")
-        _ = try service.shareHome(home)
+        _ = try await service.shareHome(home)
 
         #expect(service.isShared(home))
     }
@@ -130,7 +130,7 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
     private var sharesByHomeID: [UUID: CKShare] = [:]
     private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
 
-    func shareHome(_ home: AppHome) throws -> CKShare {
+    func shareHome(_ home: AppHome) async throws -> CKShare {
         if sharesByHomeID[home.id] != nil {
             throw HomeSharingServiceError.homeAlreadyShared
         }

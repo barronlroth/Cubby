@@ -116,14 +116,47 @@ struct HomeView: View {
                 if debugMockSharingMode.isEnabled {
                     MockSharePreviewSheet(title: context.title)
                 } else {
-                    CloudSharingControllerRepresentable(
-                        share: context.share,
-                        container: appStore.shareContainer,
-                        title: context.title,
-                        onError: { error in
-                            shareErrorMessage = error.localizedDescription
-                        }
-                    )
+                    switch context.mode {
+                    case let .existing(share):
+                        CloudSharingControllerRepresentable(
+                            share: share,
+                            container: appStore.shareContainer,
+                            title: context.title,
+                            onSave: { appStore.refresh() },
+                            onStopSharing: { appStore.refresh() },
+                            onError: { error in
+                                shareErrorMessage = error.localizedDescription
+                            }
+                        )
+                    case let .new(homeID):
+                        CloudSharingControllerRepresentable(
+                            title: context.title,
+                            preparationHandler: { completion in
+                                Task { @MainActor in
+                                    do {
+                                        let share = try await appStore.shareHome(homeID: homeID)
+                                        completion(share, appStore.shareContainer, nil)
+                                    } catch HomeSharingServiceError.homeAlreadyShared {
+                                        if let existingShare = appStore.existingShare(homeID: homeID) {
+                                            completion(existingShare, appStore.shareContainer, nil)
+                                        } else {
+                                            let error = HomeSharingServiceError.shareCreationFailed
+                                            shareErrorMessage = error.localizedDescription
+                                            completion(nil, nil, error)
+                                        }
+                                    } catch {
+                                        shareErrorMessage = error.localizedDescription
+                                        completion(nil, nil, error)
+                                    }
+                                }
+                            },
+                            onSave: { appStore.refresh() },
+                            onStopSharing: { appStore.refresh() },
+                            onError: { error in
+                                shareErrorMessage = error.localizedDescription
+                            }
+                        )
+                    }
                 }
 #else
                 Text("Sharing is unavailable on this platform.")
@@ -231,29 +264,22 @@ struct HomeView: View {
 
         if debugMockSharingMode.isEnabled {
             activeShareSheet = HomeShareSheetContext(
-                share: makeMockShare(for: selectedHome),
+                mode: .existing(makeMockShare(for: selectedHome)),
                 title: selectedHome.name
             )
             return
         }
 
-        do {
-            let share = try appStore.shareHome(homeID: selectedHome.id)
+        if let existingShare = appStore.existingShare(homeID: selectedHome.id) {
             activeShareSheet = HomeShareSheetContext(
-                share: share,
+                mode: .existing(existingShare),
                 title: selectedHome.name
             )
-        } catch HomeSharingServiceError.homeAlreadyShared {
-            if let existingShare = appStore.existingShare(homeID: selectedHome.id) {
-                activeShareSheet = HomeShareSheetContext(
-                    share: existingShare,
-                    title: selectedHome.name
-                )
-            } else {
-                shareErrorMessage = "The home is already shared, but the share could not be loaded."
-            }
-        } catch {
-            shareErrorMessage = error.localizedDescription
+        } else {
+            activeShareSheet = HomeShareSheetContext(
+                mode: .new(selectedHome.id),
+                title: selectedHome.name
+            )
         }
     }
 
@@ -308,8 +334,13 @@ struct HomeView: View {
 }
 
 private struct HomeShareSheetContext: Identifiable {
+    enum Mode {
+        case existing(CKShare)
+        case new(UUID)
+    }
+
     let id = UUID()
-    let share: CKShare
+    let mode: Mode
     let title: String
 }
 

@@ -3,7 +3,7 @@ import CoreData
 import Foundation
 
 protocol HomeSharingServiceProtocol {
-    func shareHome(_ home: AppHome) throws -> CKShare
+    func shareHome(_ home: AppHome) async throws -> CKShare
     func fetchShare(for home: AppHome) -> CKShare?
     func permission(for home: AppHome) -> SharePermission
     func canEdit(_ home: AppHome) -> Bool
@@ -181,7 +181,7 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         self.mode = mode
     }
 
-    func shareHome(_ home: AppHome) throws -> CKShare {
+    func shareHome(_ home: AppHome) async throws -> CKShare {
         makeShare(for: home)
     }
 
@@ -254,7 +254,7 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         self.ckContainer = ckContainer
     }
 
-    func shareHome(_ home: AppHome) throws -> CKShare {
+    func shareHome(_ home: AppHome) async throws -> CKShare {
         guard fetchShare(for: home) == nil else {
             throw HomeSharingServiceError.homeAlreadyShared
         }
@@ -263,13 +263,13 @@ final class HomeSharingService: HomeSharingServiceProtocol {
             throw HomeSharingServiceError.unsupportedHomeModel
         }
 
-        let share = try createShare(for: managedObject)
+        let share = try await createShare(for: managedObject)
         if home.name.isEmpty == false {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         }
 
         if let privatePersistentStore = persistenceController.privatePersistentStore() {
-            try persistUpdatedShare(share, in: privatePersistentStore)
+            try await persistUpdatedShare(share, in: privatePersistentStore)
         }
 
         return share
@@ -347,52 +347,42 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         managedObject(for: home)?.objectID
     }
 
-    private func createShare(for managedObject: NSManagedObject) throws -> CKShare {
-        var createdShare: CKShare?
-        var shareError: Error?
-        let semaphore = DispatchSemaphore(value: 0)
+    private func createShare(for managedObject: NSManagedObject) async throws -> CKShare {
+        try await withCheckedThrowingContinuation { continuation in
+            persistenceController.persistentContainer.share(
+                [managedObject],
+                to: nil
+            ) { _, share, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
 
-        persistenceController.persistentContainer.share(
-            [managedObject],
-            to: nil
-        ) { _, share, _, error in
-            createdShare = share
-            shareError = error
-            semaphore.signal()
+                guard let share else {
+                    continuation.resume(throwing: HomeSharingServiceError.shareCreationFailed)
+                    return
+                }
+
+                continuation.resume(returning: share)
+            }
         }
-
-        semaphore.wait()
-
-        if let shareError {
-            throw shareError
-        }
-
-        guard let createdShare else {
-            throw HomeSharingServiceError.shareCreationFailed
-        }
-
-        return createdShare
     }
 
     private func persistUpdatedShare(
         _ share: CKShare,
         in persistentStore: NSPersistentStore
-    ) throws {
-        var persistenceError: Error?
-        let semaphore = DispatchSemaphore(value: 0)
-
-        persistenceController.persistentContainer.persistUpdatedShare(
-            share,
-            in: persistentStore
-        ) { _, error in
-            persistenceError = error
-            semaphore.signal()
-        }
-
-        semaphore.wait()
-
-        if let persistenceError {
-            throw persistenceError
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            persistenceController.persistentContainer.persistUpdatedShare(
+                share,
+                in: persistentStore
+            ) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
         }
     }
 }

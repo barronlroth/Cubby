@@ -278,8 +278,8 @@ final class AppStore: ObservableObject {
         LastUsedLocationService.preferredLocation(for: homeID, availableLocations: locations)
     }
 
-    func shareHome(homeID: UUID) throws -> CKShare {
-        let share = try repository.share(for: homeID)
+    func shareHome(homeID: UUID) async throws -> CKShare {
+        let share = try await repository.share(for: homeID)
         refresh()
         return share
     }
