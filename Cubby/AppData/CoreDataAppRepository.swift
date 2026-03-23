@@ -321,7 +321,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         guard let shareService else {
             throw HomeSharingServiceError.shareCreationFailed
         }
-        guard let home = try home(id: homeID) else {
+        guard let home = makeHomeReference(id: homeID) else {
             throw AppRepositoryError.homeNotFound
         }
         return try shareService.shareHome(home)
@@ -329,7 +329,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func existingShare(for homeID: UUID) -> CKShare? {
         guard let shareService,
-              let home = (try? self.home(id: homeID)) ?? nil else {
+              let home = makeHomeReference(id: homeID) else {
             return nil
         }
         return shareService.fetchShare(for: home)
@@ -337,7 +337,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func permission(for homeID: UUID) -> SharePermission {
         guard let shareService,
-              let home = (try? self.home(id: homeID)) ?? nil else {
+              let home = makeHomeReference(id: homeID) else {
             return SharePermission(role: .owner)
         }
         return shareService.permission(for: home)
@@ -345,7 +345,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func participants(for homeID: UUID) -> [CKShare.Participant] {
         guard let shareService,
-              let home = (try? self.home(id: homeID)) ?? nil else {
+              let home = makeHomeReference(id: homeID) else {
             return []
         }
         return shareService.participants(for: home)
@@ -353,7 +353,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func isShared(homeID: UUID) -> Bool {
         guard let shareService,
-              let home = (try? self.home(id: homeID)) ?? nil else {
+              let home = makeHomeReference(id: homeID) else {
             return false
         }
         return shareService.isShared(home)
@@ -489,17 +489,7 @@ private extension CoreDataAppRepository {
     }
 
     func makeHome(_ homeObject: NSManagedObject) -> AppHome {
-        let homeID = homeObject.value(forKey: "id") as? UUID ?? UUID()
-        let baseHome = AppHome(
-            id: homeID,
-            name: homeObject.stringValue(forKey: "name"),
-            createdAt: homeObject.dateValue(forKey: "createdAt"),
-            modifiedAt: homeObject.dateValue(forKey: "modifiedAt"),
-            isShared: false,
-            isOwnedByCurrentUser: true,
-            permission: SharePermission(role: .owner),
-            participantSummary: nil
-        )
+        let baseHome = makeHomeReference(homeObject)
         let permission = shareService?.permission(for: baseHome) ?? SharePermission(role: .owner)
         let isShared = shareService?.isShared(baseHome) ?? false
         let isOwnedByCurrentUser = permission.role == .owner
@@ -511,7 +501,7 @@ private extension CoreDataAppRepository {
             isShared: isShared,
             isOwnedByCurrentUser: isOwnedByCurrentUser,
             permission: permission,
-            participantSummary: participantSummary(for: homeID)
+            participantSummary: participantSummary(for: baseHome.id)
         )
     }
 
@@ -625,6 +615,26 @@ private extension CoreDataAppRepository {
         }
 
         return "Shared with \(names.prefix(2).joined(separator: ", ")) +\(names.count - 2)"
+    }
+
+    func makeHomeReference(id: UUID) -> AppHome? {
+        guard let homeObject = try? fetchHomeObject(id: id) else {
+            return nil
+        }
+        return makeHomeReference(homeObject)
+    }
+
+    func makeHomeReference(_ homeObject: NSManagedObject) -> AppHome {
+        AppHome(
+            id: homeObject.value(forKey: "id") as? UUID ?? UUID(),
+            name: homeObject.stringValue(forKey: "name"),
+            createdAt: homeObject.dateValue(forKey: "createdAt"),
+            modifiedAt: homeObject.dateValue(forKey: "modifiedAt"),
+            isShared: false,
+            isOwnedByCurrentUser: true,
+            permission: SharePermission(role: .owner),
+            participantSummary: nil
+        )
     }
 }
 

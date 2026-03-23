@@ -6,14 +6,16 @@ import Testing
 @Suite("Core Data App Repository Tests")
 struct CoreDataAppRepositoryTests {
     @MainActor
-    private func makeRepository() throws -> CoreDataAppRepository {
+    private func makeRepository(
+        shareService: (any HomeSharingServiceProtocol)? = nil
+    ) throws -> CoreDataAppRepository {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("CoreDataAppRepositoryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let controller = try PersistenceController(storeDirectory: directory)
         return CoreDataAppRepository(
             persistenceController: controller,
-            shareService: nil
+            shareService: shareService
         )
     }
 
@@ -154,5 +156,33 @@ struct CoreDataAppRepositoryTests {
         #expect(personalItemGate.isAllowed == false)
         #expect(personalItemGate.reason == .itemLimitReached)
         #expect(sharedItemGate.isAllowed)
+    }
+
+    @Test("Creating a home with sharing enabled does not recurse")
+    @MainActor
+    func testCreateHomeWithShareServiceDoesNotRecurse() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .owner)
+        )
+
+        let createdHome = try repository.createHome(name: "Primary Home")
+
+        #expect(createdHome.name == "Primary Home")
+        #expect(createdHome.participantSummary == nil)
+        #expect(createdHome.permission == SharePermission(role: .owner))
+    }
+
+    @Test("Listing homes with sharing enabled does not recurse")
+    @MainActor
+    func testListHomesWithShareServiceDoesNotRecurse() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .owner)
+        )
+
+        _ = try repository.createHome(name: "Primary Home")
+        let homes = try repository.listHomes()
+
+        #expect(homes.count == 1)
+        #expect(homes.first?.name == "Primary Home")
     }
 }
