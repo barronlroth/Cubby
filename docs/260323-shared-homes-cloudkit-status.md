@@ -15,9 +15,12 @@ At the moment:
 - that container then appeared to get stuck in a bad state around `cloudkit.share`
 - a fresh container `iCloud.com.barronroth.CubbyV2` was created and the app was repointed to it
 - the latest unlocked-device rerun no longer reproduced `Invalid bundle ID for container`
-- the live blocker is now a schema failure on `iCloud.com.barronroth.CubbyV2`: `Cannot create new type CD_CDHome in production schema`
+- a Debug signing/configuration bug was forcing `CubbyV2` schema-init runs to use the `Production` CloudKit environment
+- that bug is now fixed by using Development entitlements for Debug builds
+- `CubbyV2` development schema initialization now succeeds
+- the remaining Phase 2 work is now: create one development share, then deploy schema changes to production
 
-That means the app/container association issue likely cleared or is no longer the first failing step. The current remaining blocker is back in CloudKit schema state for the fresh container.
+That means the app/container association issue likely cleared, and the production-schema failure turned out to be caused by the app being signed for the wrong CloudKit environment during Debug schema-init runs.
 
 ## Current State By Artifact
 
@@ -29,6 +32,7 @@ That means the app/container association issue likely cleared or is no longer th
 - Shared-home location creation now routes to the owning home/location store instead of always targeting the private store.
 - Cross-store item moves are now rejected instead of silently reparenting items across private/shared stores.
 - Fastlane now has an explicit internal-only beta upload path for the first `CubbyV2` validation build.
+- Debug/device builds now use a Development CloudKit entitlements file so `INIT_CLOUDKIT_SCHEMA` targets the development environment instead of production.
 
 ### Latest TestFlight build
 
@@ -38,10 +42,12 @@ That means the app/container association issue likely cleared or is no longer th
 
 ### Apple-side blocker state
 
-- The latest confirmed CloudKit failure on `iCloud.com.barronroth.CubbyV2` is now `Cannot create new type CD_CDHome in production schema`.
+- `Invalid bundle ID for container` did not reproduce on the latest unlocked-device rerun.
+- `Cannot create new type CD_CDHome in production schema` was reproduced once, then traced to the app being signed with `com.apple.developer.icloud-container-environment = Production` during a Debug schema-init run.
 - On March 23, 2026, a Development-signed app build and install to Barron's iPhone succeeded.
 - On March 23, 2026 at 10:09 PM PDT, an unlocked-device `INIT_CLOUDKIT_SCHEMA` launch reached app startup and schema bootstrap.
-- Result: the app/container association failure did not reproduce on the latest rerun, but the fresh container still cannot complete schema initialization.
+- On March 23, 2026 at 10:19 PM PDT, a rebuilt Debug app with Development entitlements successfully initialized `CubbyV2` development schema.
+- Result: the current blocker is no longer container association or schema-init itself; it is the remaining share/deploy validation sequence.
 
 ## What Is Already Done
 
@@ -74,6 +80,19 @@ Focused validation is passing in the current workspace:
 - `RemoteChangeHandlerTests`
 
 Most recent focused rerun in the current workspace on March 23, 2026: `51 passed, 0 failed`.
+
+### CloudKit validation
+
+- CloudKit Console now shows the Core Data record types in `iCloud.com.barronroth.CubbyV2` Development.
+- Development currently contains at least:
+  - `CD_CDHome`
+  - `CD_CDInventoryItem`
+  - `CD_CDStorageLocation`
+  - `CD_Home`
+  - `CD_InventoryItem`
+  - `CD_StorageLocation`
+- The CloudKit Console now marks schema areas as modified and enables `Deploy Schema Changes…` for the fresh container.
+- Production still has not been updated with those schema changes.
 
 ## TestFlight / build history for this incident
 
@@ -161,37 +180,27 @@ Verified in the embedded provisioning profile:
 
 That means the app binary itself is requesting the new container correctly.
 
-### Current failure on the fresh container
+### Current state on the fresh container
 
-Current CloudKit failure:
+Current `CubbyV2` state:
 
-- `Partial Failure`
-- server message:
-  - `Cannot create new type CD_CDHome in production schema`
-
-This happens during Core Data mirroring setup for:
-
-- `CD_FAKE_CDHome_B88E8AFD-134D-4EE3-BBD9-31CC611DA8DA:(com.apple.coredata.cloudkit.zone:__defaultOwner__)`
-
-Container:
-
-- `iCloud.com.barronroth.CubbyV2`
-
-The latest rerun no longer points at app/container association. It points back at CloudKit schema state for the fresh container.
+- Development schema initialization succeeds from a Debug device build signed with `com.apple.developer.icloud-container-environment = Development`.
+- CloudKit Console reflects the generated Core Data record types in Development.
+- `Deploy Schema Changes…` is now available for the fresh container.
+- Production still has only the default `Users` type until schema is deployed.
 
 ### Latest device recheck
 
-The latest recheck did reach CloudKit startup:
+The latest successful recheck reached CloudKit startup and completed schema init:
 
 - Device build succeeded
 - Device install succeeded
 - `xcrun devicectl device process launch --console --device 00008130-00046D843869E93A com.barronroth.Cubby INIT_CLOUDKIT_SCHEMA`
 - app launched successfully on the unlocked device
-- schema bootstrap failed with `NSCocoaErrorDomain Code=134060`
-- underlying CloudKit error: `CKError "Partial Failure"` with `Invalid Arguments`
-- server message: `Cannot create new type CD_CDHome in production schema`
+- app logged `CloudKit development schema initialized`
+- CloudKit Console reflected the new Development record types immediately afterward
 
-That means the branch is past the device-lock blocker and back to a CloudKit schema blocker on `CubbyV2`.
+The same device path previously failed because the Debug app was signed for the Production CloudKit environment. After splitting entitlements by configuration, the schema-init path now behaves correctly.
 
 ## Apple Docs Used To Interpret The Current State
 
@@ -211,6 +220,7 @@ Most important interpretation from TN3164:
 
 - `Invalid bundle ID for container` points to the app ID / CloudKit container association, not an app-code bug.
 - `Cannot create new type ... in production schema` points to undeployed or inconsistent production schema state for the current container.
+- If a Debug schema-init build is signed for `Production`, `initializeCloudKitSchema()` cannot seed the development schema and will fail with production-schema creation errors.
 
 ## Current Branch And Upload State
 
@@ -221,25 +231,21 @@ Branch tip now includes:
 - shared-home location store routing fixes
 - cross-store item move rejection
 - an internal-only Fastlane beta lane: `fastlane beta_internal`
+- Debug-only Development CloudKit entitlements for schema-init/device validation
 
 Still not shipped:
 
 - a TestFlight build containing those changes
-- a successful `CubbyV2` schema-init run
 - a successful development share creation on `CubbyV2`
+- a production schema deploy from `CubbyV2`
 
 ## Immediate Next Steps
 
-1. Inspect `iCloud.com.barronroth.CubbyV2` in CloudKit Console and confirm whether the Core Data record types for the fresh container exist in development and are deployed to production.
-2. Re-run the Development-signed launch with `INIT_CLOUDKIT_SCHEMA` after any schema deployment change.
-3. If schema initialization succeeds:
-   - create one development share
-   - deploy any newly introduced share-related schema to production from CloudKit Console
-   - upload an internal-only build with `fastlane beta_internal`
-   - run the two-Apple-ID validation matrix on that exact build
-4. If `CD_CDHome` still cannot be created in production on `CubbyV2` after schema inspection/deployment:
-   - stop container iteration
-   - escalate as an Apple-side CloudKit container/schema blocker
+1. Create one development share on the fresh Debug/device build so any share-related schema is generated in `CubbyV2` Development.
+2. Recheck CloudKit Console after that share creation and confirm whether additional share-related schema changes appear.
+3. Deploy schema changes from Development to Production in CloudKit Console.
+4. Upload an internal-only build with `fastlane beta_internal`.
+5. Run the two-Apple-ID validation matrix on that exact build.
 
 ## What Not To Spend Time On Right Now
 
