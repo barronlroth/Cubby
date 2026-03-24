@@ -4,10 +4,10 @@
 
 Shared Homes is no longer blocked on core app architecture.
 
-The app runtime has already been cut over to the Core Data + `NSPersistentCloudKitContainer` stack used by CloudKit sharing. The current remaining work is split across:
+The app runtime has already been cut over to the Core Data + `NSPersistentCloudKitContainer` stack used by CloudKit sharing. The remaining work is now split across:
 
-- persistence correctness hardening in the branch workspace
-- CloudKit container setup on Apple's side
+- final persistence correctness hardening in the branch workspace
+- CloudKit container setup and validation on Apple's side
 
 At the moment:
 
@@ -16,7 +16,7 @@ At the moment:
 - a fresh container `iCloud.com.barronroth.CubbyV2` was created and the app was repointed to it
 - the new blocker is now `Invalid bundle ID for container` for `iCloud.com.barronroth.CubbyV2`
 
-That last error means the app/container association has not fully propagated or is not fully recognized by CloudKit yet.
+That last error means the app/container association has not fully propagated or is not fully recognized by CloudKit yet. As of March 23, 2026, the latest device recheck is still incomplete because the Development-signed app could be built and installed, but the schema-init launch attempt never reached app startup while the device was locked.
 
 ## Current State By Artifact
 
@@ -26,18 +26,21 @@ That last error means the app/container association has not fully propagated or 
 - SwiftData remains only as a legacy migration source or debug seed source.
 - Migration now opens the on-disk legacy SwiftData store directly and defers retry if that source is unavailable.
 - Shared-home location creation now routes to the owning home/location store instead of always targeting the private store.
-
-### Local uncommitted `CubbyV2` rescue work
-
-- `CloudKitSyncSettings.containerIdentifier` points to `iCloud.com.barronroth.CubbyV2`.
-- `Cubby.entitlements` and Xcode project settings were updated for the new container.
-- `CloudKitSchemaBootstrapper` was adjusted for the new container/schema-init workflow.
+- Cross-store item moves are now rejected instead of silently reparenting items across private/shared stores.
+- Fastlane now has an explicit internal-only beta upload path for the first `CubbyV2` validation build.
 
 ### Latest TestFlight build
 
 - Build `52` is still the latest uploaded TestFlight build.
 - Build `52` includes the share-flow hardening work.
-- Build `52` does not include the `CubbyV2` cutover or the March 23 migration/store-routing fixes in this workspace.
+- Build `52` does not include the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, or the internal-only beta lane.
+
+### Apple-side blocker state
+
+- The latest confirmed CloudKit container failure on `iCloud.com.barronroth.CubbyV2` is still `Invalid bundle ID for container`.
+- On March 23, 2026, a Development-signed app build and install to Barron's iPhone succeeded.
+- On March 23, 2026 at 9:50 PM PDT, the latest `INIT_CLOUDKIT_SCHEMA` launch attempt was blocked before app startup because the device was locked.
+- Result: the app/container association still needs to be rechecked on an unlocked device before any new beta upload.
 
 ## What Is Already Done
 
@@ -61,17 +64,15 @@ That last error means the app/container association has not fully propagated or 
 
 ### Tests
 
-Focused tests are passing after the fresh-container code cutover:
+Focused validation is passing in the current workspace:
 
-- `CloudKitAvailabilityTests`
-- `PersistenceControllerTests`
+- `DataMigrationTests`
+- `CoreDataAppRepositoryTests`
 - `HomeSharingServiceTests`
 - `FeatureGateTests`
-- `CoreDataAppRepositoryTests`
-- `DataMigrationTests`
 - `RemoteChangeHandlerTests`
 
-Most recent focused run in the current workspace: `49 passed, 0 failed`.
+Most recent focused rerun in the current workspace on March 23, 2026: `51 passed, 0 failed`.
 
 ## TestFlight / build history for this incident
 
@@ -80,7 +81,7 @@ Most recent focused run in the current workspace: `49 passed, 0 failed`.
 - `51`: waited for CloudKit export before sharing
 - `52`: precreated CloudKit shares before presenting invite sheet
 
-Build `52` is the latest TestFlight build that contains the current share-flow fixes, but it predates the `CubbyV2` cutover and the current migration/store-routing hardening.
+Build `52` is the latest TestFlight build that contains the current share-flow fixes, but it predates the `CubbyV2` cutover and the March 23 persistence hardening.
 
 ## What Was Attempted On The Original Container
 
@@ -119,7 +120,7 @@ Fresh container:
 
 - `iCloud.com.barronroth.CubbyV2`
 
-Current local code changes:
+Branch-tip container changes:
 
 - `CloudKitSyncSettings.containerIdentifier` now points to `iCloud.com.barronroth.CubbyV2`
 - `Cubby.entitlements` now lists only `iCloud.com.barronroth.CubbyV2`
@@ -144,7 +145,7 @@ Relevant file:
 
 ### App-side signing / entitlements
 
-A Development-signed device build was created and installed to Barron's iPhone.
+A Development-signed device build was created and installed to Barron's iPhone on March 23, 2026.
 
 Verified on the built app:
 
@@ -178,6 +179,18 @@ Container:
 
 This is no longer a schema mismatch. It is an Apple-side app/container association issue.
 
+### Latest device recheck
+
+The latest recheck did not reach CloudKit startup:
+
+- Device build succeeded
+- Device install succeeded
+- `xcrun devicectl device process launch --console --device 00008130-00046D843869E93A com.barronroth.Cubby INIT_CLOUDKIT_SCHEMA`
+- launch failed with `CoreDeviceError 10002` / `FBSOpenApplicationErrorDomain error 7`
+- server-side reason: the device was locked, so the app never reached schema bootstrap
+
+That means the branch is ready for the next validation attempt, but the first checkpoint in the Phase 2 plan is still pending on an unlocked device.
+
 ## Apple Docs Used To Interpret The Current State
 
 These Apple docs were consulted through `sosumi` during debugging:
@@ -196,32 +209,34 @@ Most important interpretation from TN3164:
 
 - `Invalid bundle ID for container` points to the app ID / CloudKit container association, not an app-code bug.
 
-## Current Working Tree State
+## Current Branch And Upload State
 
-Uncommitted local changes currently include:
+Branch tip now includes:
 
-- `/Users/barron/Developer/Cubby/Cubby.xcodeproj/project.pbxproj`
-- `/Users/barron/Developer/Cubby/Cubby/Cubby.entitlements`
-- `/Users/barron/Developer/Cubby/Cubby/Services/CloudKitSchemaBootstrapper.swift`
-- `/Users/barron/Developer/Cubby/Cubby/Services/CloudKitSyncSettings.swift`
-- `/Users/barron/Developer/Cubby/docs/260103-cloudkit-plan.md`
-- `/Users/barron/Developer/Cubby/docs/260215-shared-homes-collab-architecture.md`
+- the `CubbyV2` cutover
+- retry-safe legacy migration
+- shared-home location store routing fixes
+- cross-store item move rejection
+- an internal-only Fastlane beta lane: `fastlane beta_internal`
 
-These changes are expected for the fresh-container cutover and schema-debug workflow. They are still local workspace changes until committed and shipped in a new build.
+Still not shipped:
+
+- a TestFlight build containing those changes
+- a successful `CubbyV2` schema-init run on an unlocked device
+- a successful development share creation on `CubbyV2`
 
 ## Immediate Next Steps
 
-1. Wait for Apple app/container association propagation for `iCloud.com.barronroth.CubbyV2`.
-2. Retry the Development-signed device launch with `INIT_CLOUDKIT_SCHEMA`.
-3. If the `Invalid bundle ID for container` error clears:
+1. Unlock Barron's iPhone and rerun the Development-signed launch with `INIT_CLOUDKIT_SCHEMA`.
+2. If the app reaches startup and the `Invalid bundle ID for container` error is gone:
    - initialize development schema on `CubbyV2`
-   - create a development share once
+   - create one development share
    - deploy fresh schema to production from CloudKit Console
-   - commit the current migration/store-routing fixes and the `CubbyV2` cutover together
-   - upload a new TestFlight build
-4. If the error does not clear after a reasonable propagation window:
-   - recheck the App ID to container association in Apple Developer portal
-   - if still correct, this becomes an Apple-side account/container problem rather than an app problem
+   - upload an internal-only build with `fastlane beta_internal`
+   - run the two-Apple-ID validation matrix on that exact build
+3. If `Invalid bundle ID for container` is still present after one more app ID/container reassociation check:
+   - stop container iteration
+   - escalate as an Apple-side app/container association blocker
 
 ## What Not To Spend Time On Right Now
 
@@ -229,6 +244,6 @@ These changes are expected for the fresh-container cutover and schema-debug work
 - More app-layer sharing logic changes
 - More schema work on the old `Cubby` container
 - Another TestFlight upload before the `CubbyV2` container accepts the app ID
-- Another TestFlight upload before the migration and shared-store correctness fixes are in that exact build
+- Another external TestFlight rollout before the internal `CubbyV2` validation build passes the two-user matrix
 
 The current bottleneck is CloudKit container acceptance, not the SwiftUI or Core Data sharing code path.

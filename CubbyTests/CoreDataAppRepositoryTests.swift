@@ -77,6 +77,17 @@ struct CoreDataAppRepositoryTests {
         return try repository.persistenceController.persistentContainer.viewContext.fetch(request).first
     }
 
+    @MainActor
+    private func fetchItemObject(
+        id: UUID,
+        using repository: CoreDataAppRepository
+    ) throws -> NSManagedObject? {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "CDInventoryItem")
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try repository.persistenceController.persistentContainer.viewContext.fetch(request).first
+    }
+
     @Test("Owner home count ignores shared-store homes")
     @MainActor
     func testOwnerHomeCountIgnoresSharedStoreHomes() throws {
@@ -289,5 +300,76 @@ struct CoreDataAppRepositoryTests {
         let locationObject = try fetchLocationObject(id: created.id, using: repository)
         let requiredLocationObject = try #require(locationObject)
         #expect(requiredLocationObject.objectID.persistentStore == sharedStore)
+    }
+
+    @Test("Moving an item inside a shared home keeps the shared store")
+    @MainActor
+    func testMoveItemWithinSharedHomeKeepsSharedStore() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readWriteParticipant)
+        )
+        let controller = repository.persistenceController
+        let sharedStore = try #require(controller.sharedPersistentStore())
+
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared Home",
+            itemCount: 1,
+            into: sharedStore,
+            using: repository
+        )
+
+        let locations = try repository.listLocations().filter { $0.homeID == sharedHomeID }
+        let currentLocation = try #require(locations.first)
+        let newLocation = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Closet",
+                homeID: sharedHomeID,
+                parentLocationID: nil
+            )
+        )
+        let item = try #require(try repository.listItems().first { $0.homeID == sharedHomeID })
+
+        let movedItem = try repository.moveItem(id: item.id, to: newLocation.id)
+
+        #expect(movedItem.storageLocationID == newLocation.id)
+        let itemObject = try fetchItemObject(id: item.id, using: repository)
+        let requiredItemObject = try #require(itemObject)
+        #expect(requiredItemObject.objectID.persistentStore == sharedStore)
+        #expect(currentLocation.id != newLocation.id)
+    }
+
+    @Test("Moving an item across stores is rejected")
+    @MainActor
+    func testMoveItemAcrossStoresIsRejected() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readWriteParticipant)
+        )
+        let controller = repository.persistenceController
+        let privateStore = try #require(controller.privatePersistentStore())
+        let sharedStore = try #require(controller.sharedPersistentStore())
+
+        let privateHomeID = try insertHomeGraph(
+            named: "Private Home",
+            itemCount: 0,
+            into: privateStore,
+            using: repository
+        )
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared Home",
+            itemCount: 1,
+            into: sharedStore,
+            using: repository
+        )
+
+        let privateLocation = try #require(
+            try repository.listLocations().first { $0.homeID == privateHomeID }
+        )
+        let sharedItem = try #require(
+            try repository.listItems().first { $0.homeID == sharedHomeID }
+        )
+
+        #expect(throws: AppRepositoryError.invalidMoveTarget) {
+            try repository.moveItem(id: sharedItem.id, to: privateLocation.id)
+        }
     }
 }

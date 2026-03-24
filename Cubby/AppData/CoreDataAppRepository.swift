@@ -273,6 +273,9 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         guard let location = try fetchLocationObject(id: locationID) else {
             throw AppRepositoryError.locationNotFound
         }
+        guard canMoveItem(item, to: location) else {
+            throw AppRepositoryError.invalidMoveTarget
+        }
 
         item.setValue(location, forKey: "storageLocation")
         item.setValue(Date(), forKey: "modifiedAt")
@@ -502,6 +505,19 @@ private extension CoreDataAppRepository {
             return homeStore
         }
         return persistenceController.privatePersistentStore()
+    }
+
+    func canMoveItem(_ item: NSManagedObject, to location: NSManagedObject) -> Bool {
+        guard let currentLocation = item.value(forKey: "storageLocation") as? NSManagedObject,
+              let currentStore = currentLocation.objectID.persistentStore,
+              let targetStore = location.objectID.persistentStore,
+              currentStore == targetStore else {
+            return false
+        }
+
+        let currentHomeID = currentLocation.uuidValue(forKey: "home.id")
+        let targetHomeID = location.uuidValue(forKey: "home.id")
+        return currentHomeID == targetHomeID
     }
 
     func makeHome(_ homeObject: NSManagedObject) -> AppHome {
