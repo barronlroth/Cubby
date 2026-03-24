@@ -14,9 +14,10 @@ At the moment:
 - the old container `iCloud.com.barronroth.Cubby` was repaired enough to expose the next CloudKit schema issue
 - that container then appeared to get stuck in a bad state around `cloudkit.share`
 - a fresh container `iCloud.com.barronroth.CubbyV2` was created and the app was repointed to it
-- the new blocker is now `Invalid bundle ID for container` for `iCloud.com.barronroth.CubbyV2`
+- the latest unlocked-device rerun no longer reproduced `Invalid bundle ID for container`
+- the live blocker is now a schema failure on `iCloud.com.barronroth.CubbyV2`: `Cannot create new type CD_CDHome in production schema`
 
-That last error means the app/container association has not fully propagated or is not fully recognized by CloudKit yet. As of March 23, 2026, the latest device recheck is still incomplete because the Development-signed app could be built and installed, but the schema-init launch attempt never reached app startup while the device was locked.
+That means the app/container association issue likely cleared or is no longer the first failing step. The current remaining blocker is back in CloudKit schema state for the fresh container.
 
 ## Current State By Artifact
 
@@ -37,10 +38,10 @@ That last error means the app/container association has not fully propagated or 
 
 ### Apple-side blocker state
 
-- The latest confirmed CloudKit container failure on `iCloud.com.barronroth.CubbyV2` is still `Invalid bundle ID for container`.
+- The latest confirmed CloudKit failure on `iCloud.com.barronroth.CubbyV2` is now `Cannot create new type CD_CDHome in production schema`.
 - On March 23, 2026, a Development-signed app build and install to Barron's iPhone succeeded.
-- On March 23, 2026 at 9:50 PM PDT, the latest `INIT_CLOUDKIT_SCHEMA` launch attempt was blocked before app startup because the device was locked.
-- Result: the app/container association still needs to be rechecked on an unlocked device before any new beta upload.
+- On March 23, 2026 at 10:09 PM PDT, an unlocked-device `INIT_CLOUDKIT_SCHEMA` launch reached app startup and schema bootstrap.
+- Result: the app/container association failure did not reproduce on the latest rerun, but the fresh container still cannot complete schema initialization.
 
 ## What Is Already Done
 
@@ -164,32 +165,33 @@ That means the app binary itself is requesting the new container correctly.
 
 Current CloudKit failure:
 
-- `Permission Failure`
+- `Partial Failure`
 - server message:
-  - `Invalid bundle ID for container`
+  - `Cannot create new type CD_CDHome in production schema`
 
 This happens during Core Data mirroring setup for:
 
-- `com.apple.coredata.cloudkit.zone:__defaultOwner__`
-- `com.apple.coredata.cloudkit.shared.subscription`
+- `CD_FAKE_CDHome_B88E8AFD-134D-4EE3-BBD9-31CC611DA8DA:(com.apple.coredata.cloudkit.zone:__defaultOwner__)`
 
 Container:
 
 - `iCloud.com.barronroth.CubbyV2`
 
-This is no longer a schema mismatch. It is an Apple-side app/container association issue.
+The latest rerun no longer points at app/container association. It points back at CloudKit schema state for the fresh container.
 
 ### Latest device recheck
 
-The latest recheck did not reach CloudKit startup:
+The latest recheck did reach CloudKit startup:
 
 - Device build succeeded
 - Device install succeeded
 - `xcrun devicectl device process launch --console --device 00008130-00046D843869E93A com.barronroth.Cubby INIT_CLOUDKIT_SCHEMA`
-- launch failed with `CoreDeviceError 10002` / `FBSOpenApplicationErrorDomain error 7`
-- server-side reason: the device was locked, so the app never reached schema bootstrap
+- app launched successfully on the unlocked device
+- schema bootstrap failed with `NSCocoaErrorDomain Code=134060`
+- underlying CloudKit error: `CKError "Partial Failure"` with `Invalid Arguments`
+- server message: `Cannot create new type CD_CDHome in production schema`
 
-That means the branch is ready for the next validation attempt, but the first checkpoint in the Phase 2 plan is still pending on an unlocked device.
+That means the branch is past the device-lock blocker and back to a CloudKit schema blocker on `CubbyV2`.
 
 ## Apple Docs Used To Interpret The Current State
 
@@ -208,6 +210,7 @@ These Apple docs were consulted through `sosumi` during debugging:
 Most important interpretation from TN3164:
 
 - `Invalid bundle ID for container` points to the app ID / CloudKit container association, not an app-code bug.
+- `Cannot create new type ... in production schema` points to undeployed or inconsistent production schema state for the current container.
 
 ## Current Branch And Upload State
 
@@ -222,21 +225,21 @@ Branch tip now includes:
 Still not shipped:
 
 - a TestFlight build containing those changes
-- a successful `CubbyV2` schema-init run on an unlocked device
+- a successful `CubbyV2` schema-init run
 - a successful development share creation on `CubbyV2`
 
 ## Immediate Next Steps
 
-1. Unlock Barron's iPhone and rerun the Development-signed launch with `INIT_CLOUDKIT_SCHEMA`.
-2. If the app reaches startup and the `Invalid bundle ID for container` error is gone:
-   - initialize development schema on `CubbyV2`
+1. Inspect `iCloud.com.barronroth.CubbyV2` in CloudKit Console and confirm whether the Core Data record types for the fresh container exist in development and are deployed to production.
+2. Re-run the Development-signed launch with `INIT_CLOUDKIT_SCHEMA` after any schema deployment change.
+3. If schema initialization succeeds:
    - create one development share
-   - deploy fresh schema to production from CloudKit Console
+   - deploy any newly introduced share-related schema to production from CloudKit Console
    - upload an internal-only build with `fastlane beta_internal`
    - run the two-Apple-ID validation matrix on that exact build
-3. If `Invalid bundle ID for container` is still present after one more app ID/container reassociation check:
+4. If `CD_CDHome` still cannot be created in production on `CubbyV2` after schema inspection/deployment:
    - stop container iteration
-   - escalate as an Apple-side app/container association blocker
+   - escalate as an Apple-side CloudKit container/schema blocker
 
 ## What Not To Spend Time On Right Now
 
