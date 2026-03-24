@@ -66,6 +66,17 @@ struct CoreDataAppRepositoryTests {
         return homeID
     }
 
+    @MainActor
+    private func fetchLocationObject(
+        id: UUID,
+        using repository: CoreDataAppRepository
+    ) throws -> NSManagedObject? {
+        let request = NSFetchRequest<NSManagedObject>(entityName: "CDStorageLocation")
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try repository.persistenceController.persistentContainer.viewContext.fetch(request).first
+    }
+
     @Test("Owner home count ignores shared-store homes")
     @MainActor
     func testOwnerHomeCountIgnoresSharedStoreHomes() throws {
@@ -184,5 +195,99 @@ struct CoreDataAppRepositoryTests {
 
         #expect(homes.count == 1)
         #expect(homes.first?.name == "Primary Home")
+    }
+
+    @Test("Creating a root location in a shared home uses the shared store")
+    @MainActor
+    func testCreateRootLocationUsesHomeStore() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readWriteParticipant)
+        )
+        let controller = repository.persistenceController
+        let sharedStore = try #require(controller.sharedPersistentStore())
+
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared Home",
+            itemCount: 0,
+            into: sharedStore,
+            using: repository
+        )
+
+        let created = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Attic",
+                homeID: sharedHomeID,
+                parentLocationID: nil
+            )
+        )
+
+        let locationObject = try fetchLocationObject(id: created.id, using: repository)
+        let requiredLocationObject = try #require(locationObject)
+        #expect(requiredLocationObject.objectID.persistentStore == sharedStore)
+    }
+
+    @Test("Creating a nested location in a shared home uses the parent store")
+    @MainActor
+    func testCreateNestedLocationUsesParentStore() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readWriteParticipant)
+        )
+        let controller = repository.persistenceController
+        let sharedStore = try #require(controller.sharedPersistentStore())
+
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared Home",
+            itemCount: 0,
+            into: sharedStore,
+            using: repository
+        )
+
+        let parent = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Basement",
+                homeID: sharedHomeID,
+                parentLocationID: nil
+            )
+        )
+        let child = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Tool Wall",
+                homeID: sharedHomeID,
+                parentLocationID: parent.id
+            )
+        )
+
+        let childObject = try fetchLocationObject(id: child.id, using: repository)
+        let requiredChildObject = try #require(childObject)
+        #expect(requiredChildObject.objectID.persistentStore == sharedStore)
+    }
+
+    @Test("Collaborator location creation stays in the shared store")
+    @MainActor
+    func testCollaboratorCreateLocationUsesSharedStore() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readWriteParticipant)
+        )
+        let controller = repository.persistenceController
+        let sharedStore = try #require(controller.sharedPersistentStore())
+
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared Home",
+            itemCount: 0,
+            into: sharedStore,
+            using: repository
+        )
+
+        let created = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Guest Room",
+                homeID: sharedHomeID,
+                parentLocationID: nil
+            )
+        )
+
+        let locationObject = try fetchLocationObject(id: created.id, using: repository)
+        let requiredLocationObject = try #require(locationObject)
+        #expect(requiredLocationObject.objectID.persistentStore == sharedStore)
     }
 }

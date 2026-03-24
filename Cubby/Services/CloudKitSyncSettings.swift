@@ -1,7 +1,7 @@
 import Foundation
 
 struct CloudKitSyncSettings: Equatable {
-    static let containerIdentifier = "iCloud.com.barronroth.Cubby"
+    static let containerIdentifier = "iCloud.com.barronroth.CubbyV2"
     static let disableLaunchArgument = "DISABLE_CLOUDKIT"
     static let initializeSchemaLaunchArgument = "INIT_CLOUDKIT_SCHEMA"
     static let strictStartupLaunchArgument = "STRICT_CLOUDKIT_STARTUP"

@@ -4,7 +4,10 @@
 
 Shared Homes is no longer blocked on core app architecture.
 
-The app runtime has already been cut over to the Core Data + `NSPersistentCloudKitContainer` stack used by CloudKit sharing. The current blocker is CloudKit container setup on Apple's side.
+The app runtime has already been cut over to the Core Data + `NSPersistentCloudKitContainer` stack used by CloudKit sharing. The current remaining work is split across:
+
+- persistence correctness hardening in the branch workspace
+- CloudKit container setup on Apple's side
 
 At the moment:
 
@@ -14,6 +17,27 @@ At the moment:
 - the new blocker is now `Invalid bundle ID for container` for `iCloud.com.barronroth.CubbyV2`
 
 That last error means the app/container association has not fully propagated or is not fully recognized by CloudKit yet.
+
+## Current State By Artifact
+
+### Current branch workspace
+
+- The runtime UI and CRUD path are Core Data-backed.
+- SwiftData remains only as a legacy migration source or debug seed source.
+- Migration now opens the on-disk legacy SwiftData store directly and defers retry if that source is unavailable.
+- Shared-home location creation now routes to the owning home/location store instead of always targeting the private store.
+
+### Local uncommitted `CubbyV2` rescue work
+
+- `CloudKitSyncSettings.containerIdentifier` points to `iCloud.com.barronroth.CubbyV2`.
+- `Cubby.entitlements` and Xcode project settings were updated for the new container.
+- `CloudKitSchemaBootstrapper` was adjusted for the new container/schema-init workflow.
+
+### Latest TestFlight build
+
+- Build `52` is still the latest uploaded TestFlight build.
+- Build `52` includes the share-flow hardening work.
+- Build `52` does not include the `CubbyV2` cutover or the March 23 migration/store-routing fixes in this workspace.
 
 ## What Is Already Done
 
@@ -44,8 +68,10 @@ Focused tests are passing after the fresh-container code cutover:
 - `HomeSharingServiceTests`
 - `FeatureGateTests`
 - `CoreDataAppRepositoryTests`
+- `DataMigrationTests`
+- `RemoteChangeHandlerTests`
 
-Most recent focused run: `47 passed, 0 failed`.
+Most recent focused run in the current workspace: `49 passed, 0 failed`.
 
 ## TestFlight / build history for this incident
 
@@ -54,7 +80,7 @@ Most recent focused run: `47 passed, 0 failed`.
 - `51`: waited for CloudKit export before sharing
 - `52`: precreated CloudKit shares before presenting invite sheet
 
-Build `52` is the latest TestFlight build that contains the current share-flow fixes, but it is still blocked by CloudKit container/server setup.
+Build `52` is the latest TestFlight build that contains the current share-flow fixes, but it predates the `CubbyV2` cutover and the current migration/store-routing hardening.
 
 ## What Was Attempted On The Original Container
 
@@ -181,7 +207,7 @@ Uncommitted local changes currently include:
 - `/Users/barron/Developer/Cubby/docs/260103-cloudkit-plan.md`
 - `/Users/barron/Developer/Cubby/docs/260215-shared-homes-collab-architecture.md`
 
-These changes are expected for the fresh-container cutover and schema-debug workflow.
+These changes are expected for the fresh-container cutover and schema-debug workflow. They are still local workspace changes until committed and shipped in a new build.
 
 ## Immediate Next Steps
 
@@ -191,6 +217,7 @@ These changes are expected for the fresh-container cutover and schema-debug work
    - initialize development schema on `CubbyV2`
    - create a development share once
    - deploy fresh schema to production from CloudKit Console
+   - commit the current migration/store-routing fixes and the `CubbyV2` cutover together
    - upload a new TestFlight build
 4. If the error does not clear after a reasonable propagation window:
    - recheck the App ID to container association in Apple Developer portal
@@ -202,5 +229,6 @@ These changes are expected for the fresh-container cutover and schema-debug work
 - More app-layer sharing logic changes
 - More schema work on the old `Cubby` container
 - Another TestFlight upload before the `CubbyV2` container accepts the app ID
+- Another TestFlight upload before the migration and shared-store correctness fixes are in that exact build
 
 The current bottleneck is CloudKit container acceptance, not the SwiftUI or Core Data sharing code path.

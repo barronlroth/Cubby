@@ -10,9 +10,15 @@ Ship shared homes as a production-ready feature so two iCloud users can invite, 
 
 This plan is intentionally high level. It explains what has already been built, why the current hybrid state cannot ship yet, and the remaining work to move from an architecture spike to a reliable production feature.
 
+Update on 2026-03-23:
+
+- The runtime UI/CRUD path has since moved onto the Core Data sharing stack.
+- The remaining blockers are migration safety, correct store routing for shared-home writes, and CloudKit production validation.
+- Treat any references below to the UI still being SwiftData-driven as historical context, not current branch-workspace behavior.
+
 ## Plain-English Summary
 
-Cubby's current app data is still driven by SwiftData models and SwiftData queries. That works for single-user device sync, but it is not the right foundation for cross-account collaboration. Apple's first-party collaboration APIs live in Core Data via `NSPersistentCloudKitContainer`, `CKShare`, and the shared CloudKit database.
+Cubby's old single-user architecture was driven by SwiftData models and SwiftData queries. That works for one-user device sync, but it is not the right foundation for cross-account collaboration. Apple's first-party collaboration APIs live in Core Data via `NSPersistentCloudKitContainer`, `CKShare`, and the shared CloudKit database.
 
 So the plan is not "add an old model for fun." The plan is:
 
@@ -84,24 +90,24 @@ Out of scope for v1:
 
 ### What Is True Right Now
 
-- The repository is still in a hybrid state.
-- The live app UI still reads and writes SwiftData models.
-- The sharing stack already exists in Core Data.
-- Migration into Core Data exists, but the app has not fully moved over to Core Data as the main runtime store.
+- The runtime UI and CRUD path are Core Data-backed.
+- The sharing stack and the normal app path now use the same persistence layer.
+- SwiftData remains only as a legacy migration source and debug seed source.
+- Migration hardening and CloudKit/container validation are still incomplete.
 
 ### Why It Still Cannot Ship
 
-The main blocker is that the app effectively has two persistence worlds:
+The main blockers are now correctness and validation, not architecture:
 
-- SwiftData still powers the screens, queries, and CRUD flows.
-- Core Data powers CloudKit sharing.
-
-That means the collaboration stack exists, but it is not yet the single source of truth for the app. As long as that remains true, production sharing will be brittle.
+- migration must not silently mark success from an unavailable or fallback legacy source
+- shared-home writes must always target the correct persistent store
+- real CloudKit production sharing still needs end-to-end validation on the chosen container
 
 ## Production Blockers
 
-- [ ] Replace the current dual-stack runtime with a single source of truth for app data.
-- [ ] Ensure every home, location, and item visible in the app comes from the collaboration-capable Core Data stack.
+- [x] Replace the current dual-stack runtime with a single source of truth for app data.
+- [x] Ensure every home, location, and item visible in the app comes from the collaboration-capable Core Data stack.
+- [ ] Ensure migration is retry-safe and source-aware for real user data.
 - [ ] Ensure all create/edit/delete flows write to the same store that CloudKit sharing uses.
 - [ ] Ensure accepted shared homes appear in the main homes list without any bridging gaps.
 - [ ] Finish the billing and gating policy for shared homes on the production runtime path.
@@ -123,17 +129,17 @@ Exit criteria:
 
 ### Phase 1: Make Core Data the Source of Truth
 
-Status: not done
+Status: mostly done on the current branch workspace
 
 Objective:
-- Move the app off the hybrid runtime.
+- Keep the app on a single persistence runtime.
 - Ensure the same store powers normal CRUD and shared-home collaboration.
 
 Work:
-- [ ] Introduce a repository/data-access layer so views are no longer tightly coupled to SwiftData `@Query`.
-- [ ] Rework home, location, and item fetching to come from Core Data-backed repositories or adapters.
-- [ ] Rework all mutations to write through the Core Data sharing stack.
-- [ ] Remove the current mismatch where SwiftData drives the UI while Core Data drives sharing.
+- [x] Introduce a repository/data-access layer so views are no longer tightly coupled to SwiftData `@Query`.
+- [x] Rework home, location, and item fetching to come from Core Data-backed repositories or adapters.
+- [ ] Rework the remaining shared-home mutation edge cases so every write targets the correct store.
+- [x] Remove the current mismatch where SwiftData drives the UI while Core Data drives sharing.
 
 Exit criteria:
 - A home created in the app is immediately shareable because it already exists in the collaboration-capable store.

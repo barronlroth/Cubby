@@ -139,13 +139,16 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.duplicateLocationName
         }
 
-        guard let privateStore = persistenceController.privatePersistentStore() else {
+        guard let store = persistentStoreForLocationGraph(
+            home: home,
+            parentLocation: parentLocation
+        ) else {
             throw AppRepositoryError.locationNotFound
         }
 
         let now = Date()
         let location = NSEntityDescription.insertNewObject(forEntityName: "CDStorageLocation", into: viewContext)
-        viewContext.assign(location, to: privateStore)
+        viewContext.assign(location, to: store)
         let locationID = UUID()
         location.setValue(locationID, forKey: "id")
         location.setValue(trimmedName, forKey: "name")
@@ -486,6 +489,19 @@ private extension CoreDataAppRepository {
         }
 
         return try fetchCount(entityName: "CDStorageLocation", predicate: predicate) > 0
+    }
+
+    func persistentStoreForLocationGraph(
+        home: NSManagedObject,
+        parentLocation: NSManagedObject?
+    ) -> NSPersistentStore? {
+        if let parentStore = parentLocation?.objectID.persistentStore {
+            return parentStore
+        }
+        if let homeStore = home.objectID.persistentStore {
+            return homeStore
+        }
+        return persistenceController.privatePersistentStore()
     }
 
     func makeHome(_ homeObject: NSManagedObject) -> AppHome {

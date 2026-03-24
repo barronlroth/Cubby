@@ -209,12 +209,18 @@ struct CubbyApp: App {
                 let persistenceController = try PersistenceController(
                     inMemory: cloudKitSettings.isInMemory
                 )
-                let sourceContainer = modelContainer
-
-                let migrationService = DataMigrationService(
-                    persistenceController: persistenceController,
-                    sourceContainerProvider: { sourceContainer }
-                )
+                let migrationService: DataMigrationService
+                if cloudKitSettings.isInMemory || shouldSeedMockData {
+                    let sourceContainer = modelContainer
+                    migrationService = DataMigrationService(
+                        persistenceController: persistenceController,
+                        sourceContainerProvider: { .available(sourceContainer) }
+                    )
+                } else {
+                    migrationService = DataMigrationService(
+                        persistenceController: persistenceController
+                    )
+                }
                 _ = migrationService.runMigrationIfNeeded()
 
                 let remoteChangeHandler = RemoteChangeHandler(

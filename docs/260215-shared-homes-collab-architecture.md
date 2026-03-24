@@ -18,7 +18,7 @@ Enable a user to share a home (and its nested locations/items) with another iClo
 Observed from the codebase:
 
 - Persistence is SwiftData with `ModelContainer` in `Cubby/CubbyApp.swift`.
-- Cloud sync is enabled via SwiftData `ModelConfiguration(..., cloudKitDatabase: .private("iCloud.com.barronroth.Cubby"))`.
+- Cloud sync is enabled via SwiftData `ModelConfiguration(..., cloudKitDatabase: .private("iCloud.com.barronroth.CubbyV2"))`.
 - Models are `Home`, `StorageLocation`, `InventoryItem`.
 - There is no current sharing implementation (`CKShare`, shared DB, invite acceptance handlers, sharing controller).
 - Photos are local files (`Documents/ItemPhotos`) and are not cloud-synced.
@@ -223,7 +223,7 @@ Recommended migration approach:
 
 Fallback plan:
 
-- Keep local-only mode available behind a runtime kill switch for rapid rollback.
+- Keep local build/test overrides available during development, and use rollback-by-new-build for the first production rollout.
 
 ## 9) Testing Strategy
 

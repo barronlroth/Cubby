@@ -43,15 +43,16 @@ Subscription sharing model (v1):
 Migration policy:
 
 - Use best-effort migration from existing local SwiftData data.
-- If migration fails, fall back to a controlled reset path and recreate a clean store.
+- If the legacy source store cannot be opened, defer migration and retry later.
+- If migration starts and fails mid-copy, fall back to a controlled reset path and recreate a clean store.
 - Because current user count is near zero, fail-safe reset is acceptable for v1.
 
 Rollout gate policy:
 
-- Use a two-layer rollout gate:
+- Use a simple two-layer rollout gate:
   - Distribution gate: phased App Store/TestFlight rollout.
-  - Runtime gate: server-driven feature flag (`sharedHomesEnabled`) fetched from a lightweight remote config source, defaulting to `false` when unavailable on first launch.
-- Keep an emergency kill-switch path so shared-home UI and write paths can be disabled without waiting for a new binary.
+  - Build-local gate: `SharedHomesGateService` plus launch-argument/environment overrides for internal testing and emergency disable during development.
+- For v1, rollback-by-new-build is acceptable. Do not add a server-driven remote config dependency in this pass.
 
 ## 3) High-Level Architecture
 
@@ -235,14 +236,14 @@ Recommended implementation:
 
 - Gate read/write entry points behind `SharedHomesGateService`.
 - `SharedHomesGateService` resolves enabled state from:
-  1. Remote flag (`sharedHomesEnabled`) with cached value + TTL.
+  1. Distribution/build defaults.
   2. Local emergency override for internal builds/tests.
-  3. Safe default `false` when no remote value exists yet.
+  3. Safe default behavior in binaries where the feature is not intended to ship yet.
 
 Why this is recommended:
 
-- Lets us ship dark, enable for a small cohort, and instantly disable if production issues appear.
-- Reduces blast radius during first collaboration rollout.
+- Lets us keep the feature dark in selected builds and override behavior locally during development.
+- Keeps the rollout plan simple while the app still has near-zero production usage.
 
 ## 9) Test Strategy
 

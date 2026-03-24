@@ -85,7 +85,7 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { sourceContainer }
+            sourceContainerProvider: { .available(sourceContainer) }
         )
 
         _ = migrationService.runMigrationIfNeeded()
@@ -108,7 +108,7 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { sourceContainer }
+            sourceContainerProvider: { .available(sourceContainer) }
         )
 
         _ = migrationService.runMigrationIfNeeded()
@@ -140,7 +140,7 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { sourceContainer }
+            sourceContainerProvider: { .available(sourceContainer) }
         )
 
         _ = migrationService.runMigrationIfNeeded()
@@ -176,7 +176,7 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { sourceContainer }
+            sourceContainerProvider: { .available(sourceContainer) }
         )
 
         _ = migrationService.runMigrationIfNeeded()
@@ -202,7 +202,7 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { sourceContainer }
+            sourceContainerProvider: { .available(sourceContainer) }
         )
 
         let outcome = migrationService.runMigrationIfNeeded()
@@ -214,7 +214,10 @@ struct DataMigrationTests {
     }
 
     @Test
-    func test_migration_fallsBackToResetOnFailure() throws {
+    func test_migration_fallsBackToResetOnCopyFailure() throws {
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer)
+
         let targetController = try makeTargetController()
         let userDefaults = makeUserDefaults()
         var resetCallCount = 0
@@ -222,7 +225,10 @@ struct DataMigrationTests {
         let migrationService = DataMigrationService(
             persistenceController: targetController,
             userDefaults: userDefaults,
-            sourceContainerProvider: { throw TestFailure.forcedFailure },
+            sourceContainerProvider: { .available(sourceContainer) },
+            migrationExecutor: { _ in
+                throw TestFailure.forcedFailure
+            },
             resetStores: { resetCallCount += 1 }
         )
 
@@ -233,6 +239,144 @@ struct DataMigrationTests {
         #expect(
             userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey) == false
         )
+    }
+
+    @Test
+    func test_migration_defersWhenLegacySourceUnavailable() throws {
+        let targetController = try makeTargetController()
+        let userDefaults = makeUserDefaults()
+        var resetCallCount = 0
+
+        let migrationService = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: userDefaults,
+            sourceContainerProvider: { .unavailable },
+            resetStores: { resetCallCount += 1 }
+        )
+
+        let outcome = migrationService.runMigrationIfNeeded()
+
+        #expect(outcome == .deferredSourceUnavailable)
+        #expect(resetCallCount == 0)
+        #expect(
+            userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey) == false
+        )
+    }
+
+    @Test
+    func test_migration_retriesAfterLegacySourceBecomesAvailable() throws {
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer)
+
+        let targetController = try makeTargetController()
+        let userDefaults = makeUserDefaults()
+        var isSourceAvailable = false
+
+        let migrationService = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: userDefaults,
+            sourceContainerProvider: {
+                isSourceAvailable ? .available(sourceContainer) : .unavailable
+            }
+        )
+
+        let firstOutcome = migrationService.runMigrationIfNeeded()
+        #expect(firstOutcome == .deferredSourceUnavailable)
+        #expect(
+            userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey) == false
+        )
+
+        isSourceAvailable = true
+
+        let secondOutcome = migrationService.runMigrationIfNeeded()
+        #expect(secondOutcome == .migrated)
+        #expect(
+            userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey)
+        )
+
+        let homes = try fetchObjects(
+            entityName: "CDHome",
+            from: targetController.persistentContainer.viewContext
+        )
+        #expect(homes.count == 1)
+        #expect(homes.first?.value(forKey: "name") as? String == "Primary Home")
+    }
+
+    @Test
+    func test_migration_canRecoverAfterCopyFailure() throws {
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer)
+
+        let targetController = try makeTargetController()
+        let userDefaults = makeUserDefaults()
+        var resetCallCount = 0
+
+        let failingMigrationService = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: userDefaults,
+            sourceContainerProvider: { .available(sourceContainer) },
+            migrationExecutor: { _ in
+                throw TestFailure.forcedFailure
+            },
+            resetStores: { resetCallCount += 1 }
+        )
+
+        let failedOutcome = failingMigrationService.runMigrationIfNeeded()
+        #expect(failedOutcome == .failedWithReset)
+        #expect(resetCallCount == 1)
+        #expect(
+            userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey) == false
+        )
+
+        let recoveryMigrationService = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: userDefaults,
+            sourceContainerProvider: { .available(sourceContainer) }
+        )
+
+        let recoveryOutcome = recoveryMigrationService.runMigrationIfNeeded()
+        #expect(recoveryOutcome == .migrated)
+        #expect(
+            userDefaults.bool(forKey: DataMigrationService.migrationCompleteUserDefaultsKey)
+        )
+
+        let homes = try fetchObjects(
+            entityName: "CDHome",
+            from: targetController.persistentContainer.viewContext
+        )
+        #expect(homes.count == 1)
+    }
+
+    @Test
+    func test_migration_upsertsExistingObjectsOnRetry() throws {
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer)
+
+        let targetController = try makeTargetController()
+        let userDefaults = makeUserDefaults()
+
+        let migrationService = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: userDefaults,
+            sourceContainerProvider: { .available(sourceContainer) }
+        )
+
+        let firstOutcome = migrationService.runMigrationIfNeeded()
+        #expect(firstOutcome == .migrated)
+
+        userDefaults.set(false, forKey: DataMigrationService.migrationCompleteUserDefaultsKey)
+
+        let retryOutcome = migrationService.runMigrationIfNeeded()
+        #expect(retryOutcome == .migrated)
+
+        let context = targetController.persistentContainer.viewContext
+        let homes = try fetchObjects(entityName: "CDHome", from: context)
+        let locations = try fetchObjects(entityName: "CDStorageLocation", from: context)
+        let items = try fetchObjects(entityName: "CDInventoryItem", from: context)
+
+        #expect(homes.count == 1)
+        #expect(locations.count == 2)
+        #expect(items.count == 1)
     }
 
     @Test
@@ -250,7 +394,7 @@ struct DataMigrationTests {
             userDefaults: userDefaults,
             sourceContainerProvider: {
                 sourceContainerCallCount += 1
-                return sourceContainer
+                return .available(sourceContainer)
             }
         )
 
