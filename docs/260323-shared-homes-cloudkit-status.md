@@ -18,7 +18,10 @@ At the moment:
 - a Debug signing/configuration bug was forcing `CubbyV2` schema-init runs to use the `Production` CloudKit environment
 - that bug is now fixed by using Development entitlements for Debug builds
 - `CubbyV2` development schema initialization now succeeds
-- the remaining Phase 2 work is now: create one development share, then deploy schema changes to production
+- a first development share was created successfully enough to reach the share sheet
+- `CubbyV2` schema changes were deployed to production from CloudKit Console
+- build `53` was uploaded with `asc` and is now in internal TestFlight testing only
+- the remaining Phase 2 work is now the two-Apple-ID validation matrix on build `53`
 
 That means the app/container association issue likely cleared, and the production-schema failure turned out to be caused by the app being signed for the wrong CloudKit environment during Debug schema-init runs.
 
@@ -36,9 +39,14 @@ That means the app/container association issue likely cleared, and the productio
 
 ### Latest TestFlight build
 
-- Build `52` is still the latest uploaded TestFlight build.
-- Build `52` includes the share-flow hardening work.
-- Build `52` does not include the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, or the internal-only beta lane.
+- Build `53` is now the latest uploaded TestFlight build.
+- Build `53` was uploaded on March 23, 2026 at 10:30 PM PDT through `asc builds upload`.
+- Build `53` is `VALID` in App Store Connect.
+- Build `53` is internal-only in practice:
+  - `internalBuildState = IN_BETA_TESTING`
+  - `externalBuildState = READY_FOR_BETA_SUBMISSION`
+  - the internal beta group has `hasAccessToAllBuilds = true`
+- Build `53` includes the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, and the Debug Development-entitlements fix for CloudKit schema init.
 
 ### Apple-side blocker state
 
@@ -47,7 +55,10 @@ That means the app/container association issue likely cleared, and the productio
 - On March 23, 2026, a Development-signed app build and install to Barron's iPhone succeeded.
 - On March 23, 2026 at 10:09 PM PDT, an unlocked-device `INIT_CLOUDKIT_SCHEMA` launch reached app startup and schema bootstrap.
 - On March 23, 2026 at 10:19 PM PDT, a rebuilt Debug app with Development entitlements successfully initialized `CubbyV2` development schema.
-- Result: the current blocker is no longer container association or schema-init itself; it is the remaining share/deploy validation sequence.
+- On March 23, 2026 shortly after 10:19 PM PDT, the first share flow reached the system share sheet on-device.
+- On March 23, 2026 shortly after that share flow, `CubbyV2` schema changes were promoted to Production through CloudKit Console.
+- On March 23, 2026 at 10:30 PM PDT, build `53` was uploaded through `asc` and reached `VALID` processing state.
+- Result: the current blocker is no longer container association, schema-init, schema deployment, or internal beta upload; it is now the two-user validation sequence on build `53`.
 
 ## What Is Already Done
 
@@ -91,8 +102,9 @@ Most recent focused rerun in the current workspace on March 23, 2026: `51 passed
   - `CD_Home`
   - `CD_InventoryItem`
   - `CD_StorageLocation`
-- The CloudKit Console now marks schema areas as modified and enables `Deploy Schema Changes…` for the fresh container.
-- Production still has not been updated with those schema changes.
+- The first share flow successfully reached the share sheet on-device, which confirms the app can precreate a development share on `CubbyV2`.
+- Those schema changes were then deployed to Production from CloudKit Console.
+- Production now shows the same Core Data record types and `Deploy Schema Changes…` is disabled.
 
 ## TestFlight / build history for this incident
 
@@ -100,8 +112,9 @@ Most recent focused rerun in the current workspace on March 23, 2026: `51 passed
 - `50`: share sheet + Cubby thumbnail / management split improvements
 - `51`: waited for CloudKit export before sharing
 - `52`: precreated CloudKit shares before presenting invite sheet
+- `53`: `CubbyV2` cutover + migration hardening + shared-store routing fixes + cross-store move rejection + Debug Development entitlements fix, uploaded internal-only via `asc`
 
-Build `52` is the latest TestFlight build that contains the current share-flow fixes, but it predates the `CubbyV2` cutover and the March 23 persistence hardening.
+Build `53` is now the active validation build for the fresh `CubbyV2` container.
 
 ## What Was Attempted On The Original Container
 
@@ -186,8 +199,9 @@ Current `CubbyV2` state:
 
 - Development schema initialization succeeds from a Debug device build signed with `com.apple.developer.icloud-container-environment = Development`.
 - CloudKit Console reflects the generated Core Data record types in Development.
-- `Deploy Schema Changes…` is now available for the fresh container.
-- Production still has only the default `Users` type until schema is deployed.
+- The first share flow reaches the system share sheet from the device build.
+- Production now contains the deployed Core Data schema for the fresh container.
+- `Deploy Schema Changes…` is disabled in Production after deployment.
 
 ### Latest device recheck
 
@@ -233,26 +247,30 @@ Branch tip now includes:
 - an internal-only Fastlane beta lane: `fastlane beta_internal`
 - Debug-only Development CloudKit entitlements for schema-init/device validation
 
-Still not shipped:
+Shipped in internal TestFlight build `53`:
 
-- a TestFlight build containing those changes
-- a successful development share creation on `CubbyV2`
-- a production schema deploy from `CubbyV2`
+- the `CubbyV2` container cutover
+- retry-safe legacy migration
+- shared-home location store routing fixes
+- cross-store item move rejection
+- Debug-only Development CloudKit entitlements for schema-init/device validation
+
+Still not completed:
+
+- the two-Apple-ID validation matrix on build `53`
 
 ## Immediate Next Steps
 
-1. Create one development share on the fresh Debug/device build so any share-related schema is generated in `CubbyV2` Development.
-2. Recheck CloudKit Console after that share creation and confirm whether additional share-related schema changes appear.
-3. Deploy schema changes from Development to Production in CloudKit Console.
-4. Upload an internal-only build with `fastlane beta_internal`.
-5. Run the two-Apple-ID validation matrix on that exact build.
+1. Run the two-Apple-ID validation matrix on build `53`.
+2. Capture exact logs, timestamps, build number, and container/environment details for any invite, accept, write, revoke, or relaunch failure.
+3. If invite acceptance, collaborator writes, revoke flow, and relaunch convergence all pass on build `53`, decide whether to keep rollout internal for one more cycle or start preparing the external group.
 
 ## What Not To Spend Time On Right Now
 
 - More share-sheet UI changes
 - More app-layer sharing logic changes
 - More schema work on the old `Cubby` container
-- Another TestFlight upload before the `CubbyV2` container accepts the app ID
+- Another TestFlight upload before build `53` has been exercised through the full two-user matrix
 - Another external TestFlight rollout before the internal `CubbyV2` validation build passes the two-user matrix
 
-The current bottleneck is CloudKit container acceptance, not the SwiftUI or Core Data sharing code path.
+The current bottleneck is end-to-end two-user validation on build `53`, not CloudKit container acceptance.
