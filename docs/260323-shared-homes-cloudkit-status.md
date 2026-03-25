@@ -44,8 +44,9 @@ That means the app/container association issue likely cleared, and the productio
 - Build `54` is `VALID` in App Store Connect.
 - Build `54` is internal-only in practice:
   - `internalBuildState = IN_BETA_TESTING`
-  - `externalBuildState = READY_FOR_BETA_SUBMISSION`
+  - `externalBuildState = WAITING_FOR_BETA_REVIEW`
   - the internal beta group has `hasAccessToAllBuilds = true`
+- Build `54` has also been attached to the external beta group and submitted for external TestFlight review.
 - Build `54` includes the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, the Debug Development-entitlements fix for CloudKit schema init, and the public-link first-invite workaround.
 
 ### Apple-side blocker state
@@ -59,6 +60,7 @@ That means the app/container association issue likely cleared, and the productio
 - On March 23, 2026 shortly after that share flow, `CubbyV2` schema changes were promoted to Production through CloudKit Console.
 - On March 23, 2026 at 10:30 PM PDT, build `53` was uploaded through `asc` and reached `VALID` processing state.
 - On March 24, 2026 at 8:01 PM PDT, build `54` was uploaded through `asc` and reached `VALID` processing state.
+- On March 24, 2026 at 8:09 PM PDT, build `54` was submitted for external TestFlight review and entered `WAITING_FOR_BETA_REVIEW`.
 - Result: the current blocker is no longer container association, schema-init, schema deployment, or internal beta upload; it is now the two-user validation sequence on build `54`.
 
 ## What Is Already Done
