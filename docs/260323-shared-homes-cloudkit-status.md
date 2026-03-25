@@ -20,8 +20,8 @@ At the moment:
 - `CubbyV2` development schema initialization now succeeds
 - a first development share was created successfully enough to reach the share sheet
 - `CubbyV2` schema changes were deployed to production from CloudKit Console
-- build `53` was uploaded with `asc` and is now in internal TestFlight testing only
-- the remaining Phase 2 work is now the two-Apple-ID validation matrix on build `53`
+- build `54` was uploaded with `asc` and is now in internal TestFlight testing only
+- the remaining Phase 2 work is now the two-Apple-ID validation matrix on build `54`
 
 That means the app/container association issue likely cleared, and the production-schema failure turned out to be caused by the app being signed for the wrong CloudKit environment during Debug schema-init runs.
 
@@ -39,14 +39,14 @@ That means the app/container association issue likely cleared, and the productio
 
 ### Latest TestFlight build
 
-- Build `53` is now the latest uploaded TestFlight build.
-- Build `53` was uploaded on March 23, 2026 at 10:30 PM PDT through `asc builds upload`.
-- Build `53` is `VALID` in App Store Connect.
-- Build `53` is internal-only in practice:
+- Build `54` is now the latest uploaded TestFlight build.
+- Build `54` was uploaded on March 24, 2026 at 8:01 PM PDT through `asc builds upload`.
+- Build `54` is `VALID` in App Store Connect.
+- Build `54` is internal-only in practice:
   - `internalBuildState = IN_BETA_TESTING`
   - `externalBuildState = READY_FOR_BETA_SUBMISSION`
   - the internal beta group has `hasAccessToAllBuilds = true`
-- Build `53` includes the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, and the Debug Development-entitlements fix for CloudKit schema init.
+- Build `54` includes the `CubbyV2` cutover, the March 23 migration/store-routing fixes, the cross-store move guard, the Debug Development-entitlements fix for CloudKit schema init, and the public-link first-invite workaround.
 
 ### Apple-side blocker state
 
@@ -58,7 +58,8 @@ That means the app/container association issue likely cleared, and the productio
 - On March 23, 2026 shortly after 10:19 PM PDT, the first share flow reached the system share sheet on-device.
 - On March 23, 2026 shortly after that share flow, `CubbyV2` schema changes were promoted to Production through CloudKit Console.
 - On March 23, 2026 at 10:30 PM PDT, build `53` was uploaded through `asc` and reached `VALID` processing state.
-- Result: the current blocker is no longer container association, schema-init, schema deployment, or internal beta upload; it is now the two-user validation sequence on build `53`.
+- On March 24, 2026 at 8:01 PM PDT, build `54` was uploaded through `asc` and reached `VALID` processing state.
+- Result: the current blocker is no longer container association, schema-init, schema deployment, or internal beta upload; it is now the two-user validation sequence on build `54`.
 
 ## What Is Already Done
 
@@ -69,7 +70,7 @@ That means the app/container association issue likely cleared, and the productio
   - only Pro owners can manage sharing
   - collaborators can participate for free
   - collaborator-visible shared homes/items do not count against collaborator free-tier limits
-- First-share flow was changed to the normal share sheet instead of leading with `UICloudSharingController`.
+- First-share flow now uses `UICloudSharingController` and exposes `Anyone with the link` because named-recipient invites were failing at Apple's `Couldn't Add People` step.
 - Existing shared homes still use the Apple manage-sharing UI.
 - The redundant `Shared with N people` line under the shared chip was removed.
 
@@ -90,7 +91,7 @@ Focused validation is passing in the current workspace:
 - `FeatureGateTests`
 - `RemoteChangeHandlerTests`
 
-Most recent focused rerun in the current workspace on March 23, 2026: `51 passed, 0 failed`.
+Most recent focused rerun in the current workspace on March 24, 2026: `51 passed, 0 failed`.
 
 ### CloudKit validation
 
@@ -113,8 +114,9 @@ Most recent focused rerun in the current workspace on March 23, 2026: `51 passed
 - `51`: waited for CloudKit export before sharing
 - `52`: precreated CloudKit shares before presenting invite sheet
 - `53`: `CubbyV2` cutover + migration hardening + shared-store routing fixes + cross-store move rejection + Debug Development entitlements fix, uploaded internal-only via `asc`
+- `54`: restored first invites to `UICloudSharingController`, enabled `Anyone with the link`, and returned the persisted `CKShare` after export before presenting the share UI
 
-Build `53` is now the active validation build for the fresh `CubbyV2` container.
+Build `54` is now the active validation build for the fresh `CubbyV2` container.
 
 ## What Was Attempted On The Original Container
 
@@ -255,22 +257,30 @@ Shipped in internal TestFlight build `53`:
 - cross-store item move rejection
 - Debug-only Development CloudKit entitlements for schema-init/device validation
 
+Shipped in internal TestFlight build `54`:
+
+- everything from build `53`
+- first-invite sharing via `UICloudSharingController`
+- `Anyone with the link` sharing enabled
+- persisted-share refetch after export before presenting the invite UI
+
 Still not completed:
 
-- the two-Apple-ID validation matrix on build `53`
+- the two-Apple-ID validation matrix on build `54`
 
 ## Immediate Next Steps
 
-1. Run the two-Apple-ID validation matrix on build `53`.
-2. Capture exact logs, timestamps, build number, and container/environment details for any invite, accept, write, revoke, or relaunch failure.
-3. If invite acceptance, collaborator writes, revoke flow, and relaunch convergence all pass on build `53`, decide whether to keep rollout internal for one more cycle or start preparing the external group.
+1. Run the two-Apple-ID validation matrix on build `54`.
+2. Use the public-link invite path for this pass, because Apple's named-recipient `Couldn't Add People` path is still not working.
+3. Capture exact logs, timestamps, build number, and container/environment details for any invite, accept, write, revoke, or relaunch failure.
+4. If invite acceptance, collaborator writes, revoke flow, and relaunch convergence all pass on build `54`, decide whether to keep rollout internal for one more cycle or start preparing the external group.
 
 ## What Not To Spend Time On Right Now
 
 - More share-sheet UI changes
 - More app-layer sharing logic changes
 - More schema work on the old `Cubby` container
-- Another TestFlight upload before build `53` has been exercised through the full two-user matrix
+- Another TestFlight upload before build `54` has been exercised through the full two-user matrix
 - Another external TestFlight rollout before the internal `CubbyV2` validation build passes the two-user matrix
 
-The current bottleneck is end-to-end two-user validation on build `53`, not CloudKit container acceptance.
+The current bottleneck is end-to-end two-user validation on build `54`, not CloudKit container acceptance.
