@@ -306,6 +306,10 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
         try await waitForPrivateStoreExport(startingAfter: exportStartDate)
 
+        if let persistedShare = fetchShare(for: home) {
+            return persistedShare
+        }
+
         return share
     }
 

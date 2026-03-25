@@ -130,11 +130,12 @@ struct HomeView: View {
                             }
                         )
                     case let .invite(share):
-                        CloudShareActivityControllerRepresentable(
-                            title: context.title,
+                        CloudSharingControllerRepresentable(
                             share: share,
                             container: appStore.shareContainer,
-                            onComplete: { appStore.refresh() },
+                            title: context.title,
+                            onSave: { appStore.refresh() },
+                            onStopSharing: { appStore.refresh() },
                             onError: { error in
                                 shareErrorMessage = error.localizedDescription
                             }
