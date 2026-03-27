@@ -31,6 +31,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
 
     func application(
         _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(
+            name: "Default Configuration",
+            sessionRole: connectingSceneSession.role
+        )
+        config.delegateClass = AppDelegate.self
+        return config
+    }
+
+    func application(
+        _ application: UIApplication,
         userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
     ) {
         _ = application
