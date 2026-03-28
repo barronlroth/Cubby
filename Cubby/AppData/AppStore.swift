@@ -288,6 +288,16 @@ final class AppStore: ObservableObject {
         repository.existingShare(for: homeID)
     }
 
+    func shareForController(
+        homeID: UUID,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        repository.shareForController(homeID: homeID) { [weak self] share, container, error in
+            DispatchQueue.main.async { self?.refresh() }
+            completion(share, container, error)
+        }
+    }
+
     var shareContainer: CKContainer {
         repository.ckContainer
     }

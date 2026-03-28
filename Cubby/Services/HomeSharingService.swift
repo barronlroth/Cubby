@@ -21,6 +21,10 @@ protocol HomeSharingServiceProtocol {
     func isShared(_ home: AppHome) -> Bool
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
     func participants(for home: AppHome) -> [CKShare.Participant]
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    )
 }
 
 // Phase 1 should make PersistenceController conform to this.
@@ -240,6 +244,14 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         _ = home
         return []
     }
+
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        let share = makeShare(for: home)
+        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
+    }
 }
 
 private extension DebugMockHomeSharingService {
@@ -296,9 +308,6 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         let share = try await createShare(for: managedObject)
         if home.name.isEmpty == false {
             share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
-        }
-        if let thumbnailData = ShareThumbnailProvider.pngData() {
-            share[CKShare.SystemFieldKey.thumbnailImageData] = thumbnailData as CKRecordValue
         }
 
         if let privatePersistentStore = persistenceController.privatePersistentStore() {
@@ -493,6 +502,41 @@ final class HomeSharingService: HomeSharingServiceProtocol {
 
     private func currentPrivateStoreIdentifier() -> String? {
         persistenceController.privatePersistentStore()?.identifier
+    }
+
+    /// Callback-based share for direct use with UICloudSharingController.
+    /// No export waiting — just creates the share locally and returns.
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        if let existingShare = fetchShare(for: home) {
+            DebugLogger.info("shareForController: reusing existing share for \(home.id)")
+            completion(existingShare, ckContainer, nil)
+            return
+        }
+        guard let managedObject = managedObject(for: home) else {
+            DebugLogger.error("shareForController: unsupported home model \(home.id)")
+            completion(nil, nil, HomeSharingServiceError.unsupportedHomeModel)
+            return
+        }
+        DebugLogger.info("shareForController: calling container.share() for \(home.id)")
+        persistenceController.persistentContainer.share(
+            [managedObject],
+            to: nil
+        ) { [weak self] _, share, _, error in
+            if let error {
+                DebugLogger.error("shareForController: container.share() failed: \(error)")
+            } else {
+                DebugLogger.info("shareForController: container.share() succeeded for \(home.id)")
+            }
+            if let share {
+                if !home.name.isEmpty {
+                    share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+                }
+            }
+            completion(share, self?.ckContainer, error)
+        }
     }
 }
 

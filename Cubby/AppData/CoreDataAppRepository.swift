@@ -333,6 +333,21 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         return try await shareService.shareHome(home)
     }
 
+    func shareForController(
+        homeID: UUID,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        guard let shareService else {
+            completion(nil, nil, HomeSharingServiceError.shareCreationFailed)
+            return
+        }
+        guard let home = makeHomeReference(id: homeID) else {
+            completion(nil, nil, AppRepositoryError.homeNotFound)
+            return
+        }
+        shareService.shareForController(home, completion: completion)
+    }
+
     func existingShare(for homeID: UUID) -> CKShare? {
         guard let shareService,
               let home = makeHomeReference(id: homeID) else {
