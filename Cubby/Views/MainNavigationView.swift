@@ -1,24 +1,22 @@
 import SwiftUI
-import SwiftData
 
 struct MainNavigationView: View {
     @Binding var searchText: String
     @Binding var showingAddItem: Bool
     @Binding var canAddItem: Bool
-    @Query private var homes: [Home]
-    @State private var selectedHome: Home?
-    @State private var selectedLocation: StorageLocation?
-    @State private var showingUndoToast = false
+
+    @State private var selectedHome: AppHome?
+    @State private var selectedLocation: AppStorageLocation?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
-    @Environment(\.modelContext) private var modelContext
+
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
+    @EnvironmentObject private var appStore: AppStore
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
-    
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             HomeView(
@@ -38,12 +36,8 @@ struct MainNavigationView: View {
                 #if os(iOS)
                 if #available(iOS 26.0, *) {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) {
-                        Spacer(minLength: 12)
-                    }
-                    ToolbarItem(placement: .bottomBar) {
-                        toolbarButton
-                    }
+                    ToolbarItem(placement: .bottomBar) { Spacer(minLength: 12) }
+                    ToolbarItem(placement: .bottomBar) { toolbarButton }
                 }
                 #endif
             }
@@ -60,79 +54,51 @@ struct MainNavigationView: View {
         }
         .toolbar { toolbarContent }
         .overlay(alignment: .topTrailing) {
-            VStack(alignment: .trailing, spacing: 8) {
-                CloudSyncStatusChip()
-
-                if undoManager.canUndo {
-                    HStack(spacing: 4) {
-                        Button(action: performUndo) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.uturn.backward")
-                                Text(undoManager.undoDescription ?? "Undo")
-                                if undoManager.timeRemaining > 0 {
-                                    Text("(\(undoManager.timeRemaining)s)")
-                                        .font(.caption2)
-                                        .opacity(0.8)
-                                }
+            if undoManager.canUndo {
+                HStack(spacing: 4) {
+                    Button(action: performUndo) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.uturn.backward")
+                            Text(undoManager.undoDescription ?? "Undo")
+                            if undoManager.timeRemaining > 0 {
+                                Text("(\(undoManager.timeRemaining)s)")
+                                    .font(.caption2)
+                                    .opacity(0.8)
                             }
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.9))
-                            .foregroundColor(.white)
-                            .clipShape(Capsule())
                         }
-                        
-                        Button(action: { undoManager.dismissUndo() }) {
-                            Image(systemName: "xmark")
-                                .font(.caption)
-                                .frame(width: 24, height: 24)
-                                .background(Color.gray.opacity(0.6))
-                                .foregroundColor(.white)
-                                .clipShape(Circle())
-                        }
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.9))
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
                     }
-                    .transition(.scale.combined(with: .opacity))
+
+                    Button(action: { undoManager.dismissUndo() }) {
+                        Image(systemName: "xmark")
+                            .font(.caption)
+                            .frame(width: 24, height: 24)
+                            .background(Color.gray.opacity(0.6))
+                            .foregroundColor(.white)
+                            .clipShape(Circle())
+                    }
                 }
+                .transition(.scale.combined(with: .opacity))
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
-            .animation(.spring(response: 0.3), value: undoManager.canUndo)
-            .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
         }
-        .onAppear {
-            if selectedHome == nil {
-                if let lastIdString = lastUsedHomeId,
-                   let lastId = UUID(uuidString: lastIdString),
-                   let restoredHome = homes.first(where: { $0.id == lastId }) {
-                    selectedHome = restoredHome
-                    DebugLogger.info("MainNavigationView.onAppear - Restored last used home: \(restoredHome.name)")
-                } else if !homes.isEmpty {
-                    selectedHome = homes.first
-                    DebugLogger.info("MainNavigationView.onAppear - No last used home found, defaulted to: \(homes.first?.name ?? "nil")")
-                }
-            }
-            canAddItem = selectedHome != nil
+        .animation(.spring(response: 0.3), value: undoManager.canUndo)
+        .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
+        .onAppear(perform: restoreSelectedHomeIfNeeded)
+        .onChange(of: appStore.homes) { _, newHomes in
+            synchronizeSelectedHome(with: newHomes)
         }
-        .onChange(of: homes) { oldHomes, newHomes in
-            // Keep selectedHome synchronized with homes
-            if let currentHome = selectedHome {
-                // Check if current home still exists
-                if !newHomes.contains(where: { $0.id == currentHome.id }) {
-                    // Current home was deleted, select first available
-                    selectedHome = newHomes.first
-                    DebugLogger.warning("MainNavigationView - Selected home was deleted, switching to: \(newHomes.first?.name ?? "none")")
-                }
-            } else if selectedHome == nil && !newHomes.isEmpty {
-                // No home selected but homes exist, select first
-                selectedHome = newHomes.first
-                DebugLogger.info("MainNavigationView - No home selected, auto-selecting: \(newHomes.first?.name ?? "none")")
-            }
-            canAddItem = selectedHome != nil
-        }
-        .onChange(of: selectedHome) { oldHome, newHome in
-            DebugLogger.info("MainNavigationView - selectedHome changed from \(oldHome?.name ?? "nil") to \(newHome?.name ?? "nil")")
+        .onChange(of: selectedHome) { _, newHome in
             if let newHome {
                 lastUsedHomeId = newHome.id.uuidString
+            }
+            if selectedLocation?.homeID != newHome?.id {
+                selectedLocation = nil
             }
             canAddItem = newHome != nil
         }
@@ -151,14 +117,10 @@ struct MainNavigationView: View {
     private var toolbarContent: some ToolbarContent {
         #if os(iOS)
         if #unavailable(iOS 26.0) {
-            ToolbarItem(placement: .bottomBar) {
-                toolbarButton
-            }
+            ToolbarItem(placement: .bottomBar) { toolbarButton }
         }
         #else
-        ToolbarItem(placement: .primaryAction) {
-            toolbarButton
-        }
+        ToolbarItem(placement: .primaryAction) { toolbarButton }
         #endif
     }
 
@@ -195,143 +157,56 @@ struct MainNavigationView: View {
             if #available(iOS 17.0, *) {
                 dismissSearch()
             }
-        } else if canAddItem, let selectedHome {
-            let gate = FeatureGate.canCreateItem(
-                homeId: selectedHome.id,
-                modelContext: modelContext,
-                isPro: proAccessManager.isPro
-            )
-            guard gate.isAllowed else {
-                DebugLogger.info("FeatureGate denied item creation: \(gate.reason?.description ?? "unknown")")
-                if gate.reason == .overLimit {
-                    activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
-                } else {
-                    activePaywall.wrappedValue = PaywallContext(reason: .itemLimitReached)
-                }
-                return
-            }
-            showingAddItem = true
+            return
         }
+
+        guard canAddItem, let selectedHome else { return }
+        let gate = appStore.canCreateItem(homeID: selectedHome.id, isPro: proAccessManager.isPro)
+        guard gate.isAllowed else {
+            if gate.reason == .overLimit {
+                activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
+            } else {
+                activePaywall.wrappedValue = PaywallContext(reason: .itemLimitReached)
+            }
+            return
+        }
+        showingAddItem = true
     }
 
     private func performUndo() {
-        let success = undoManager.undo(in: modelContext)
-        if success {
-            showingUndoToast = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                showingUndoToast = false
-            }
-        }
-    }
-}
-
-/// A transient sync status indicator inspired by Apple's Notes/Reminders approach.
-/// - "Synced" shows briefly after sync completes, then fades away.
-/// - "Syncing" only appears if sync takes longer than a short delay.
-/// - Error states (offline, iCloud off) persist until resolved.
-private struct CloudSyncStatusChip: View {
-    @EnvironmentObject private var cloudSyncCoordinator: CloudSyncCoordinator
-    @State private var isVisible = false
-    @State private var hideTask: Task<Void, Never>?
-    @State private var syncingDelayTask: Task<Void, Never>?
-    @State private var showSyncing = false
-
-    private enum Presentation {
-        case syncing
-        case synced
-        case offline
-        case iCloudOff
-
-        var symbolName: String {
-            switch self {
-            case .syncing: "arrow.trianglehead.2.clockwise.icloud"
-            case .synced: "checkmark.icloud"
-            case .offline: "icloud.slash"
-            case .iCloudOff: "exclamationmark.icloud"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .syncing: .secondary
-            case .synced: .secondary
-            case .offline: .orange
-            case .iCloudOff: .gray
-            }
-        }
-
-        var isPersistent: Bool {
-            switch self {
-            case .offline, .iCloudOff: true
-            case .syncing, .synced: false
-            }
-        }
+        _ = undoManager.undo(using: appStore)
     }
 
-    private var presentation: Presentation? {
-        let state = cloudSyncCoordinator.state
-        guard state.isCloudKitEnabled else { return nil }
+    private func restoreSelectedHomeIfNeeded() {
+        guard selectedHome == nil else { return }
 
-        switch state.mode {
-        case .disabled: return nil
-        case .checking, .syncing: return showSyncing ? .syncing : nil
-        case .synced: return .synced
-        case .offline: return .offline
-        case .iCloudUnavailable: return .iCloudOff
+        if let lastIdString = lastUsedHomeId,
+           let lastId = UUID(uuidString: lastIdString),
+           let restoredHome = appStore.home(id: lastId) {
+            selectedHome = restoredHome
+        } else {
+            selectedHome = appStore.homes.first
         }
+        canAddItem = selectedHome != nil
     }
 
-    var body: some View {
-        Group {
-            if isVisible, let presentation {
-                HStack(spacing: 4) {
-                    Image(systemName: presentation.symbolName)
-                        .font(.caption2)
-                        .symbolEffect(.pulse, isActive: presentation == .syncing)
-                }
-                .foregroundStyle(presentation.tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.ultraThinMaterial, in: Capsule())
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                .accessibilityIdentifier("CloudSyncStatusChip")
+    private func synchronizeSelectedHome(with homes: [AppHome]) {
+        if let currentHome = selectedHome {
+            if let refreshedSelection = homes.first(where: { $0.id == currentHome.id }) {
+                selectedHome = refreshedSelection
+            } else {
+                selectedHome = homes.first
             }
+        } else if selectedHome == nil && !homes.isEmpty {
+            selectedHome = homes.first
         }
-        .animation(.easeInOut(duration: 0.25), value: isVisible)
-        .animation(.easeInOut(duration: 0.25), value: cloudSyncCoordinator.state.mode)
-        .onChange(of: cloudSyncCoordinator.state.mode) { _, newMode in
-            handleModeChange(newMode)
-        }
-    }
 
-    private func handleModeChange(_ mode: CloudSyncState.Mode) {
-        hideTask?.cancel()
-        syncingDelayTask?.cancel()
-        showSyncing = false
-
-        switch mode {
-        case .disabled:
-            isVisible = false
-        case .checking, .syncing:
-            // Only show syncing indicator if it takes more than 1s
-            syncingDelayTask = Task {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                guard !Task.isCancelled else { return }
-                showSyncing = true
-                isVisible = true
-            }
-        case .synced:
-            // Flash briefly then hide
-            isVisible = true
-            hideTask = Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard !Task.isCancelled else { return }
-                isVisible = false
-            }
-        case .offline, .iCloudUnavailable:
-            // Persist until resolved
-            isVisible = true
+        if let selectedLocation,
+           appStore.location(id: selectedLocation.id) == nil {
+            self.selectedLocation = nil
         }
+
+        canAddItem = selectedHome != nil
     }
 }
 

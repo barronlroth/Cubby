@@ -1,55 +1,53 @@
 import SwiftUI
 import UIKit
-import SwiftData
+import CloudKit
 
 struct LocationSection: Identifiable {
     let id: UUID
-    let location: StorageLocation
+    let location: AppStorageLocation
     let locationPath: String
-    let items: [InventoryItem]
-    
-    var isEmpty: Bool {
-        items.isEmpty
-    }
-
-    init(location: StorageLocation, locationPath: String, items: [InventoryItem]) {
-        self.id = location.id
-        self.location = location
-        self.locationPath = locationPath
-        self.items = items
-    }
+    let items: [AppInventoryItem]
 }
 
 struct HomeView: View {
-    @Query private var homes: [Home]
-    @Query private var allItems: [InventoryItem]
-    @Binding var selectedHome: Home?
-    @Binding var selectedLocation: StorageLocation?
+    @Binding var selectedHome: AppHome?
+    @Binding var selectedLocation: AppStorageLocation?
     @Binding var searchText: String
     @Binding var showingAddItem: Bool
+
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
     @State private var showingProStatus = false
-    @Environment(\.modelContext) private var modelContext
-    
+    @State private var activeShareSheet: HomeShareSheetContext?
+    @State private var isPreparingShare = false
+    @State private var shareErrorMessage: String?
+
+    @Environment(\.activePaywall) private var activePaywall
+    @EnvironmentObject private var appStore: AppStore
+    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
+
+    private let debugMockSharingMode = DebugMockSharingMode.resolve()
+
     private var locationSections: [LocationSection] {
-        let homeItems = allItems.filter { item in
-            item.storageLocation?.home?.id == selectedHome?.id
-        }
-        
-        let groupedDict = Dictionary(grouping: homeItems) { item in
-            item.storageLocation
-        }
-        
-        return groupedDict.compactMap { (location, items) in
-            guard let location = location, !items.isEmpty else { return nil }
+        guard let selectedHome else { return [] }
+        let homeItems = appStore.items(in: selectedHome.id)
+        let grouped = Dictionary(grouping: homeItems) { $0.storageLocationID }
+
+        return grouped.compactMap { (key, items) -> LocationSection? in
+            guard let key,
+                  let location = appStore.location(id: key),
+                  !items.isEmpty else {
+                return nil
+            }
             return LocationSection(
+                id: location.id,
                 location: location,
                 locationPath: location.fullPath,
-                items: items.sorted { $0.title < $1.title }
+                items: items.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             )
         }
-        .sorted { $0.locationPath < $1.locationPath }
+        .sorted { $0.locationPath.localizedCaseInsensitiveCompare($1.locationPath) == .orderedAscending }
     }
 
     private var trimmedSearchText: String {
@@ -63,67 +61,139 @@ struct HomeView: View {
     private var displayedSections: [LocationSection] {
         guard isSearching else { return locationSections }
 
-        var result: [LocationSection] = []
-        for section in locationSections {
-            var matchedItems: [InventoryItem] = []
-            for item in section.items {
-                if itemMatchesSearch(item) {
-                    matchedItems.append(item)
-                }
-            }
-            if !matchedItems.isEmpty {
-                result.append(
-                    LocationSection(
-                        location: section.location,
-                        locationPath: section.locationPath,
-                        items: matchedItems
-                    )
-                )
-            }
+        return locationSections.compactMap { section -> LocationSection? in
+            let matchedItems = section.items.filter(itemMatchesSearch)
+            guard !matchedItems.isEmpty else { return nil }
+            return LocationSection(
+                id: section.location.id,
+                location: section.location,
+                locationPath: section.locationPath,
+                items: matchedItems
+            )
         }
-        return result
+    }
+
+    private var isSharedHomesEnabled: Bool {
+        sharedHomesGateService.isEnabled()
+    }
+
+    private var shareManagementAccess: ShareManagementAccess {
+        appStore.shareManagementAccess(
+            for: selectedHome,
+            isPro: proAccessManager.isPro,
+            sharedHomesEnabled: isSharedHomesEnabled
+        )
+    }
+
+    private var canShowShareButton: Bool {
+        shareManagementAccess.showsAffordance
     }
 
     var body: some View {
-        let sections = displayedSections
-
-        return listView(for: sections)
+        listView(for: displayedSections)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(appBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingAddLocation) {
-            if let homeId = selectedHome?.id {
-                AddLocationView(homeId: homeId, parentLocation: nil)
+            .sheet(isPresented: $showingAddLocation) {
+                if let homeId = selectedHome?.id {
+                    AddLocationView(homeId: homeId, parentLocation: nil)
+                }
             }
-        }
-        .sheet(isPresented: $showingAddHome) {
-            AddHomeView(selectedHome: $selectedHome)
-        }
-        .sheet(isPresented: $showingProStatus) {
-            ProStatusView()
-        }
-        .sheet(isPresented: $showingAddItem) {
-            if let homeId = selectedHome?.id {
-                AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+            .sheet(isPresented: $showingAddHome) {
+                AddHomeView(selectedHome: $selectedHome)
             }
-        }
-        .onChange(of: selectedHome?.id) { _, _ in
-            searchText = ""
-        }
+            .sheet(isPresented: $showingProStatus) {
+                ProStatusView()
+            }
+            .sheet(isPresented: $showingAddItem) {
+                if let homeId = selectedHome?.id {
+                    AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+                }
+            }
+            .sheet(item: $activeShareSheet) { context in
+#if canImport(UIKit)
+                if debugMockSharingMode.isEnabled {
+                    MockSharePreviewSheet(title: context.title)
+                } else {
+                    switch context.mode {
+                    case let .manage(share):
+                        CloudSharingControllerRepresentable(
+                            share: share,
+                            container: appStore.shareContainer,
+                            title: context.title,
+                            onSave: { appStore.refresh() },
+                            onStopSharing: { appStore.refresh() },
+                            onError: { error in
+                                shareErrorMessage = error.localizedDescription
+                            }
+                        )
+                    case let .invite(share):
+                        CloudSharingControllerRepresentable(
+                            share: share,
+                            container: appStore.shareContainer,
+                            title: context.title,
+                            onSave: { appStore.refresh() },
+                            onStopSharing: { appStore.refresh() },
+                            onError: { error in
+                                shareErrorMessage = error.localizedDescription
+                            }
+                        )
+                    }
+                }
+#else
+                Text("Sharing is unavailable on this platform.")
+#endif
+            }
+            .alert(
+                "Share Home Error",
+                isPresented: Binding(
+                    get: { shareErrorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            shareErrorMessage = nil
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(shareErrorMessage ?? "Unable to share this home.")
+            }
+            .onChange(of: selectedHome?.id) { _, _ in
+                searchText = ""
+            }
     }
 
-    // MARK: - Header
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HomePicker(
-                selectedHome: $selectedHome,
-                showingAddHome: $showingAddHome,
-                showingProStatus: $showingProStatus
-            )
+            HStack(spacing: 12) {
+                HomePicker(
+                    selectedHome: $selectedHome,
+                    showingAddHome: $showingAddHome,
+                    showingProStatus: $showingProStatus
+                )
                 .buttonStyle(.plain)
-                .padding(.top, 8)
+
+                Spacer(minLength: 8)
+
+                if canShowShareButton {
+                    ShareHomeButton(
+                        action: handleShareHomeTapped,
+                        isLoading: isPreparingShare
+                    )
+                }
+            }
+            .padding(.top, 8)
+
+            if let selectedHome,
+               isSharedHomesEnabled,
+               selectedHome.isShared {
+                SharedHomeStatusRow(
+                    isSharedWithYou: !selectedHome.isOwnedByCurrentUser
+                )
+            }
         }
         .padding(.horizontal, 16)
     }
@@ -151,29 +221,86 @@ struct HomeView: View {
         }
     }
 
-    private func itemMatchesSearch(_ item: InventoryItem) -> Bool {
+    private func itemMatchesSearch(_ item: AppInventoryItem) -> Bool {
         guard isSearching else { return true }
 
-        let query = trimmedSearchText
-
-        if item.title.localizedCaseInsensitiveContains(query) {
+        if item.title.localizedCaseInsensitiveContains(trimmedSearchText) {
             return true
         }
 
         if let description = item.itemDescription,
-           description.localizedCaseInsensitiveContains(query) {
+           description.localizedCaseInsensitiveContains(trimmedSearchText) {
             return true
         }
 
         return false
     }
-    
+
+    private func handleShareHomeTapped() {
+        guard let selectedHome else { return }
+        switch shareManagementAccess {
+        case .hidden:
+            return
+        case .upgradeRequired:
+            activePaywall.wrappedValue = PaywallContext(reason: .manualUpgrade)
+            return
+        case .allowed:
+            break
+        }
+
+        if debugMockSharingMode.isEnabled {
+            activeShareSheet = HomeShareSheetContext(
+                mode: .manage(makeMockShare(for: selectedHome)),
+                title: selectedHome.name
+            )
+            return
+        }
+
+        if let existingShare = appStore.existingShare(homeID: selectedHome.id) {
+            activeShareSheet = HomeShareSheetContext(
+                mode: .manage(existingShare),
+                title: selectedHome.name
+            )
+        } else {
+            prepareNewShare(for: selectedHome)
+        }
+    }
+
+    private func prepareNewShare(for home: AppHome) {
+        guard !isPreparingShare else { return }
+        isPreparingShare = true
+        appStore.shareForController(homeID: home.id) { [self] share, _, error in
+            DispatchQueue.main.async {
+                self.isPreparingShare = false
+                if let share {
+                    self.activeShareSheet = HomeShareSheetContext(
+                        mode: .invite(share),
+                        title: home.name
+                    )
+                } else {
+                    self.shareErrorMessage = error?.localizedDescription
+                        ?? HomeSharingServiceError.shareCreationFailed.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func makeMockShare(for home: AppHome) -> CKShare {
+        let rootRecord = CKRecord(recordType: "CDHome")
+        rootRecord["id"] = home.id.uuidString as CKRecordValue
+        let share = CKShare(rootRecord: rootRecord)
+        if home.name.isEmpty == false {
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        }
+        return share
+    }
+
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
         List {
             header
                 .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
 
             if sections.isEmpty {
@@ -208,21 +335,134 @@ struct HomeView: View {
     }
 }
 
+private struct HomeShareSheetContext: Identifiable {
+    enum Mode {
+        case manage(CKShare)
+        case invite(CKShare)
+    }
+
+    let id = UUID()
+    let mode: Mode
+    let title: String
+}
+
+#if canImport(UIKit)
+private struct MockSharePreviewSheet: View {
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Mock Share Preview")
+                    .font(.headline)
+                Text("Home: \(title)")
+                Text("This is a UX-only mock. Real invite/accept flow requires iCloud + CloudKit sharing.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Share Home")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+#endif
+
+private struct SharedHomeStatusRow: View {
+    let isSharedWithYou: Bool
+
+    var body: some View {
+        Text(isSharedWithYou ? "Shared with you" : "Shared")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background((isSharedWithYou ? Color.blue : Color.secondary).opacity(0.12))
+            .foregroundStyle(isSharedWithYou ? .blue : .secondary)
+            .clipShape(Capsule())
+    }
+}
+
+private struct ShareHomeButton: View {
+    let action: () -> Void
+    let isLoading: Bool
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.primary)
+                } else {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(.circle)
+        }
+        .modifier(ShareHomeButtonStyle())
+        .disabled(isLoading)
+        .accessibilityLabel("Share Home")
+    }
+}
+
+private struct ShareHomeButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+        } else {
+            content
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 struct HomePicker: View {
-    @Query private var homes: [Home]
-    @Binding var selectedHome: Home?
+    @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
     @Binding var showingProStatus: Bool
 
     @Environment(\.activePaywall) private var activePaywall
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var proAccessManager: ProAccessManager
-    
+    @EnvironmentObject private var appStore: AppStore
+
     var body: some View {
         Menu {
-            ForEach(homes) { home in
+            ForEach(appStore.homes) { home in
                 Button(action: { selectedHome = home }) {
-                    Label(home.name, systemImage: selectedHome?.id == home.id ? "checkmark" : "")
+                    HStack(spacing: 8) {
+                        Text(home.name)
+
+                        if let badgeText = shareBadgeText(for: home) {
+                            Text(badgeText)
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+
+                        Spacer()
+
+                        if selectedHome?.id == home.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
                 }
             }
             Divider()
@@ -247,9 +487,8 @@ struct HomePicker: View {
     }
 
     private func handleAddHomeTapped() {
-        let gate = FeatureGate.canCreateHome(modelContext: modelContext, isPro: proAccessManager.isPro)
+        let gate = appStore.canCreateHome(isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
-            DebugLogger.info("FeatureGate denied home creation: \(gate.reason?.description ?? "unknown")")
             if gate.reason == .overLimit {
                 activePaywall.wrappedValue = PaywallContext(reason: .overLimit)
             } else {
@@ -259,84 +498,9 @@ struct HomePicker: View {
         }
         showingAddHome = true
     }
-}
 
-#if DEBUG
-private enum HomeViewPreviewData {
-    @MainActor
-    static func make() -> (container: ModelContainer, home: Home) {
-        let schema = Schema([
-            Home.self,
-            StorageLocation.self,
-            InventoryItem.self
-        ])
-        let config = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: true,
-            cloudKitDatabase: .none
-        )
-        let container = try! ModelContainer(for: schema, configurations: [config])
-        let ctx = container.mainContext
-
-        // Home
-        let home = Home(name: "Hayes Valley")
-        ctx.insert(home)
-
-        // Locations: Under My Bed → Travel Bags → Treasure Chest
-        let underMyBed = StorageLocation(name: "Under My Bed", home: home)
-        ctx.insert(underMyBed)
-        let travelBags = StorageLocation(name: "Travel Bags", home: home, parentLocation: underMyBed)
-        ctx.insert(travelBags)
-        let treasureChest = StorageLocation(name: "Treasure Chest", home: home, parentLocation: travelBags)
-        ctx.insert(treasureChest)
-
-        // Items — Under My Bed
-        ctx.insert(InventoryItem(title: "Rare Book", description: "On a high shelf, hidden behind other books", storageLocation: underMyBed))
-        ctx.insert(InventoryItem(title: "Emergency Flashlight", description: "In the back of a kitchen drawer", storageLocation: underMyBed))
-        ctx.insert(InventoryItem(title: "Art Supplies", description: "In a storage box under the bed", storageLocation: underMyBed))
-
-        // Items — Travel Bags
-        ctx.insert(InventoryItem(title: "Acoustic Guitar", description: "In a case at the corner of the living room", storageLocation: travelBags))
-        ctx.insert(InventoryItem(title: "Old Keys", description: "Taped to the bottom of a desk drawer", storageLocation: travelBags))
-        ctx.insert(InventoryItem(title: "Childhood Plush Toy", description: "In a closet with seasonal decorations", storageLocation: travelBags))
-
-        // Items — Treasure Chest
-        ctx.insert(InventoryItem(title: "Vintage Film Camera", description: "On a shelf behind some magazines", storageLocation: treasureChest))
-        ctx.insert(InventoryItem(title: "Paint Palette", description: "In a hidden compartment of an art desk", storageLocation: treasureChest))
-        ctx.insert(InventoryItem(title: "Travel Suitcase", description: "Under the bed, filled with souvenirs", storageLocation: treasureChest))
-        ctx.insert(InventoryItem(title: "Family Heirloom Ring", description: "In a secret compartment of a jewelry box", storageLocation: treasureChest))
-
-        try? ctx.save()
-        return (container, home)
+    private func shareBadgeText(for home: AppHome) -> String? {
+        guard home.isShared else { return nil }
+        return home.isOwnedByCurrentUser ? "Shared" : "Shared with you"
     }
 }
-
-private struct HomeViewPreviewHarness: View {
-    @State private var selectedHome: Home?
-    @State private var selectedLocation: StorageLocation?
-    @State private var searchText: String = ""
-    @State private var showingAddItem = false
-
-    init(initialHome: Home?) {
-        _selectedHome = State(initialValue: initialHome)
-    }
-
-    var body: some View {
-        NavigationStack {
-            HomeView(
-                selectedHome: $selectedHome,
-                selectedLocation: $selectedLocation,
-                searchText: $searchText,
-                showingAddItem: $showingAddItem
-            )
-        }
-    }
-}
-
-#Preview("Home – Figma Mock Data") {
-    let data = HomeViewPreviewData.make()
-    return HomeViewPreviewHarness(initialHome: data.home)
-        .modelContainer(data.container)
-        .environmentObject(ProAccessManager())
-}
-#endif

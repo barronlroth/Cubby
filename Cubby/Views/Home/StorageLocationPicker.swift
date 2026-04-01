@@ -1,34 +1,25 @@
 import SwiftUI
-import SwiftData
 
 struct StorageLocationPicker: View {
     let selectedHomeId: UUID?
-    @Binding var selectedLocation: StorageLocation?
+    @Binding var selectedLocation: AppStorageLocation?
     let onCancel: (() -> Void)?
     let onDone: (() -> Void)?
+
     @Environment(\.dismiss) private var dismiss
-    @Query private var allStorageLocations: [StorageLocation]
-    @Query private var homes: [Home]
+    @EnvironmentObject private var appStore: AppStore
+
     @State private var searchText = ""
     @State private var showingAddLocation = false
     @State private var expandedLocations = Set<UUID>()
-    
-    private var selectedHome: Home? {
-        homes.first { $0.id == selectedHomeId }
-    }
-    
-    private var rootLocations: [StorageLocation] {
-        let locations = allStorageLocations.filter { location in
-            location.home?.id == selectedHomeId && location.parentLocation == nil
-        }
-        print("🔍 StorageLocationPicker - Found \(locations.count) root locations for homeId: \(String(describing: selectedHomeId))")
-        print("🔍 StorageLocationPicker - Total locations in query: \(allStorageLocations.count)")
-        return locations
+
+    private var rootLocations: [AppStorageLocation] {
+        appStore.rootLocations(in: selectedHomeId)
     }
 
     init(
         selectedHomeId: UUID?,
-        selectedLocation: Binding<StorageLocation?>,
+        selectedLocation: Binding<AppStorageLocation?>,
         onCancel: (() -> Void)? = nil,
         onDone: (() -> Void)? = nil
     ) {
@@ -37,7 +28,7 @@ struct StorageLocationPicker: View {
         self.onCancel = onCancel
         self.onDone = onDone
     }
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -72,20 +63,16 @@ struct StorageLocationPicker: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
-                        if let onCancel {
-                            Task { @MainActor in onCancel() }
-                        }
+                        onCancel?()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
-                        if let onDone {
-                            Task { @MainActor in onDone() }
-                        }
+                        onDone?()
                     }
-                        .fontWeight(.semibold)
-                        .disabled(selectedLocation == nil)
+                    .fontWeight(.semibold)
+                    .disabled(selectedLocation == nil)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("New", systemImage: "plus") {
@@ -98,7 +85,7 @@ struct StorageLocationPicker: View {
             }
         }
     }
-    
+
     @Environment(\.colorScheme) private var colorScheme
     private var appBackground: Color {
         if colorScheme == .light, UIColor(named: "AppBackground") != nil {
@@ -110,44 +97,50 @@ struct StorageLocationPicker: View {
 }
 
 struct LocationPickerRow: View {
-    let location: StorageLocation
-    @Binding var selectedLocation: StorageLocation?
+    let location: AppStorageLocation
+    @Binding var selectedLocation: AppStorageLocation?
     @Binding var expandedLocations: Set<UUID>
     let searchText: String
+
     @State private var showingAddLocation = false
     @State private var showingDeleteConfirmation = false
     @State private var deletionErrorMessage: String?
-    @Environment(\.modelContext) private var modelContext
-    
+
+    @EnvironmentObject private var appStore: AppStore
+
     private var isSelected: Bool {
         selectedLocation?.id == location.id
     }
-    
+
     private var isExpanded: Bool {
         expandedLocations.contains(location.id)
     }
-    
-    private var hasChildren: Bool {
-        !(location.childLocations?.isEmpty ?? true)
+
+    private var children: [AppStorageLocation] {
+        appStore.childLocations(of: location.id)
     }
-    
+
+    private var hasChildren: Bool {
+        !children.isEmpty
+    }
+
     private var matchesSearch: Bool {
         searchText.isEmpty || location.name.localizedCaseInsensitiveContains(searchText)
     }
-    
+
     private var childrenMatchSearch: Bool {
         guard !searchText.isEmpty else { return true }
-        return location.childLocations?.contains { child in
+        return children.contains { child in
             child.name.localizedCaseInsensitiveContains(searchText) || childrenMatchSearchRecursive(child)
-        } ?? false
+        }
     }
-    
-    private func childrenMatchSearchRecursive(_ location: StorageLocation) -> Bool {
-        location.childLocations?.contains { child in
+
+    private func childrenMatchSearchRecursive(_ location: AppStorageLocation) -> Bool {
+        appStore.childLocations(of: location.id).contains { child in
             child.name.localizedCaseInsensitiveContains(searchText) || childrenMatchSearchRecursive(child)
-        } ?? false
+        }
     }
-    
+
     var body: some View {
         if matchesSearch || childrenMatchSearch {
             DisclosureGroup(
@@ -163,7 +156,7 @@ struct LocationPickerRow: View {
                 )
             ) {
                 if hasChildren {
-                    ForEach(location.childLocations ?? []) { childLocation in
+                    ForEach(children) { childLocation in
                         LocationPickerRow(
                             location: childLocation,
                             selectedLocation: $selectedLocation,
@@ -177,18 +170,18 @@ struct LocationPickerRow: View {
                 HStack {
                     Image(systemName: hasChildren ? "folder.fill" : "folder")
                         .foregroundStyle(isSelected ? .white : Color.accentColor)
-                    
+
                     Text(location.name)
                         .foregroundStyle(isSelected ? .white : .primary)
-                    
+
                     Spacer()
-                    
+
                     if isSelected {
                         Image(systemName: "checkmark")
                             .foregroundStyle(.white)
                             .fontWeight(.semibold)
                     }
-                    
+
                     Button(action: { showingAddLocation = true }) {
                         Image(systemName: "plus.circle")
                             .foregroundStyle(isSelected ? .white : Color.accentColor)
@@ -220,7 +213,7 @@ struct LocationPickerRow: View {
                 }
             }
             .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(homeId: location.home?.id, parentLocation: location)
+                AddLocationView(homeId: location.homeID, parentLocation: location)
             }
             .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {}
@@ -228,20 +221,22 @@ struct LocationPickerRow: View {
                     do {
                         try StorageLocationDeletionService.deleteLocationIfAllowed(
                             locationId: location.id,
-                            modelContext: modelContext
+                            appStore: appStore
                         )
-                    } catch let error as StorageLocationDeletionError {
-                        deletionErrorMessage = error.localizedDescription
                     } catch {
-                        deletionErrorMessage = "Couldn’t delete this location. Please try again."
+                        deletionErrorMessage = error.localizedDescription
                     }
                 }
             } message: {
                 Text("This will delete “\(location.name)”.")
             }
-            .alert("Unable to Delete Location", isPresented: Binding(get: { deletionErrorMessage != nil }, set: { isPresented in
-                if !isPresented { deletionErrorMessage = nil }
-            })) {
+            .alert(
+                "Unable to Delete Location",
+                isPresented: Binding(
+                    get: { deletionErrorMessage != nil },
+                    set: { if !$0 { deletionErrorMessage = nil } }
+                )
+            ) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(deletionErrorMessage ?? "")

@@ -28,6 +28,16 @@ enum CloudKitSchemaBootstrapper {
 
     #if DEBUG
     private static func initializeDevelopmentSchema() throws {
+        try initializeCoreDataSharingSchema()
+
+        do {
+            try initializeLegacySwiftDataSchema()
+        } catch {
+            DebugLogger.warning("Legacy SwiftData CloudKit schema initialization failed: \(error)")
+        }
+    }
+
+    private static func initializeLegacySwiftDataSchema() throws {
         try autoreleasepool {
             let modelConfiguration = ModelConfiguration(
                 schema: Schema([Home.self, StorageLocation.self, InventoryItem.self]),
@@ -67,6 +77,27 @@ enum CloudKitSchemaBootstrapper {
             if let store = persistentContainer.persistentStoreCoordinator.persistentStores.first {
                 try persistentContainer.persistentStoreCoordinator.remove(store)
             }
+        }
+    }
+
+    private static func initializeCoreDataSharingSchema() throws {
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CoreDataSchemaBootstrap-\(UUID().uuidString)", isDirectory: true)
+
+        do {
+            let persistenceController = try PersistenceController(
+                inMemory: false,
+                storeDirectory: storeDirectory,
+                containerIdentifier: CloudKitSyncSettings.containerIdentifier
+            )
+
+            try persistenceController.persistentContainer.initializeCloudKitSchema()
+
+            try persistenceController.resetStores()
+            try FileManager.default.removeItem(at: storeDirectory)
+        } catch {
+            try? FileManager.default.removeItem(at: storeDirectory)
+            throw error
         }
     }
     #endif

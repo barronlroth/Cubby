@@ -9,7 +9,7 @@ Integrate CloudKit-backed SwiftData sync for Cubby with an always-on, private-da
 ## Action items
 [ ] Audit SwiftData models for CloudKit constraints: optional relationships, no `@Attribute(.unique)`, and default values for all non-optional properties in `Cubby/Models/`.
 [ ] Add a debug-friendly kill switch at `ModelContainer` creation time (launch arg or build flag) to select CloudKit vs local configuration before initialization.
-[ ] Configure CloudKit container `iCloud.com.barronroth.Cubby` in app entitlements and initialize the SwiftData store with CloudKit enabled in `Cubby/CubbyApp.swift`.
+[ ] Configure CloudKit container `iCloud.com.barronroth.CubbyV2` in app entitlements and initialize the SwiftData store with CloudKit enabled in `Cubby/CubbyApp.swift`.
 [ ] Implement always-on sync behavior with local fallback when iCloud is unavailable (use the same CloudKit-backed store offline; do not switch to a separate local-only store).
 [ ] Define migration policy: silently merge local and cloud records on first sync (even if both exist) and rely on CloudKit's default conflict resolution; use `modifiedAt` for UI ordering only.
 [ ] Write Swift Testing unit tests first (TDD) for model invariants and account-status gating / "iCloud unavailable" behavior in `CubbyTests/` (no CloudKit in unit tests).

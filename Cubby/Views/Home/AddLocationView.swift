@@ -1,22 +1,39 @@
 import SwiftUI
-import SwiftData
 
 struct AddLocationView: View {
     let homeId: UUID?
-    let parentLocation: StorageLocation?
+    let parentLocation: AppStorageLocation?
+
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
+    @EnvironmentObject private var appStore: AppStore
+
     @State private var locationName = ""
     @State private var showingError = false
     @State private var errorMessage = ""
-    
+
+    private var resolvedHome: AppHome? {
+        parentLocation.flatMap { appStore.home(id: $0.homeID) } ?? appStore.home(id: homeId)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                if canCreateLocationsInHome == false {
+                    Section {
+                        Label(
+                            "You have read-only access to this shared home.",
+                            systemImage: "lock.fill"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Location Details") {
                     TextField("Location Name", text: $locationName)
                         .textInputAutocapitalization(.words)
-                    
+
                     if let parentLocation {
                         HStack {
                             Text("Parent Location")
@@ -26,7 +43,7 @@ struct AddLocationView: View {
                         }
                     }
                 }
-                
+
                 if let parentLocation {
                     Section {
                         Label("This location will be nested under \"\(parentLocation.name)\"", systemImage: "info.circle")
@@ -50,7 +67,7 @@ struct AddLocationView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveLocation() }
-                        .disabled(locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canCreateLocationsInHome)
                 }
             }
             .alert("Error", isPresented: $showingError) {
@@ -60,78 +77,42 @@ struct AddLocationView: View {
             }
         }
     }
-    
+
     private func saveLocation() {
-        print("🔍 AddLocationView.saveLocation - homeId: \(String(describing: homeId))")
-        
-        // First, try to get the home from the parent location if available
-        var home: Home?
-        
-        if let parentLocation {
-            home = parentLocation.home
-            print("🔍 AddLocationView - Got home from parent: \(String(describing: home?.name))")
-        } else if let homeId {
-            // Fetch the home directly from the model context
-            let descriptor = FetchDescriptor<Home>(
-                predicate: #Predicate { $0.id == homeId }
-            )
-            
-            do {
-                let homes = try modelContext.fetch(descriptor)
-                print("🔍 AddLocationView - Fetched \(homes.count) homes for ID: \(homeId)")
-                home = homes.first
-            } catch {
-                print("❌ AddLocationView - Fetch failed: \(error)")
-                errorMessage = "Failed to fetch home: \(error.localizedDescription)"
-                showingError = true
-                return
-            }
+        guard canCreateLocationsInHome else {
+            errorMessage = "You have read-only access and can’t add locations in this shared home."
+            showingError = true
+            return
         }
-        
-        guard let home else {
-            print("❌ AddLocationView - No home found, homeId: \(String(describing: homeId))")
+
+        guard let home = resolvedHome else {
             errorMessage = "Unable to find the selected home. Please try again."
             showingError = true
             return
         }
-        
+
         let trimmedName = locationName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
-        
-        if let parentLocation {
-            if parentLocation.depth >= StorageLocation.maxNestingDepth - 1 {
-                errorMessage = "Maximum nesting depth reached. Cannot create location here."
-                showingError = true
-                return
-            }
-            
-            let siblings = parentLocation.childLocations ?? []
-            if siblings.contains(where: { $0.name.lowercased() == trimmedName.lowercased() }) {
-                errorMessage = "A location with this name already exists at this level."
-                showingError = true
-                return
-            }
-        } else {
-            let siblings = home.storageLocations ?? []
-            if siblings.contains(where: { $0.name.lowercased() == trimmedName.lowercased() && $0.parentLocation == nil }) {
-                errorMessage = "A location with this name already exists at this level."
-                showingError = true
-                return
-            }
-        }
-        
-        let newLocation = StorageLocation(name: trimmedName, home: home, parentLocation: parentLocation)
-        modelContext.insert(newLocation)
-        
+
         do {
-            try modelContext.save()
+            _ = try appStore.createLocation(
+                name: trimmedName,
+                homeID: home.id,
+                parentLocationID: parentLocation?.id
+            )
             dismiss()
         } catch {
-            errorMessage = "Failed to save location: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
             showingError = true
         }
     }
-    
+
+    private var canCreateLocationsInHome: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = resolvedHome else { return false }
+        return home.permission.canCreateLocations
+    }
+
     @Environment(\.colorScheme) private var colorScheme
     private var appBackground: Color {
         if colorScheme == .light, UIColor(named: "AppBackground") != nil {

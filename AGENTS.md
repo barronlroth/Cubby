@@ -76,6 +76,15 @@ Cubby reads launch arguments in `Cubby/CubbyApp.swift` and `Cubby/Services/ProAc
 - Free limits (`FeatureGate`): 1 home, 10 items per home. If `homeCount > 1` while free, all creation is denied with reason `overLimit` (view/search/edit remains allowed).
 - Paywall reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`. The global sheet is driven by `PaywallContext` in `HomeSearchContainer`; Add Home/Item also show an alert and can forward into the paywall.
 
+### Shared Homes Mock UX Mode (Debug)
+- `MOCK_SHARED_HOMES_OWNER`: forces mock sharing mode where shared homes behave as owner-access.
+- `MOCK_SHARED_HOMES_READ_WRITE`: forces mock sharing mode where shared homes behave as read/write collaborator.
+- `MOCK_SHARED_HOMES_READ_ONLY`: forces mock sharing mode where shared homes behave as read-only collaborator (add/edit/delete disabled in gated screens).
+- `MOCK_SHARED_HOMES_MIXED`: mixed mode intended for quick UX review with seeded data; homes whose name contains `"Main"` behave as owner, other homes behave as read/write collaborator.
+- `MOCK_SHARED_HOMES`: shorthand alias for mixed mode.
+- Env var alternative: `MOCK_SHARED_HOMES=owner|readwrite|readonly|mixed|disabled`.
+- Intended use: combine with `SEED_MOCK_DATA` to preview sharing badges, lock states, and collaborator UX without iCloud invite/accept flow.
+
 ### Example Launch Commands
 ```bash
 # Normal run (persistent store, onboarding if first launch)
@@ -95,6 +104,12 @@ xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_ITEM_LIMIT_REACH
 
 # Seed a free-tier Halo dataset (1 home "Reach", <10 items)
 xcrun simctl launch booted com.barronroth.Cubby SEED_FREE_TIER
+
+# Preview shared-home UX without iCloud (owner + collaborator mix)
+xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA MOCK_SHARED_HOMES_MIXED
+
+# Preview read-only collaborator experience
+xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA MOCK_SHARED_HOMES_READ_ONLY
 ```
 
 ### Gotchas

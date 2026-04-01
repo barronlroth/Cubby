@@ -1,12 +1,12 @@
 import SwiftUI
-import SwiftData
 import UIKit
 
 struct ItemEditView: View {
     let itemId: UUID
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.sharedHomesGateService) private var sharedHomesGateService
+    @EnvironmentObject private var appStore: AppStore
 
     @State private var title = ""
     @State private var itemDescription = ""
@@ -24,14 +24,6 @@ struct ItemEditView: View {
     @State private var isSaving = false
     @State private var didLoadDraft = false
     @State private var userFacingError: UserFacingError?
-
-    @Query private var items: [InventoryItem]
-    @Query private var allItems: [InventoryItem]
-
-    init(itemId: UUID) {
-        self.itemId = itemId
-        _items = Query(filter: #Predicate<InventoryItem> { $0.id == itemId })
-    }
 
     var body: some View {
         NavigationStack {
@@ -66,7 +58,9 @@ struct ItemEditView: View {
         }
     }
 
-    private var item: InventoryItem? { items.first }
+    private var item: AppInventoryItem? {
+        appStore.item(id: itemId)
+    }
 
     @ViewBuilder
     private var content: some View {
@@ -77,14 +71,24 @@ struct ItemEditView: View {
         }
     }
 
-    private func editForm(for item: InventoryItem) -> some View {
+    private func editForm(for item: AppInventoryItem) -> some View {
         Form {
+            if canEditCurrentItem == false {
+                Section {
+                    Label(
+                        "You have read-only access to this shared home.",
+                        systemImage: "lock.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+            }
             titleSection
             descriptionSection
             photoSection
             tagsSection
         }
-        .disabled(isSaving)
+        .disabled(isSaving || !canEditCurrentItem)
         .overlay {
             if isSaving {
                 ProgressView("Saving…")
@@ -104,7 +108,7 @@ struct ItemEditView: View {
                     Task { await saveEdits(for: item) }
                 }
                 .fontWeight(.semibold)
-                .disabled(!canSave)
+                .disabled(!canSave || !canEditCurrentItem)
             }
         }
     }
@@ -208,9 +212,16 @@ struct ItemEditView: View {
 
     private var canSave: Bool {
         guard !isSaving else { return false }
+        guard canEditCurrentItem else { return false }
         if case .failure = titleValidation { return false }
         if case .failure = descriptionValidation { return false }
         return item != nil
+    }
+
+    private var canEditCurrentItem: Bool {
+        guard sharedHomesGateService.isEnabled() else { return true }
+        guard let home = appStore.home(id: item?.homeID) else { return true }
+        return home.permission.canEditItems
     }
 
     private var previewPhoto: UIImage? {
@@ -280,66 +291,22 @@ struct ItemEditView: View {
         }
     }
 
-    private func saveEdits(for item: InventoryItem) async {
+    private func saveEdits(for item: AppInventoryItem) async {
+        guard canEditCurrentItem else { return }
         guard canSave else { return }
 
         isSaving = true
         defer { isSaving = false }
 
-        let oldPhotoFileName = item.photoFileName
-
-        item.title = title.titleCased()
-        let trimmedDescription = itemDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        item.itemDescription = trimmedDescription.isEmpty ? nil : trimmedDescription
-        item.tagsSet = tags
-        item.modifiedAt = Date()
-
-        if let selectedPhoto {
-            do {
-                let newFileName = try await PhotoService.shared.savePhoto(selectedPhoto)
-                item.photoFileName = newFileName
-
-                do {
-                    try modelContext.save()
-                } catch {
-                    item.photoFileName = oldPhotoFileName
-                    await PhotoService.shared.deletePhoto(fileName: newFileName)
-                    DebugLogger.error("ItemEditView - Failed to save item after photo replace: \(error)")
-                    userFacingError = .persistence(action: "save item", error: error)
-                    return
-                }
-
-                if let oldPhotoFileName, oldPhotoFileName != newFileName {
-                    await PhotoService.shared.deletePhoto(fileName: oldPhotoFileName)
-                }
-
-                dismiss()
-                return
-            } catch {
-                DebugLogger.error("ItemEditView - Failed to save new photo: \(error)")
-                userFacingError = .persistence(action: "save photo", error: error)
-                return
-            }
-        }
-
-        if didRemovePhoto, let oldPhotoFileName {
-            item.photoFileName = nil
-
-            do {
-                try modelContext.save()
-                await PhotoService.shared.deletePhoto(fileName: oldPhotoFileName)
-                dismiss()
-            } catch {
-                item.photoFileName = oldPhotoFileName
-                DebugLogger.error("ItemEditView - Failed to save item after photo removal: \(error)")
-                userFacingError = .persistence(action: "remove photo", error: error)
-            }
-
-            return
-        }
-
         do {
-            try modelContext.save()
+            _ = try await appStore.updateItem(
+                id: item.id,
+                title: title.titleCased(),
+                itemDescription: itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                tags: tags,
+                selectedPhoto: selectedPhoto,
+                removePhoto: didRemovePhoto
+            )
             dismiss()
         } catch {
             DebugLogger.error("ItemEditView - Failed to save item edits: \(error)")
@@ -350,7 +317,7 @@ struct ItemEditView: View {
     private var tagSuggestions: [String] {
         TagSuggestionService.suggestions(
             for: tagInput,
-            existingTags: allItems.flatMap(\.tags)
+            existingTags: appStore.allKnownTags()
         )
     }
 }
@@ -400,29 +367,8 @@ private struct PhotoPreview: View {
     }
 }
 
-#Preview("Item Edit") {
-    let schema = Schema([Home.self, StorageLocation.self, InventoryItem.self])
-    let config = ModelConfiguration(
-        schema: schema,
-        isStoredInMemoryOnly: true,
-        cloudKitDatabase: .none
-    )
-    let container = try! ModelContainer(for: schema, configurations: [config])
-    let ctx = container.mainContext
-
-    let home = Home(name: "Hayes Valley")
-    ctx.insert(home)
-    let desk = StorageLocation(name: "Desk", home: home)
-    ctx.insert(desk)
-
-    let item = InventoryItem(
-        title: "Rare Book",
-        description: "On a high shelf, hidden behind other books",
-        storageLocation: desk
-    )
-    item.tagsSet = ["books", "office"]
-    ctx.insert(item)
-
-    return ItemEditView(itemId: item.id)
-        .modelContainer(container)
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

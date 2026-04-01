@@ -1,16 +1,17 @@
 import SwiftUI
-import SwiftData
 
 struct AddHomeView: View {
-    @Binding var selectedHome: Home?
+    @Binding var selectedHome: AppHome?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.activePaywall) private var activePaywall
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var proAccessManager: ProAccessManager
+    @EnvironmentObject private var appStore: AppStore
+
     @State private var homeName = ""
     @State private var showingGateAlert = false
     @State private var gatePaywallReason: PaywallContext.Reason = .homeLimitReached
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -32,9 +33,7 @@ struct AddHomeView: View {
             }
         }
         .alert("Cubby Pro Required", isPresented: $showingGateAlert) {
-            Button("Upgrade") {
-                presentUpgrade()
-            }
+            Button("Upgrade") { presentUpgrade() }
             Button("Restore Purchases") {
                 Task { await proAccessManager.restorePurchases() }
             }
@@ -43,31 +42,24 @@ struct AddHomeView: View {
             Text(gateAlertMessage)
         }
     }
-    
+
     private func saveHome() {
         let trimmedName = homeName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 
-        let gate = FeatureGate.canCreateHome(modelContext: modelContext, isPro: proAccessManager.isPro)
+        let gate = appStore.canCreateHome(isPro: proAccessManager.isPro)
         guard gate.isAllowed else {
-            DebugLogger.info("FeatureGate denied home creation: \(gate.reason?.description ?? "unknown")")
             gatePaywallReason = gate.reason == .overLimit ? .overLimit : .homeLimitReached
             showingGateAlert = true
             return
         }
-        
-        let newHome = Home(name: trimmedName)
-        modelContext.insert(newHome)
-        
-        let unsortedLocation = StorageLocation(name: "Unsorted", home: newHome)
-        modelContext.insert(unsortedLocation)
-        
+
         do {
-            try modelContext.save()
+            let newHome = try appStore.createHome(name: trimmedName)
             selectedHome = newHome
             dismiss()
         } catch {
-            print("Failed to save home: \(error)")
+            DebugLogger.error("Failed to save home: \(error)")
         }
     }
 
