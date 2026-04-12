@@ -106,6 +106,39 @@ struct HomeSharingServiceTests {
         #expect(service.isShared(incomingHome))
     }
 
+    @Test
+    func test_shareForController_createsShareForUnsharedHome() async {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Link Home")
+
+        var createdShare: CKShare?
+        var createdContainer: CKContainer?
+        service.shareForController(home) { share, container, error in
+            #expect(error == nil)
+            createdShare = share
+            createdContainer = container
+        }
+
+        #expect(createdShare != nil)
+        #expect(createdContainer != nil)
+        #expect(service.isShared(home))
+    }
+
+    @Test
+    func test_shareForController_reusesExistingShare() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Existing Link Home")
+        let shared = try await service.shareHome(home)
+
+        var reusedShare: CKShare?
+        service.shareForController(home) { share, _, error in
+            #expect(error == nil)
+            reusedShare = share
+        }
+
+        #expect(reusedShare?.recordID.recordName == shared.recordID.recordName)
+    }
+
     private func makeShareMetadataPlaceholder() -> CKShare.Metadata {
         unsafeBitCast(NSObject(), to: CKShare.Metadata.self)
     }
@@ -172,6 +205,24 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
     func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
+    }
+
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        let share: CKShare
+        if let existingShare = sharesByHomeID[home.id] {
+            share = existingShare
+        } else {
+            share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+            sharesByHomeID[home.id] = share
+            rolesByHomeID[home.id] = .owner
+            sharedHomeIDs.insert(home.id)
+        }
+
+        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
     }
 
     func setRole(_ role: SharePermission.Role, for home: AppHome) {

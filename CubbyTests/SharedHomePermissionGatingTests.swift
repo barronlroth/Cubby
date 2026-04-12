@@ -130,6 +130,15 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         return []
     }
 
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
+    }
+
     func canCreateLocations(in home: AppHome) -> Bool {
         canEdit(home)
     }

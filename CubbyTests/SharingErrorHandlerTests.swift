@@ -41,4 +41,14 @@ struct SharingErrorHandlerTests {
         #expect(homeIDs.contains(revokedHome) == false)
         #expect(homeIDs == [homeA, homeB])
     }
+
+    @Test
+    func test_shareCreationFailed_showsLinkSpecificMessage() {
+        let handler = SharingErrorHandler()
+
+        let presentation = handler.handle(error: HomeSharingServiceError.shareCreationFailed)
+
+        #expect(presentation.message.lowercased().contains("share link"))
+        #expect(presentation.shouldRetry == false)
+    }
 }

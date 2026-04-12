@@ -91,6 +91,35 @@ final class SharingErrorHandler: SharingErrorHandlerProtocol {
 
 private extension SharingErrorHandler {
     func presentation(for error: Error) -> SharingErrorPresentation {
+        if let homeSharingError = error as? HomeSharingServiceError {
+            switch homeSharingError {
+            case .homeAlreadyShared:
+                return SharingErrorPresentation(
+                    message: "This home is already shared.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
+            case .unsupportedHomeModel, .shareCreationFailed:
+                return SharingErrorPresentation(
+                    message: "Cubby could not create a share link right now. Please try again.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
+            case .missingSharedPersistentStore:
+                return SharingErrorPresentation(
+                    message: "Cubby could not access the shared iCloud store.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
+            case .shareExportTimedOut:
+                return SharingErrorPresentation(
+                    message: "Cubby took too long to prepare the share link. Please try again.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
+            }
+        }
+
         guard let ckError = error as? CKError else {
             return SharingErrorPresentation(
                 message: "Something went wrong while sharing this home.",
