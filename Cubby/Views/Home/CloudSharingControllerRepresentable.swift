@@ -1,7 +1,56 @@
 #if canImport(UIKit)
 import CloudKit
+import LinkPresentation
 import SwiftUI
 import UIKit
+
+enum SharedHomeShareBranding {
+    static let iconMaxDimension: CGFloat = 60
+
+    static func shareTitle(for homeName: String) -> String {
+        "Cubby Home: \(homeName)"
+    }
+
+    static func itemType() -> String {
+        "Home Inventory"
+    }
+
+    static func appIconImage(maxDimension: CGFloat = iconMaxDimension) -> UIImage? {
+        guard let iconName = primaryIconName(),
+              let image = UIImage(named: iconName) else {
+            return nil
+        }
+        return resizedImage(image, maxDimension: maxDimension)
+    }
+
+    private static func primaryIconName() -> String? {
+        guard let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
+              let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
+              let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
+              let iconName = iconFiles.last else {
+            return nil
+        }
+        return iconName
+    }
+
+    private static func resizedImage(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let maxSourceDimension = max(image.size.width, image.size.height)
+        guard maxSourceDimension > maxDimension else {
+            return image
+        }
+
+        let scale = maxDimension / maxSourceDimension
+        let targetSize = CGSize(
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+    }
+}
 
 struct CloudSharingControllerRepresentable: UIViewControllerRepresentable {
     static let supportedPermissions: UICloudSharingController.PermissionOptions = [
@@ -90,7 +139,15 @@ extension CloudSharingControllerRepresentable {
         }
 
         func itemTitle(for csc: UICloudSharingController) -> String? {
-            title
+            SharedHomeShareBranding.shareTitle(for: title)
+        }
+
+        func itemType(for csc: UICloudSharingController) -> String? {
+            SharedHomeShareBranding.itemType()
+        }
+
+        func itemThumbnailData(for csc: UICloudSharingController) -> Data? {
+            SharedHomeShareBranding.appIconImage()?.pngData()
         }
 
         func cloudSharingControllerDidSaveShare(

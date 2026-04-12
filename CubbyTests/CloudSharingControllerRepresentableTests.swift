@@ -12,5 +12,13 @@ struct CloudSharingControllerRepresentableTests {
         #expect(permissions.contains(.allowReadWrite))
         #expect(permissions.contains(.allowPrivate) == false)
     }
+
+    @Test
+    func test_shareTitle_usesBrandedHomePrefix() {
+        #expect(
+            SharedHomeShareBranding.shareTitle(for: "Beach House")
+                == "Cubby Home: Beach House"
+        )
+    }
 }
 #endif

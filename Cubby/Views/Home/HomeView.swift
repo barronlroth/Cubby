@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 import CloudKit
+#if canImport(UIKit)
+import LinkPresentation
+#endif
 
 struct LocationSection: Identifiable {
     let id: UUID
@@ -150,7 +153,10 @@ struct HomeView: View {
                         onError: handleShareError
                     )
                 case let .activity(url):
-                    ShareURLActivityControllerRepresentable(url: url)
+                    ShareURLActivityControllerRepresentable(
+                        url: url,
+                        title: context.title
+                    )
                 }
 #else
                 Text("Sharing is unavailable on this platform.")
@@ -323,7 +329,7 @@ struct HomeView: View {
     private func presentShareActivitySheet(_ url: URL, title: String) {
         activeShareSheet = HomeShareSheetContext(
             mode: .activity(url),
-            title: title
+            title: SharedHomeShareBranding.shareTitle(for: title)
         )
     }
 
@@ -462,10 +468,12 @@ private struct SharedHomeStatusRow: View {
 #if canImport(UIKit)
 private struct ShareURLActivityControllerRepresentable: UIViewControllerRepresentable {
     let url: URL
+    let title: String
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(
-            activityItems: [url],
+        let source = ShareURLActivityItemSource(url: url, title: title)
+        return UIActivityViewController(
+            activityItems: [source],
             applicationActivities: nil
         )
     }
@@ -474,6 +482,51 @@ private struct ShareURLActivityControllerRepresentable: UIViewControllerRepresen
         _ uiViewController: UIActivityViewController,
         context: Context
     ) {}
+}
+
+private final class ShareURLActivityItemSource: NSObject, UIActivityItemSource {
+    private let url: URL
+    private let title: String
+    private let iconImage: UIImage?
+
+    init(url: URL, title: String) {
+        self.url = url
+        self.title = title
+        self.iconImage = SharedHomeShareBranding.appIconImage()
+    }
+
+    func activityViewControllerPlaceholderItem(
+        _ activityViewController: UIActivityViewController
+    ) -> Any {
+        url
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        url
+    }
+
+    func activityViewControllerLinkMetadata(
+        _ activityViewController: UIActivityViewController
+    ) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = title
+        metadata.originalURL = url
+        metadata.url = url
+        if let iconImage {
+            metadata.iconProvider = NSItemProvider(object: iconImage)
+        }
+        return metadata
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        title
+    }
 }
 #endif
 
