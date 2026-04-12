@@ -99,7 +99,7 @@ private extension SharingErrorHandler {
                     isOffline: false,
                     shouldRetry: false
                 )
-            case .unsupportedHomeModel, .shareCreationFailed:
+            case .unsupportedHomeModel, .shareCreationFailed, .shareLinkUnavailable:
                 return SharingErrorPresentation(
                     message: "Cubby could not create a share link right now. Please try again.",
                     isOffline: false,

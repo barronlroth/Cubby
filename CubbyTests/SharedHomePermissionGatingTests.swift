@@ -112,6 +112,10 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         return nil
     }
 
+    func shareURL(for home: AppHome) async throws -> URL {
+        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
+    }
+
     func canEdit(_ home: AppHome) -> Bool {
         let role = rolesByHomeID[home.id] ?? .owner
         return SharePermission(role: role).canMutate

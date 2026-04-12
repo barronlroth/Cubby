@@ -10,6 +10,12 @@ struct LocationSection: Identifiable {
 }
 
 struct HomeView: View {
+    enum SharedStatusPresentation: Equatable {
+        case sharedWithYou
+        case shared
+        case manage
+    }
+
     @Binding var selectedHome: AppHome?
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var searchText: String
@@ -90,6 +96,22 @@ struct HomeView: View {
         shareManagementAccess.showsAffordance
     }
 
+    static func sharedStatusPresentation(
+        isOwnedByCurrentUser: Bool,
+        hasExistingShare: Bool,
+        isDebugMockSharingEnabled: Bool
+    ) -> SharedStatusPresentation {
+        guard isOwnedByCurrentUser else {
+            return .sharedWithYou
+        }
+
+        guard !isDebugMockSharingEnabled else {
+            return .shared
+        }
+
+        return hasExistingShare ? .manage : .shared
+    }
+
     var body: some View {
         listView(for: displayedSections)
             .listStyle(.plain)
@@ -118,7 +140,7 @@ struct HomeView: View {
                 switch context.mode {
                 case .mockPreview:
                     MockSharePreviewSheet(title: context.title)
-                case let .share(share):
+                case let .manage(share):
                     CloudSharingControllerRepresentable(
                         share: share,
                         container: appStore.shareContainer,
@@ -127,6 +149,8 @@ struct HomeView: View {
                         onStopSharing: { appStore.refresh() },
                         onError: handleShareError
                     )
+                case let .activity(url):
+                    ShareURLActivityControllerRepresentable(url: url)
                 }
 #else
                 Text("Sharing is unavailable on this platform.")
@@ -173,9 +197,7 @@ struct HomeView: View {
             if let selectedHome,
                isSharedHomesEnabled,
                selectedHome.isShared {
-                SharedHomeStatusRow(
-                    isSharedWithYou: !selectedHome.isOwnedByCurrentUser
-                )
+                sharedHomeStatusRow(for: selectedHome)
             }
         }
         .padding(.horizontal, 16)
@@ -219,8 +241,7 @@ struct HomeView: View {
         return false
     }
 
-    private func handleShareHomeTapped() {
-        guard let selectedHome else { return }
+    private func handleManageShareTapped(for selectedHome: AppHome) {
         switch shareManagementAccess {
         case .hidden:
             return
@@ -243,19 +264,18 @@ struct HomeView: View {
             handleShareError(CKError(.unknownItem))
             return
         }
-        presentShareSheet(existingShare, title: selectedHome.name)
+        presentManageShareSheet(existingShare, title: selectedHome.name)
     }
 
     @MainActor
-    private func prepareAndPresentShare(for home: AppHome) async {
+    private func prepareAndPresentShareLink(for home: AppHome) async {
         guard preparingShareHomeID == nil else { return }
         preparingShareHomeID = home.id
         defer { preparingShareHomeID = nil }
 
         do {
-            let share = try await appStore.shareHome(homeID: home.id)
-            let resolvedShare = appStore.existingShare(homeID: home.id) ?? share
-            presentShareSheet(resolvedShare, title: home.name)
+            let shareURL = try await appStore.shareURL(homeID: home.id)
+            presentShareActivitySheet(shareURL, title: home.name)
         } catch {
             handleShareError(error)
         }
@@ -270,33 +290,39 @@ struct HomeView: View {
             case .hidden:
                 EmptyView()
             case .upgradeRequired:
-                ShareHomeButton(action: handleShareHomeTapped)
+                ShareHomeButton {
+                    activePaywall.wrappedValue = PaywallContext(reason: .manualUpgrade)
+                }
             case .allowed:
                 if debugMockSharingMode.isEnabled {
-                    ShareHomeButton(action: handleShareHomeTapped)
-                } else {
-                    switch Self.sharePresentationKind(
-                        isShared: home.isShared,
-                        existingShare: appStore.existingShare(homeID: home.id)
-                    ) {
-                    case .createNew:
-                        ShareHomeButton(
-                            isLoading: preparingShareHomeID == home.id,
-                            action: {
-                                Task { await prepareAndPresentShare(for: home) }
-                            }
+                    ShareHomeButton {
+                        activeShareSheet = HomeShareSheetContext(
+                            mode: .mockPreview,
+                            title: home.name
                         )
-                    case .manageExisting, .unavailableExistingShare:
-                        ShareHomeButton(action: handleShareHomeTapped)
                     }
+                } else {
+                    ShareHomeButton(
+                        isLoading: preparingShareHomeID == home.id,
+                        action: {
+                            Task { await prepareAndPresentShareLink(for: home) }
+                        }
+                    )
                 }
             }
         }
     }
 
-    private func presentShareSheet(_ share: CKShare, title: String) {
+    private func presentManageShareSheet(_ share: CKShare, title: String) {
         activeShareSheet = HomeShareSheetContext(
-            mode: .share(share),
+            mode: .manage(share),
+            title: title
+        )
+    }
+
+    private func presentShareActivitySheet(_ url: URL, title: String) {
+        activeShareSheet = HomeShareSheetContext(
+            mode: .activity(url),
             title: title
         )
     }
@@ -304,16 +330,6 @@ struct HomeView: View {
     private func handleShareError(_ error: Error) {
         let presentation = sharingErrorHandler.handle(error: error)
         shareErrorMessage = presentation.message
-    }
-
-    private func makeMockShare(for home: AppHome) -> CKShare {
-        let rootRecord = CKRecord(recordType: "CDHome")
-        rootRecord["id"] = home.id.uuidString as CKRecordValue
-        let share = CKShare(rootRecord: rootRecord)
-        if home.name.isEmpty == false {
-            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
-        }
-        return share
     }
 
     @ViewBuilder
@@ -354,38 +370,43 @@ struct HomeView: View {
             return Color(.systemBackground)
         }
     }
+    @ViewBuilder
+    private func sharedHomeStatusRow(for home: AppHome) -> some View {
+        switch Self.sharedStatusPresentation(
+            isOwnedByCurrentUser: home.isOwnedByCurrentUser,
+            hasExistingShare: appStore.existingShare(homeID: home.id) != nil,
+            isDebugMockSharingEnabled: debugMockSharingMode.isEnabled
+        ) {
+        case .sharedWithYou:
+            SharedHomeStatusRow(
+                isSharedWithYou: true
+            )
+        case .manage:
+            Button {
+                handleManageShareTapped(for: home)
+            } label: {
+                SharedHomeStatusRow(
+                    isSharedWithYou: false,
+                    isManageAction: true
+                )
+            }
+            .buttonStyle(.plain)
+        case .shared:
+            SharedHomeStatusRow(isSharedWithYou: false)
+        }
+    }
 }
 
 private struct HomeShareSheetContext: Identifiable {
     enum Mode {
         case mockPreview
-        case share(CKShare)
+        case manage(CKShare)
+        case activity(URL)
     }
 
     let id = UUID()
     let mode: Mode
     let title: String
-}
-
-extension HomeView {
-    enum SharePresentationKind: Equatable {
-        case createNew
-        case manageExisting
-        case unavailableExistingShare
-    }
-
-    static func sharePresentationKind(
-        isShared: Bool,
-        existingShare: CKShare?
-    ) -> SharePresentationKind {
-        if existingShare != nil {
-            return .manageExisting
-        }
-        if isShared {
-            return .unavailableExistingShare
-        }
-        return .createNew
-    }
 }
 
 #if canImport(UIKit)
@@ -419,9 +440,16 @@ private struct MockSharePreviewSheet: View {
 
 private struct SharedHomeStatusRow: View {
     let isSharedWithYou: Bool
+    var isManageAction = false
 
     var body: some View {
-        Text(isSharedWithYou ? "Shared with you" : "Shared")
+        HStack(spacing: 6) {
+            Text(isSharedWithYou ? "Shared with you" : "Shared")
+            if isManageAction {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+            }
+        }
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -430,6 +458,24 @@ private struct SharedHomeStatusRow: View {
             .clipShape(Capsule())
     }
 }
+
+#if canImport(UIKit)
+private struct ShareURLActivityControllerRepresentable: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [url],
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIActivityViewController,
+        context: Context
+    ) {}
+}
+#endif
 
 private struct ShareHomeButton: View {
     var isLoading = false

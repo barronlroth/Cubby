@@ -139,6 +139,18 @@ struct HomeSharingServiceTests {
         #expect(reusedShare?.recordID.recordName == shared.recordID.recordName)
     }
 
+    @Test
+    func test_shareURL_returnsStableURLForSharedHome() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Native Share Home")
+
+        _ = try await service.shareHome(home)
+        let firstURL = try await service.shareURL(for: home)
+        let secondURL = try await service.shareURL(for: home)
+
+        #expect(firstURL == secondURL)
+    }
+
     private func makeShareMetadataPlaceholder() -> CKShare.Metadata {
         unsafeBitCast(NSObject(), to: CKShare.Metadata.self)
     }
@@ -178,6 +190,13 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
 
     func fetchShare(for home: AppHome) -> CKShare? {
         sharesByHomeID[home.id]
+    }
+
+    func shareURL(for home: AppHome) async throws -> URL {
+        if sharesByHomeID[home.id] == nil {
+            _ = try await shareHome(home)
+        }
+        return URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
     }
 
     func canEdit(_ home: AppHome) -> Bool {
