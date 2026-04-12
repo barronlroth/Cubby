@@ -106,6 +106,51 @@ struct HomeSharingServiceTests {
         #expect(service.isShared(incomingHome))
     }
 
+    @Test
+    func test_shareForController_createsShareForUnsharedHome() async {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Link Home")
+
+        var createdShare: CKShare?
+        var createdContainer: CKContainer?
+        service.shareForController(home) { share, container, error in
+            #expect(error == nil)
+            createdShare = share
+            createdContainer = container
+        }
+
+        #expect(createdShare != nil)
+        #expect(createdContainer != nil)
+        #expect(service.isShared(home))
+    }
+
+    @Test
+    func test_shareForController_reusesExistingShare() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Existing Link Home")
+        let shared = try await service.shareHome(home)
+
+        var reusedShare: CKShare?
+        service.shareForController(home) { share, _, error in
+            #expect(error == nil)
+            reusedShare = share
+        }
+
+        #expect(reusedShare?.recordID.recordName == shared.recordID.recordName)
+    }
+
+    @Test
+    func test_shareURL_returnsStableURLForSharedHome() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Native Share Home")
+
+        _ = try await service.shareHome(home)
+        let firstURL = try await service.shareURL(for: home)
+        let secondURL = try await service.shareURL(for: home)
+
+        #expect(firstURL == secondURL)
+    }
+
     private func makeShareMetadataPlaceholder() -> CKShare.Metadata {
         unsafeBitCast(NSObject(), to: CKShare.Metadata.self)
     }
@@ -147,6 +192,13 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
         sharesByHomeID[home.id]
     }
 
+    func shareURL(for home: AppHome) async throws -> URL {
+        if sharesByHomeID[home.id] == nil {
+            _ = try await shareHome(home)
+        }
+        return URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
+    }
+
     func canEdit(_ home: AppHome) -> Bool {
         guard let role = rolesByHomeID[home.id] else {
             return true
@@ -172,6 +224,24 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
     func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
+    }
+
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        let share: CKShare
+        if let existingShare = sharesByHomeID[home.id] {
+            share = existingShare
+        } else {
+            share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+            sharesByHomeID[home.id] = share
+            rolesByHomeID[home.id] = .owner
+            sharedHomeIDs.insert(home.id)
+        }
+
+        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
     }
 
     func setRole(_ role: SharePermission.Role, for home: AppHome) {

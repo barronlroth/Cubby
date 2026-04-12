@@ -112,6 +112,10 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         return nil
     }
 
+    func shareURL(for home: AppHome) async throws -> URL {
+        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
+    }
+
     func canEdit(_ home: AppHome) -> Bool {
         let role = rolesByHomeID[home.id] ?? .owner
         return SharePermission(role: role).canMutate
@@ -128,6 +132,15 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
     func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
+    }
+
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
     }
 
     func canCreateLocations(in home: AppHome) -> Bool {

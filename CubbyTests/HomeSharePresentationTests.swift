@@ -1,40 +1,48 @@
-import CloudKit
 import Testing
 @testable import Cubby
 
 struct HomeSharePresentationTests {
     @Test
-    func test_unsharedHome_opensCreateFlow() {
-        let kind = HomeView.sharePresentationKind(
-            isShared: false,
-            existingShare: nil
+    func test_ownerSharedHomeWithPersistedShare_showsManageAffordance() {
+        let presentation = HomeView.sharedStatusPresentation(
+            isOwnedByCurrentUser: true,
+            hasExistingShare: true,
+            isDebugMockSharingEnabled: false
         )
 
-        #expect(kind == .createNew)
+        #expect(presentation == .manage)
     }
 
     @Test
-    func test_existingShare_opensManageFlow() {
-        let kind = HomeView.sharePresentationKind(
-            isShared: true,
-            existingShare: makeShare()
+    func test_ownerSharedHomeWithoutPersistedShare_staysPassive() {
+        let presentation = HomeView.sharedStatusPresentation(
+            isOwnedByCurrentUser: true,
+            hasExistingShare: false,
+            isDebugMockSharingEnabled: false
         )
 
-        #expect(kind == .manageExisting)
+        #expect(presentation == .shared)
     }
 
     @Test
-    func test_sharedHome_withoutFetchedShare_surfacesLookupFailure() {
-        let kind = HomeView.sharePresentationKind(
-            isShared: true,
-            existingShare: nil
+    func test_collaboratorSharedHome_showsSharedWithYou() {
+        let presentation = HomeView.sharedStatusPresentation(
+            isOwnedByCurrentUser: false,
+            hasExistingShare: true,
+            isDebugMockSharingEnabled: false
         )
 
-        #expect(kind == .unavailableExistingShare)
+        #expect(presentation == .sharedWithYou)
     }
 
-    private func makeShare() -> CKShare {
-        let rootRecord = CKRecord(recordType: "CDHome")
-        return CKShare(rootRecord: rootRecord)
+    @Test
+    func test_debugMockOwnerSharedHome_staysPassive() {
+        let presentation = HomeView.sharedStatusPresentation(
+            isOwnedByCurrentUser: true,
+            hasExistingShare: true,
+            isDebugMockSharingEnabled: true
+        )
+
+        #expect(presentation == .shared)
     }
 }
