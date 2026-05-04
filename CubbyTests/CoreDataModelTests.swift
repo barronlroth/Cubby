@@ -6,10 +6,13 @@ import Testing
 @Suite("Core Data Model Tests")
 struct CoreDataModelTests {
     private func makeManagedObjectModel() throws -> NSManagedObjectModel {
-        let bundles = Bundle.allBundles + Bundle.allFrameworks
-        if let model = NSManagedObjectModel.mergedModel(from: bundles),
-           model.entitiesByName["CDHome"] != nil {
-            return model
+        let candidateBundles = [Bundle.main, Bundle(for: CoreDataModelTestBundleMarker.self)]
+        for bundle in candidateBundles {
+            if let modelURL = bundle.url(forResource: "Cubby", withExtension: "momd"),
+               let model = NSManagedObjectModel(contentsOf: modelURL),
+               model.entitiesByName["CDHome"] != nil {
+                return model
+            }
         }
 
         throw NSError(
@@ -173,7 +176,7 @@ struct CoreDataModelTests {
     }
 
     @Test
-    func test_CDStorageLocation_denyDeleteWithItems() throws {
+    func test_CDStorageLocation_nullifyDeleteRuleKeepsItems() throws {
         let container = try makeInMemoryContainer()
         let context = container.viewContext
 
@@ -183,13 +186,13 @@ struct CoreDataModelTests {
         try context.save()
 
         context.delete(location)
+        try context.save()
 
-        do {
-            try context.save()
-            Issue.record("Expected deny delete rule to prevent deleting a location with items.")
-        } catch {
-            #expect(true)
-        }
+        let request = NSFetchRequest<NSManagedObject>(entityName: "CDInventoryItem")
+        let items = try context.fetch(request)
+
+        #expect(items.count == 1)
+        #expect(items.first?.value(forKey: "storageLocation") == nil)
     }
 
     @Test
@@ -209,7 +212,9 @@ struct CoreDataModelTests {
             }
 
             #expect(idAttribute.attributeType == .UUIDAttributeType)
-            #expect(idAttribute.isOptional == false)
+            #expect(idAttribute.isOptional == true)
         }
     }
 }
+
+private final class CoreDataModelTestBundleMarker {}
