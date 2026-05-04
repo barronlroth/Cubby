@@ -284,6 +284,12 @@ final class AppStore: ObservableObject {
         return share
     }
 
+    func shareURL(homeID: UUID) async throws -> URL {
+        let shareURL = try await repository.shareURL(for: homeID)
+        refresh()
+        return shareURL
+    }
+
     func existingShare(homeID: UUID) -> CKShare? {
         repository.existingShare(for: homeID)
     }

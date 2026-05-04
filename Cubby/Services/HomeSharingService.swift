@@ -15,6 +15,7 @@ private final class CloudKitExportObserverBox: @unchecked Sendable {
 
 protocol HomeSharingServiceProtocol {
     func shareHome(_ home: AppHome) async throws -> CKShare
+    func shareURL(for home: AppHome) async throws -> URL
     func fetchShare(for home: AppHome) -> CKShare?
     func permission(for home: AppHome) -> SharePermission
     func canEdit(_ home: AppHome) -> Bool
@@ -38,6 +39,7 @@ enum HomeSharingServiceError: Error, Equatable {
     case homeAlreadyShared
     case unsupportedHomeModel
     case shareCreationFailed
+    case shareLinkUnavailable
     case missingSharedPersistentStore
     case shareExportTimedOut
 }
@@ -51,6 +53,8 @@ extension HomeSharingServiceError: LocalizedError {
             return "This home could not be prepared for sharing."
         case .shareCreationFailed:
             return "Cubby could not create the share invite."
+        case .shareLinkUnavailable:
+            return "Cubby could not create the share link."
         case .missingSharedPersistentStore:
             return "Cubby could not access the shared iCloud store."
         case .shareExportTimedOut:
@@ -223,6 +227,10 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         return makeShare(for: home)
     }
 
+    func shareURL(for home: AppHome) async throws -> URL {
+        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
+    }
+
     func permission(for home: AppHome) -> SharePermission {
         SharePermission(role: role(for: home))
     }
@@ -306,20 +314,27 @@ final class HomeSharingService: HomeSharingServiceProtocol {
 
         let exportStartDate = Date()
         let share = try await createShare(for: managedObject)
-        if home.name.isEmpty == false {
-            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        let configuredShare = try await configureLinkShare(
+            share,
+            for: home,
+            exportStartDate: exportStartDate
+        )
+        return configuredShare
+    }
+
+    func shareURL(for home: AppHome) async throws -> URL {
+        let share: CKShare
+        if let existingShare = fetchShare(for: home) {
+            share = try await configureLinkShare(
+                existingShare,
+                for: home,
+                exportStartDate: nil
+            )
+        } else {
+            share = try await shareHome(home)
         }
 
-        if let privatePersistentStore = persistenceController.privatePersistentStore() {
-            try await persistUpdatedShare(share, in: privatePersistentStore)
-        }
-        try await waitForPrivateStoreExport(startingAfter: exportStartDate)
-
-        if let persistedShare = fetchShare(for: home) {
-            return persistedShare
-        }
-
-        return share
+        return try await resolveShareURL(for: home, initialShare: share)
     }
 
     func fetchShare(for home: AppHome) -> CKShare? {
@@ -413,6 +428,53 @@ final class HomeSharingService: HomeSharingServiceProtocol {
                 continuation.resume(returning: share)
             }
         }
+    }
+
+    private func configureLinkShare(
+        _ share: CKShare,
+        for home: AppHome,
+        exportStartDate: Date?
+    ) async throws -> CKShare {
+        var didMutateShare = false
+
+        if home.name.isEmpty == false,
+           (share[CKShare.SystemFieldKey.title] as? String) != home.name {
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+            didMutateShare = true
+        }
+
+        if share.publicPermission != .readWrite {
+            share.publicPermission = .readWrite
+            didMutateShare = true
+        }
+
+        if didMutateShare {
+            guard let privatePersistentStore = persistenceController.privatePersistentStore() else {
+                throw HomeSharingServiceError.shareCreationFailed
+            }
+
+            let exportStartDate = exportStartDate ?? Date()
+            try await persistUpdatedShare(share, in: privatePersistentStore)
+            try await waitForPrivateStoreExport(startingAfter: exportStartDate)
+        }
+
+        return fetchShare(for: home) ?? share
+    }
+
+    private func resolveShareURL(for home: AppHome, initialShare: CKShare) async throws -> URL {
+        if let initialURL = initialShare.url {
+            return initialURL
+        }
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if let persistedURL = fetchShare(for: home)?.url {
+                return persistedURL
+            }
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        throw HomeSharingServiceError.shareLinkUnavailable
     }
 
     private func persistUpdatedShare(
