@@ -7,7 +7,7 @@ This folder contains the core helpers used to gate Cubby’s “Pro” access vi
 - **Entitlement**: `pro`
 - **Products**:
   - Annual subscription: `cubby_pro_annual`
-  - Lifetime (non-consumable): `cubby_pro_lifetime`
+  - Monthly subscription: `cubby_pro_monthly`
 - **Offerings**: RevenueCat must have a **Current** offering with packages for the products above.
 
 ## API key wiring (no secrets committed)
@@ -59,8 +59,8 @@ File: `Cubby/Services/PaywallContext.swift`
 
 - Global paywall host:
   - `Cubby/Views/Home/HomeSearchContainer.swift` creates a single `ProAccessManager` and presents `ProPaywallSheetView` from `activePaywall`.
-- Paywall UI (RevenueCatUI):
-  - `Cubby/Views/Pro/ProPaywallSheetView.swift` shows `PaywallView(offering: proAccessManager.offerings?.current)` and basic inline error/restore flows.
+- Paywall UI (native SwiftUI + RevenueCat purchases):
+  - `Cubby/Views/Pro/ProPaywallSheetView.swift` renders the custom Cubby Pro paywall, reads `proAccessManager.availablePackages`, and calls `proAccessManager.purchase(package:)` for the selected RevenueCat package.
   - Auto-dismisses when `isPro` becomes `true`.
 - Always-available restore/manage:
   - `Cubby/Views/Pro/ProStatusView.swift` (opened from HomePicker → “Cubby Pro”).

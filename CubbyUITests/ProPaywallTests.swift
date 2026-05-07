@@ -19,7 +19,7 @@ final class ProPaywallTests: XCTestCase {
         XCTAssertTrue(addItemButton.isEnabled)
         addItemButton.tap()
 
-        let paywallTitle = app.staticTexts["Add More Items with Cubby Pro"]
+        let paywallTitle = app.staticTexts["Cubby Pro"]
         if !paywallTitle.waitForExistence(timeout: 10) {
             let screenshot = XCTAttachment(screenshot: app.screenshot())
             screenshot.name = "Paywall not shown"
@@ -33,9 +33,14 @@ final class ProPaywallTests: XCTestCase {
         }
 
         XCTAssertTrue(paywallTitle.exists)
+        XCTAssertTrue(app.staticTexts["Unlimited homes"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Unlimited items"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Shared home inventories"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Photos, notes, exact paths"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Unlock Pro"].waitForExistence(timeout: 10))
 
-        let termsLink = app.buttons["Terms of Use (EULA)"]
-        let privacyLink = app.buttons["Privacy Policy"]
+        let termsLink = app.buttons["Terms"]
+        let privacyLink = app.buttons["Privacy"]
         if !termsLink.exists || !privacyLink.exists {
             app.swipeUp()
         }
