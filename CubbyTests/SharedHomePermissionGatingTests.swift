@@ -125,6 +125,13 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         rolesByHomeID[home.id] != nil
     }
 
+    func leaveSharedHome(_ home: AppHome) async throws {
+        guard rolesByHomeID[home.id] != nil else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+        rolesByHomeID[home.id] = nil
+    }
+
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
         _ = metadata
     }

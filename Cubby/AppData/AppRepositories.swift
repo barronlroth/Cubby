@@ -6,6 +6,8 @@ protocol HomeRepository {
     func listHomes() throws -> [AppHome]
     func home(id: UUID) throws -> AppHome?
     func createHome(name: String) throws -> AppHome
+    @discardableResult
+    func deleteHome(id: UUID) throws -> [String]
 }
 
 @MainActor
@@ -37,6 +39,7 @@ protocol ShareRepository {
     func permission(for homeID: UUID) -> SharePermission
     func participants(for homeID: UUID) -> [CKShare.Participant]
     func isShared(homeID: UUID) -> Bool
+    func leaveSharedHome(id: UUID) async throws
 }
 
 @MainActor

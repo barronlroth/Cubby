@@ -151,6 +151,40 @@ struct HomeSharingServiceTests {
         #expect(firstURL == secondURL)
     }
 
+    @Test
+    func test_leaveSharedHome_removesCollaboratorShare() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Collaborator Home")
+        _ = try await service.shareHome(home)
+        service.setRole(.readWriteParticipant, for: home)
+
+        try await service.leaveSharedHome(home)
+
+        #expect(service.leftHomeIDs == [home.id])
+        #expect(service.isShared(home) == false)
+    }
+
+    @Test
+    func test_leaveSharedHome_rejectsOwnerShare() async throws {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Owner Home")
+        _ = try await service.shareHome(home)
+
+        await #expect(throws: HomeSharingServiceError.cannotLeaveOwnedShare) {
+            try await service.leaveSharedHome(home)
+        }
+    }
+
+    @Test
+    func test_leaveSharedHome_rejectsMissingShare() async {
+        let service = MockHomeSharingService()
+        let home = makeHome(name: "Private Home")
+
+        await #expect(throws: HomeSharingServiceError.shareNotFound) {
+            try await service.leaveSharedHome(home)
+        }
+    }
+
     private func makeShareMetadataPlaceholder() -> CKShare.Metadata {
         unsafeBitCast(NSObject(), to: CKShare.Metadata.self)
     }
@@ -171,6 +205,7 @@ struct HomeSharingServiceTests {
 
 private final class MockHomeSharingService: HomeSharingServiceProtocol {
     var homeToAddOnAccept: AppHome?
+    private(set) var leftHomeIDs: [UUID] = []
     private(set) var sharedHomeIDs = Set<UUID>()
     private var sharesByHomeID: [UUID: CKShare] = [:]
     private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
@@ -208,6 +243,20 @@ private final class MockHomeSharingService: HomeSharingServiceProtocol {
 
     func isShared(_ home: AppHome) -> Bool {
         sharesByHomeID[home.id] != nil || sharedHomeIDs.contains(home.id)
+    }
+
+    func leaveSharedHome(_ home: AppHome) async throws {
+        guard sharesByHomeID[home.id] != nil || sharedHomeIDs.contains(home.id) else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+        guard rolesByHomeID[home.id] != .owner else {
+            throw HomeSharingServiceError.cannotLeaveOwnedShare
+        }
+
+        sharesByHomeID[home.id] = nil
+        rolesByHomeID[home.id] = nil
+        sharedHomeIDs.remove(home.id)
+        leftHomeIDs.append(home.id)
     }
 
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {

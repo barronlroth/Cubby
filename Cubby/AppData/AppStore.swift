@@ -15,6 +15,7 @@ final class AppStore: ObservableObject {
 
     private let notificationCenter: NotificationCenter
     private var observers: [NSObjectProtocol] = []
+    private var hiddenSharedHomeIDs = Set<UUID>()
 
     init(
         repository: CoreDataAppRepository,
@@ -33,8 +34,14 @@ final class AppStore: ObservableObject {
     func refresh() {
         do {
             homes = try repository.listHomes()
+                .filter { !hiddenSharedHomeIDs.contains($0.id) }
             locations = try repository.listLocations()
+                .filter { !hiddenSharedHomeIDs.contains($0.homeID) }
             items = try repository.listItems()
+                .filter { item in
+                    guard let homeID = item.homeID else { return true }
+                    return !hiddenSharedHomeIDs.contains(homeID)
+                }
         } catch {
             DebugLogger.error("AppStore refresh failed: \(error)")
         }
@@ -126,6 +133,16 @@ final class AppStore: ObservableObject {
         let home = try repository.createHome(name: name)
         refresh()
         return home
+    }
+
+    func deleteHome(id: UUID) async throws {
+        let photoFileNames = try repository.deleteHome(id: id)
+        hiddenSharedHomeIDs.remove(id)
+        refresh()
+
+        for photoFileName in photoFileNames {
+            await PhotoService.shared.deletePhoto(fileName: photoFileName)
+        }
     }
 
     func createLocation(name: String, homeID: UUID, parentLocationID: UUID?) throws -> AppStorageLocation {
@@ -282,6 +299,12 @@ final class AppStore: ObservableObject {
         let share = try await repository.share(for: homeID)
         refresh()
         return share
+    }
+
+    func leaveSharedHome(id: UUID) async throws {
+        try await repository.leaveSharedHome(id: id)
+        hiddenSharedHomeIDs.insert(id)
+        refresh()
     }
 
     func shareURL(homeID: UUID) async throws -> URL {

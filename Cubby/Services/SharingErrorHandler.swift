@@ -99,6 +99,18 @@ private extension SharingErrorHandler {
                     isOffline: false,
                     shouldRetry: false
                 )
+            case .shareNotFound:
+                return SharingErrorPresentation(
+                    message: "This shared home is no longer available.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
+            case .cannotLeaveOwnedShare:
+                return SharingErrorPresentation(
+                    message: "Owners can delete a shared home, but they cannot leave it.",
+                    isOffline: false,
+                    shouldRetry: false
+                )
             case .unsupportedHomeModel, .shareCreationFailed, .shareLinkUnavailable:
                 return SharingErrorPresentation(
                     message: "Cubby could not create a share link right now. Please try again.",

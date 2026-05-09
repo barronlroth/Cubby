@@ -20,6 +20,7 @@ protocol HomeSharingServiceProtocol {
     func permission(for home: AppHome) -> SharePermission
     func canEdit(_ home: AppHome) -> Bool
     func isShared(_ home: AppHome) -> Bool
+    func leaveSharedHome(_ home: AppHome) async throws
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
     func participants(for home: AppHome) -> [CKShare.Participant]
     func shareForController(
@@ -37,6 +38,8 @@ protocol CloudKitSharingPersistenceControlling: AnyObject {
 
 enum HomeSharingServiceError: Error, Equatable {
     case homeAlreadyShared
+    case shareNotFound
+    case cannotLeaveOwnedShare
     case unsupportedHomeModel
     case shareCreationFailed
     case shareLinkUnavailable
@@ -49,6 +52,10 @@ extension HomeSharingServiceError: LocalizedError {
         switch self {
         case .homeAlreadyShared:
             return "This home is already shared."
+        case .shareNotFound:
+            return "Cubby could not find the shared home."
+        case .cannotLeaveOwnedShare:
+            return "Owners can delete a shared home, but they cannot leave it."
         case .unsupportedHomeModel:
             return "This home could not be prepared for sharing."
         case .shareCreationFailed:
@@ -244,6 +251,15 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         return mode.isEnabled
     }
 
+    func leaveSharedHome(_ home: AppHome) async throws {
+        guard mode.isEnabled else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+        guard role(for: home) != .owner else {
+            throw HomeSharingServiceError.cannotLeaveOwnedShare
+        }
+    }
+
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
         _ = metadata
     }
@@ -373,6 +389,22 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         fetchShare(for: home) != nil
     }
 
+    func leaveSharedHome(_ home: AppHome) async throws {
+        guard let share = fetchShare(for: home) else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+
+        guard let currentParticipant = share.currentUserParticipant else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+
+        guard currentParticipant.role != .owner else {
+            throw HomeSharingServiceError.cannotLeaveOwnedShare
+        }
+
+        try await deleteShareFromSharedDatabase(share)
+    }
+
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
         guard let sharedPersistentStore = persistenceController.sharedPersistentStore() else {
             throw HomeSharingServiceError.missingSharedPersistentStore
@@ -395,6 +427,19 @@ final class HomeSharingService: HomeSharingServiceProtocol {
 
     func participants(for home: AppHome) -> [CKShare.Participant] {
         fetchShare(for: home)?.participants ?? []
+    }
+
+    private func deleteShareFromSharedDatabase(_ share: CKShare) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            ckContainer.sharedCloudDatabase.delete(withRecordID: share.recordID) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
     }
 
     private func managedObject(for home: AppHome) -> NSManagedObject? {

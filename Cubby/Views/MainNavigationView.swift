@@ -105,6 +105,20 @@ struct MainNavigationView: View {
         .animation(.spring(response: 0.3), value: selectedHome?.id)
     }
 
+    static func selectionAfterRemovingHome(
+        _ removedHomeID: UUID,
+        currentSelection: AppHome?,
+        remainingHomes: [AppHome]
+    ) -> AppHome? {
+        guard currentSelection?.id == removedHomeID else {
+            return currentSelection.flatMap { current in
+                remainingHomes.first { $0.id == current.id }
+            }
+        }
+
+        return remainingHomes.first
+    }
+
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -195,7 +209,11 @@ struct MainNavigationView: View {
             if let refreshedSelection = homes.first(where: { $0.id == currentHome.id }) {
                 selectedHome = refreshedSelection
             } else {
-                selectedHome = homes.first
+                selectedHome = Self.selectionAfterRemovingHome(
+                    currentHome.id,
+                    currentSelection: currentHome,
+                    remainingHomes: homes
+                )
             }
         } else if selectedHome == nil && !homes.isEmpty {
             selectedHome = homes.first
