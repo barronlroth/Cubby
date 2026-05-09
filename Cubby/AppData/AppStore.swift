@@ -14,15 +14,19 @@ final class AppStore: ObservableObject {
     let repository: CoreDataAppRepository
 
     private let notificationCenter: NotificationCenter
+    private let hiddenSharedHomeIDStore: HiddenSharedHomeIDStore
     private var observers: [NSObjectProtocol] = []
     private var hiddenSharedHomeIDs = Set<UUID>()
 
     init(
         repository: CoreDataAppRepository,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        hiddenSharedHomeIDStore: HiddenSharedHomeIDStore = HiddenSharedHomeIDStore()
     ) {
         self.repository = repository
         self.notificationCenter = notificationCenter
+        self.hiddenSharedHomeIDStore = hiddenSharedHomeIDStore
+        self.hiddenSharedHomeIDs = hiddenSharedHomeIDStore.load()
         refresh()
         startObserving()
     }
@@ -33,7 +37,12 @@ final class AppStore: ObservableObject {
 
     func refresh() {
         do {
-            homes = try repository.listHomes()
+            let allHomes = try repository.listHomes()
+            let availableHomeIDs = Set(allHomes.map(\.id))
+            hiddenSharedHomeIDs = hiddenSharedHomeIDStore.load().intersection(availableHomeIDs)
+            hiddenSharedHomeIDStore.save(hiddenSharedHomeIDs)
+
+            homes = allHomes
                 .filter { !hiddenSharedHomeIDs.contains($0.id) }
             locations = try repository.listLocations()
                 .filter { !hiddenSharedHomeIDs.contains($0.homeID) }
@@ -138,6 +147,7 @@ final class AppStore: ObservableObject {
     func deleteHome(id: UUID) async throws {
         let photoFileNames = try repository.deleteHome(id: id)
         hiddenSharedHomeIDs.remove(id)
+        hiddenSharedHomeIDStore.remove(id)
         refresh()
 
         for photoFileName in photoFileNames {
@@ -304,6 +314,7 @@ final class AppStore: ObservableObject {
     func leaveSharedHome(id: UUID) async throws {
         try await repository.leaveSharedHome(id: id)
         hiddenSharedHomeIDs.insert(id)
+        hiddenSharedHomeIDStore.insert(id)
         refresh()
     }
 
@@ -386,5 +397,36 @@ final class AppStore: ObservableObject {
             if item.tags.contains(where: { $0.localizedCaseInsensitiveContains(term) }) { matches += 1 }
             return count + matches
         }
+    }
+}
+
+struct HiddenSharedHomeIDStore {
+    private static let key = "hiddenSharedHomeIDs"
+
+    private let userDefaults: UserDefaults
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
+
+    func load() -> Set<UUID> {
+        let rawValues = userDefaults.stringArray(forKey: Self.key) ?? []
+        return Set(rawValues.compactMap(UUID.init(uuidString:)))
+    }
+
+    func save(_ ids: Set<UUID>) {
+        userDefaults.set(ids.map(\.uuidString).sorted(), forKey: Self.key)
+    }
+
+    func insert(_ id: UUID) {
+        var ids = load()
+        ids.insert(id)
+        save(ids)
+    }
+
+    func remove(_ id: UUID) {
+        var ids = load()
+        ids.remove(id)
+        save(ids)
     }
 }
