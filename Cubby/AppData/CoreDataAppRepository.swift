@@ -10,6 +10,7 @@ enum AppRepositoryError: LocalizedError, Equatable {
     case duplicateLocationName
     case maximumNestingDepthReached
     case invalidMoveTarget
+    case homeDeleteNotAllowed
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ enum AppRepositoryError: LocalizedError, Equatable {
             "Maximum nesting depth reached. Cannot create location here."
         case .invalidMoveTarget:
             "The item can’t be moved to that location."
+        case .homeDeleteNotAllowed:
+            "You can't delete a home shared with you. Leave the shared home instead."
         }
     }
 }
@@ -94,6 +97,33 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.homeNotFound
         }
         return created
+    }
+
+    @discardableResult
+    func deleteHome(id: UUID) throws -> [String] {
+        guard let home = try fetchHomeObject(id: id) else {
+            throw AppRepositoryError.homeNotFound
+        }
+
+        let appHome = makeHome(home)
+        guard appHome.permission.role == .owner else {
+            throw AppRepositoryError.homeDeleteNotAllowed
+        }
+
+        let items = try fetchItems(
+            predicate: NSPredicate(format: "storageLocation.home.id == %@", id as CVarArg)
+        )
+        let photoFileNames = items.compactMap {
+            $0.value(forKey: "photoFileName") as? String
+        }
+
+        for item in items {
+            viewContext.delete(item)
+        }
+        viewContext.delete(home)
+        try saveContext()
+
+        return photoFileNames
     }
 
     func listLocations() throws -> [AppStorageLocation] {
@@ -390,6 +420,20 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         return shareService.isShared(home)
     }
 
+    func leaveSharedHome(id: UUID) async throws {
+        guard let shareService,
+              let home = makeHomeReference(id: id),
+              shareService.isShared(home) else {
+            throw HomeSharingServiceError.shareNotFound
+        }
+
+        guard shareService.permission(for: home).role != .owner else {
+            throw HomeSharingServiceError.cannotLeaveOwnedShare
+        }
+
+        try await shareService.leaveSharedHome(home)
+    }
+
     func ownerHomeCount() throws -> Int {
         try fetchCount(
             entityName: "CDHome",
@@ -442,6 +486,10 @@ private extension CoreDataAppRepository {
 
     func fetchItems() throws -> [NSManagedObject] {
         try fetchObjects(entityName: "CDInventoryItem", predicate: nil)
+    }
+
+    func fetchItems(predicate: NSPredicate) throws -> [NSManagedObject] {
+        try fetchObjects(entityName: "CDInventoryItem", predicate: predicate)
     }
 
     func fetchHomeObject(id: UUID) throws -> NSManagedObject? {

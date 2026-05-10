@@ -1,3 +1,4 @@
+import CloudKit
 import CoreData
 import Foundation
 import Testing
@@ -86,6 +87,17 @@ struct CoreDataAppRepositoryTests {
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         request.fetchLimit = 1
         return try repository.persistenceController.persistentContainer.viewContext.fetch(request).first
+    }
+
+    @MainActor
+    private func fetchCount(
+        entityName: String,
+        predicate: NSPredicate? = nil,
+        using repository: CoreDataAppRepository
+    ) throws -> Int {
+        let request = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
+        request.predicate = predicate
+        return try repository.persistenceController.persistentContainer.viewContext.count(for: request)
     }
 
     @Test("Owner home count ignores shared-store homes")
@@ -371,5 +383,113 @@ struct CoreDataAppRepositoryTests {
         #expect(throws: AppRepositoryError.invalidMoveTarget) {
             try repository.moveItem(id: sharedItem.id, to: privateLocation.id)
         }
+    }
+
+    @Test("Deleting a home removes its whole graph and leaves other homes untouched")
+    @MainActor
+    func testDeleteHomeRemovesOnlyThatHomeGraph() throws {
+        let repository = try makeRepository()
+        let privateStore = try #require(repository.persistenceController.privatePersistentStore())
+        let deletedHomeID = try insertHomeGraph(
+            named: "Delete Me",
+            itemCount: 2,
+            into: privateStore,
+            using: repository
+        )
+        let keptHomeID = try insertHomeGraph(
+            named: "Keep Me",
+            itemCount: 1,
+            into: privateStore,
+            using: repository
+        )
+
+        try repository.deleteHome(id: deletedHomeID)
+
+        let homes = try repository.listHomes()
+        #expect(homes.map(\.id) == [keptHomeID])
+        #expect(try fetchCount(entityName: "CDHome", using: repository) == 1)
+        #expect(try fetchCount(entityName: "CDStorageLocation", using: repository) == 1)
+        #expect(try fetchCount(entityName: "CDInventoryItem", using: repository) == 1)
+        #expect(try repository.ownerItemCount(for: keptHomeID) == 1)
+    }
+
+    @Test("Leaving a collaborator shared home delegates to sharing and keeps delete untouched")
+    @MainActor
+    func testLeaveSharedHomeDelegatesWithoutDeleting() async throws {
+        let shareService = RecordingHomeSharingService(role: .readWriteParticipant)
+        let repository = try makeRepository(shareService: shareService)
+        let sharedStore = try #require(repository.persistenceController.sharedPersistentStore())
+        let sharedHomeID = try insertHomeGraph(
+            named: "Shared With Me",
+            itemCount: 1,
+            into: sharedStore,
+            using: repository
+        )
+
+        try await repository.leaveSharedHome(id: sharedHomeID)
+
+        #expect(shareService.leftHomeIDs == [sharedHomeID])
+        #expect(try fetchCount(entityName: "CDHome", using: repository) == 1)
+        #expect(try fetchCount(entityName: "CDInventoryItem", using: repository) == 1)
+    }
+}
+
+@MainActor
+private final class RecordingHomeSharingService: HomeSharingServiceProtocol {
+    var leftHomeIDs: [UUID] = []
+    private let role: SharePermission.Role
+
+    init(role: SharePermission.Role) {
+        self.role = role
+    }
+
+    func shareHome(_ home: AppHome) async throws -> CKShare {
+        makeShare(for: home)
+    }
+
+    func shareURL(for home: AppHome) async throws -> URL {
+        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
+    }
+
+    func fetchShare(for home: AppHome) -> CKShare? {
+        makeShare(for: home)
+    }
+
+    func permission(for home: AppHome) -> SharePermission {
+        SharePermission(role: role)
+    }
+
+    func canEdit(_ home: AppHome) -> Bool {
+        SharePermission(role: role).canMutate
+    }
+
+    func isShared(_ home: AppHome) -> Bool {
+        true
+    }
+
+    func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
+        _ = metadata
+    }
+
+    func participants(for home: AppHome) -> [CKShare.Participant] {
+        _ = home
+        return []
+    }
+
+    func leaveSharedHome(_ home: AppHome) async throws {
+        leftHomeIDs.append(home.id)
+    }
+
+    func shareForController(
+        _ home: AppHome,
+        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
+    ) {
+        completion(makeShare(for: home), CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
+    }
+
+    private func makeShare(for home: AppHome) -> CKShare {
+        let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        return share
     }
 }
