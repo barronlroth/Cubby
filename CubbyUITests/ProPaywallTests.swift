@@ -36,7 +36,7 @@ final class ProPaywallTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Unlimited homes"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Unlimited items"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Shared home inventories"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Photos, notes, exact paths"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Photos, notes, exact paths"].exists)
         XCTAssertTrue(app.buttons["Unlock Pro"].waitForExistence(timeout: 10))
 
         let termsLink = app.buttons["Terms"]

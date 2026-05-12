@@ -38,7 +38,7 @@ struct ProPaywallSheetView: View {
                         complianceSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 10)
+                    .padding(.top, -36)
                     .padding(.bottom, 140)
                 }
             }
@@ -76,7 +76,7 @@ struct ProPaywallSheetView: View {
             Image("ProPaywallHero")
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 146)
+                .frame(maxHeight: 136)
                 .padding(.horizontal, -14)
                 .accessibilityHidden(true)
 
@@ -163,6 +163,7 @@ struct ProPaywallSheetView: View {
                             title: planTitle(for: package),
                             subtitle: planSubtitle(for: package),
                             price: priceText(for: package),
+                            priceDetail: priceDetailText(for: package),
                             badge: isAnnualPackage(package) ? "Best value" : nil,
                             isSelected: selectedPackage?.storeProduct.productIdentifier == package.storeProduct.productIdentifier
                         )
@@ -340,8 +341,7 @@ struct ProPaywallSheetView: View {
         [
             ProPerk(emoji: "🏠", title: "Unlimited homes", detail: "Track every place you store things."),
             ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory, not just the first 10."),
-            ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Keep a household organized together."),
-            ProPerk(emoji: "📸", title: "Photos, notes, exact paths", detail: "Remember the item and the shelf it lives on.")
+            ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Keep a household organized together.")
         ]
     }
 
@@ -443,6 +443,34 @@ struct ProPaywallSheetView: View {
         package.storeProduct.localizedPriceString
     }
 
+    private func priceDetailText(for package: Package) -> String? {
+        guard isAnnualPackage(package),
+              let monthlyPrice = monthlyEquivalentPrice(for: package),
+              let formatter = package.storeProduct.priceFormatter?.copy() as? NumberFormatter,
+              let formattedPrice = formatter.string(from: monthlyPrice) else {
+            return nil
+        }
+
+        return "about \(formattedPrice)/mo"
+    }
+
+    private func monthlyEquivalentPrice(for package: Package) -> NSDecimalNumber? {
+        guard let period = package.storeProduct.subscriptionPeriod else { return nil }
+
+        let monthCount: Decimal
+        switch period.unit {
+        case .month:
+            monthCount = Decimal(period.value)
+        case .year:
+            monthCount = Decimal(period.value * 12)
+        default:
+            return nil
+        }
+
+        guard monthCount > 1 else { return nil }
+        return NSDecimalNumber(decimal: package.storeProduct.price / monthCount)
+    }
+
     private func subscriptionCadence(for package: Package) -> String {
         "every \(subscriptionLengthDescription(package.storeProduct.subscriptionPeriod))"
     }
@@ -477,6 +505,7 @@ private struct ProPlanRow: View {
     let title: String
     let subtitle: String
     let price: String
+    let priceDetail: String?
     let badge: String?
     let isSelected: Bool
 
@@ -512,6 +541,14 @@ private struct ProPlanRow: View {
                     .foregroundStyle(PaywallPalette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
+
+                if let priceDetail {
+                    Text(priceDetail)
+                        .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                        .foregroundStyle(PaywallPalette.softInk)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 19, weight: .semibold))
