@@ -1,196 +1,163 @@
-# 📦 Cubby
+# Cubby
 
 <div align="center">
   <img src="Cubby/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="Cubby Logo" width="120" height="120">
-  
-  **A home inventory management app that helps you track where everything is stored**
-  
-  [![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)](https://swift.org)
-  [![Platform](https://img.shields.io/badge/Platform-iOS%2017.0%2B-blue.svg)](https://developer.apple.com/ios/)
-  [![SwiftUI](https://img.shields.io/badge/SwiftUI-5.0-blue.svg)](https://developer.apple.com/xcode/swiftui/)
-  [![SwiftData](https://img.shields.io/badge/SwiftData-iOS%2017-green.svg)](https://developer.apple.com/xcode/swiftdata/)
+
+  **A home inventory app for remembering where everything is stored**
+
+  [![Swift](https://img.shields.io/badge/Swift-5-orange.svg)](https://swift.org)
+  [![Platform](https://img.shields.io/badge/Platform-iOS%2026-blue.svg)](https://developer.apple.com/ios/)
+  [![UI](https://img.shields.io/badge/UI-SwiftUI-blue.svg)](https://developer.apple.com/xcode/swiftui/)
+  [![Persistence](https://img.shields.io/badge/Persistence-Core%20Data%20%2B%20CloudKit-green.svg)](https://developer.apple.com/icloud/cloudkit/)
   [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 </div>
 
-## 🎯 Overview
+## Overview
 
-Ever wondered "Do I already own this?" while shopping? Or spent hours searching for something you know you have but can't remember where? **Cubby** solves these everyday problems by helping you catalog and locate your belongings across multiple homes and storage locations.
+Cubby helps you catalog belongings across homes, rooms, closets, shelves, and containers so you can quickly answer: "Do I already own this?" and "Where did I put it?"
 
-### ✨ Key Features
+The app is available on the App Store: [Cubby - Home Inventory](https://apps.apple.com/us/app/cubby-home-inventory/id6751732388?uo=4).
 
-- 🏠 **Multiple Homes** - Track items across different properties
-- 📍 **Hierarchical Storage** - Organize with nested locations (Home → Bedroom → Closet → Top Shelf)
-- 📸 **Visual Inventory** - Add photos to easily identify items
-- 🔍 **Smart Search** - Quickly find any item across all locations
-- 📱 **Native iOS Design** - Built with SwiftUI for a seamless Apple experience
-- ☁️ **CloudKit Ready** - Infrastructure for future sync capabilities
-- 🔄 **Undo Support** - Recover accidentally deleted items
+## Features
 
-## 📱 Screenshots
+- Multiple homes and storage locations.
+- Nested location hierarchy, such as `Home > Bedroom > Closet > Top Shelf`.
+- Item photos, descriptions, emoji, and tags.
+- Search across item titles, descriptions, and tags.
+- CloudKit-backed shared home inventories.
+- Cubby Pro via RevenueCat for unlimited homes/items and sharing.
+- Undo support for item deletion.
 
-<div align="center">
-  <i>Screenshots coming soon!</i>
-</div>
+## Getting Started
 
-## 🚀 Getting Started
+### Requirements
 
-### Prerequisites
+- macOS with Xcode 26 or newer.
+- iOS 26 simulator or device.
+- RevenueCat public SDK keys in `Cubby/Config/Debug.xcconfig` and `Cubby/Config/Release.xcconfig` for purchase flows.
 
-- macOS 14.0 or later
-- Xcode 15.0 or later
-- iOS 17.0+ deployment target
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/barronlroth/Cubby.git
-   cd Cubby
-   ```
-
-2. **Open in Xcode**
-   ```bash
-   open Cubby.xcodeproj
-   ```
-
-3. **Build and Run**
-   - Select your target device or simulator
-   - Press `Cmd + R` to build and run
-
-### Building from Command Line
+### Run in Xcode
 
 ```bash
-# Build the project
-xcodebuild -project Cubby.xcodeproj -scheme Cubby build
+open Cubby.xcodeproj
+```
 
-# Run tests
+Select the `Cubby` scheme and run on an iPhone simulator or device.
+
+### Command Line
+
+```bash
+# Build
+xcodebuild -project Cubby.xcodeproj -scheme Cubby build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+# Test
 xcodebuild -project Cubby.xcodeproj -scheme Cubby test
 
-# Build for release
-xcodebuild -project Cubby.xcodeproj -scheme Cubby -configuration Release build
+# Clean
+xcodebuild -project Cubby.xcodeproj -scheme Cubby clean
 ```
 
-## 📖 Usage
+Useful simulator launch states:
 
-### First Launch
-1. **Create Your First Home** - Name your primary residence or storage location
-2. **Add Storage Locations** - Create a hierarchy of storage areas (rooms, furniture, containers)
-3. **Add Items** - Catalog your belongings with photos and descriptions
+```bash
+# Seed normal mock data
+xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
 
-### Organization Tips
-- Start with broad categories (rooms) and get more specific (drawers, shelves)
-- Use consistent naming conventions for easier searching
-- Take clear photos for visual identification
-- Add descriptions for items that look similar
+# UI-test mode: in-memory source data, seeded, onboarding skipped
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING
 
-### Workflow Example
-```
-Home: "Main Residence"
-  └── Bedroom
-      └── Closet
-          └── Top Shelf
-              └── Winter Clothes Box
-                  └── Items: Wool Sweater, Ski Gloves, Winter Hat
+# Paywall at the free item limit
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_ITEM_LIMIT_REACHED FORCE_FREE_TIER
+
+# Onboarding snapshot state
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SNAPSHOT_ONBOARDING
+
+# Shared-home mock UX
+xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA MOCK_SHARED_HOMES_MIXED
 ```
 
-## 🏗️ Architecture
+See [AGENTS.md](AGENTS.md) for the full launch-argument matrix.
 
-### Tech Stack
-- **SwiftUI** - Modern declarative UI framework
-- **SwiftData** - Apple's latest persistence framework with automatic CloudKit sync capabilities
-- **Swift Testing** - New testing framework for robust unit tests
-- **PhotosUI** - Native photo selection and capture
-- **NSCache** - Efficient photo caching (50MB limit)
+## Architecture
 
-### Project Structure
-```
-Cubby/
-├── Models/           # SwiftData models
-├── Views/            # SwiftUI views
-├── Services/         # Business logic
-├── ViewModels/       # View-specific logic
-└── Utils/           # Helper utilities
-```
+Cubby is a SwiftUI app with a Core Data runtime and CloudKit sharing support.
 
-### Key Design Patterns
-- **MVVM Architecture** - Clean separation of concerns
-- **Dependency Injection** - Via SwiftUI environment
-- **Reactive UI** - Automatic updates with @Query
-- **Protocol-Oriented** - Testable and modular code
+### Runtime Data Flow
 
-## 🧪 Testing
+1. `CubbyApp` creates a legacy SwiftData `ModelContainer` for previews, seed data, and migration compatibility.
+2. `PersistenceController` initializes a Core Data `NSPersistentCloudKitContainer`.
+3. `DataMigrationService` copies legacy/seeded SwiftData data into Core Data when needed.
+4. `CoreDataAppRepository` reads/writes Core Data and maps entities to value models.
+5. `AppStore` publishes homes, locations, and items to SwiftUI.
+6. Views mutate app state through `AppStore`, not direct persistence objects.
 
-Run the test suite:
+### Core Pieces
+
+- `Cubby/AppData/`: value models, repository protocols, `AppStore`, and Core Data repository implementation.
+- `Cubby/Cubby.xcdatamodeld/`: Core Data schema for homes, storage locations, and inventory items.
+- `Cubby/Models/`: legacy SwiftData models used for migration, previews, and seeds.
+- `Cubby/Services/`: RevenueCat, feature gates, Core Data/CloudKit, sharing, migration, photos, cleanup, and undo.
+- `Cubby/Views/`: SwiftUI screens for home, items, search, onboarding, Pro, and shared-home flows.
+- `Cubby/Utils/`: validation, tags, image pickers, typography, mock data, and helper utilities.
+
+### Persistence and Sync
+
+- Core Data is the primary runtime store.
+- CloudKit is enabled by default outside UI tests/XCTest.
+- The Core Data stack uses separate private and shared stores for owned and collaborator data.
+- Shared homes use `CKShare` and CloudKit share invitation handling.
+- Item photo files are local device files under `Documents/ItemPhotos`; metadata can sync before the image exists locally.
+
+### Pro and Purchases
+
+- RevenueCat entitlement: `pro`.
+- Products: `cubby_pro_annual` and `cubby_pro_monthly`.
+- Free tier: 1 owned home and 10 owned items per owned home.
+- Pro unlocks unlimited homes/items and shared home inventories.
+
+## Testing
+
 ```bash
 xcodebuild -project Cubby.xcodeproj -scheme Cubby test
 ```
 
-### Test Coverage
-- Unit tests for models and business logic
-- UI tests for critical user flows
-- Performance tests for large datasets
+- Unit tests use Swift Testing in `CubbyTests/`.
+- UI and snapshot tests use XCTest in `CubbyUITests/`.
+- SwiftData tests use in-memory containers with CloudKit disabled.
+- Core Data tests use temporary store directories through `PersistenceController(storeDirectory:)`.
+- CloudKit tests should use injected availability/sharing stubs rather than real iCloud state.
 
-## 🤝 Contributing
+## Release Tooling
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Current release work uses ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud.
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+- Use XcodeBuildMCP or Xcode/xcodebuild for simulator build/run/test validation.
+- Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution.
+- Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
+- `.asc/export-options-app-store.plist` supports local App Store Connect export flows.
 
-### Development Guidelines
-- Follow Swift API Design Guidelines
-- Write unit tests for new features
-- Update documentation as needed
-- Keep commits atomic and descriptive
+`fastlane/` remains in the repo as legacy tooling. It historically handled TestFlight beta uploads and screenshot capture, but it is not the current shipping path unless explicitly requested.
 
-## 📋 Roadmap
+## Known Limits
 
-- [ ] **v1.0** - Core inventory management
-  - [x] Multiple homes support
-  - [x] Hierarchical storage locations
-  - [x] Photo management
-  - [x] Search functionality
-  - [ ] Comprehensive testing
-  - [ ] App Store release
+- Photo bytes are not CloudKit-synced yet; only item metadata is synced.
+- Very large inventories still need performance validation.
+- Empty storage locations are hidden from the main item list by design.
 
-- [ ] **v2.0** - Sync & Sharing
-  - [ ] CloudKit sync across devices
-  - [ ] Family sharing
-  - [ ] Export/Import functionality
-  
-- [ ] **v3.0** - Advanced Features
-  - [ ] Barcode scanning
-  - [ ] Purchase tracking
-  - [ ] Maintenance reminders
-  - [ ] Categories and tags
+## Contributing
 
-## 🐛 Known Issues
+1. Fork the project.
+2. Create a feature branch.
+3. Keep changes focused and tested.
+4. Update docs when behavior or workflows change.
+5. Open a pull request.
 
-- Performance not tested with 1000+ items
-- Empty storage locations don't appear in home view (by design)
-- See [Issues](https://github.com/barronlroth/Cubby/issues) for more
+## License
 
-## 📄 License
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👏 Acknowledgments
-
-- Built with Swift and SwiftUI
-- App icon features an adorable bear cub crafted with AI
-- Inspired by the universal struggle of finding things
-
-## 📞 Contact
+## Contact
 
 Barron Roth - [@barronlroth](https://github.com/barronlroth)
 
 Project Link: [https://github.com/barronlroth/Cubby](https://github.com/barronlroth/Cubby)
-
----
-
-<div align="center">
-  Made with ❤️ and Swift
-</div>
