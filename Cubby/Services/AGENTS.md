@@ -1,119 +1,173 @@
-# RevenueCat Pro Integration (Cubby)
+# Services Guide
 
-This folder contains the core helpers used to gate Cubby’s “Pro” access via RevenueCat.
+This folder contains the runtime services for Pro access, free-tier gating, Core Data persistence, CloudKit sync/sharing, migration, photos, cleanup, and shared-home feature flags.
 
-## Product configuration (expected by the app)
+## RevenueCat Pro Integration
 
-- **Entitlement**: `pro`
-- **Products**:
-  - Annual subscription: `cubby_pro_annual`
-  - Monthly subscription: `cubby_pro_monthly`
-- **Offerings**: RevenueCat must have a **Current** offering with packages for the products above.
+### Product configuration expected by the app
+- Entitlement: `pro`
+- Annual subscription product: `cubby_pro_annual`
+- Monthly subscription product: `cubby_pro_monthly`
+- RevenueCat must have a Current offering containing packages for the products above.
+- `ProPaywallSheetView` filters displayed packages to subscriptions. Non-subscription/lifetime packages will not render unless that filter changes.
 
-## API key wiring (no secrets committed)
-
-RevenueCat is configured from `Info.plist` (not hard-coded):
-
-- `Cubby/Info.plist` contains `RevenueCatPublicApiKey = $(REVENUECAT_PUBLIC_API_KEY)`
-- Set `REVENUECAT_PUBLIC_API_KEY` in:
-  - `Cubby/Config/Debug.xcconfig`
-  - `Cubby/Config/Release.xcconfig`
-
-Notes:
-- The key is the **Public SDK Key** from RevenueCat **Project Settings → API Keys**.
-- Debug and Release are separate build configurations; use the same key in both unless RevenueCat provides distinct test/prod keys.
-
-## Core types and responsibilities
+### API key wiring
+- `Cubby/Info.plist` contains `RevenueCatPublicApiKey = $(REVENUECAT_PUBLIC_API_KEY)`.
+- `Cubby/Config/Debug.xcconfig` should use a RevenueCat test Public SDK Key.
+- `Cubby/Config/Release.xcconfig` must use the production RevenueCat Public SDK Key for TestFlight/App Store builds.
+- In DEBUG, a missing or unexpanded key fatal-errors before the bypass return path; UI tests/previews/XCTest bypass RevenueCat network/configuration only after the key is usable.
+- Release builds surface key/configuration problems as purchase-option availability errors instead of crashing.
 
 ### `ProAccessManager`
 File: `Cubby/Services/ProAccessManager.swift`
 
 - Owns RevenueCat state (`CustomerInfo`, `Offerings`) and derived `isPro`.
-- Computes `isPro` via entitlement: `customerInfo.entitlements["pro"]?.isActive == true`.
-- Configures RevenueCat once at app start and listens for updates via `PurchasesDelegate` so UI flips to Pro immediately after purchase/restore.
-- Uses cached `CustomerInfo` first (fast/offline), then refreshes in the background.
-- Test determinism: skips configuration in UI tests/previews/XCTest and defaults to `isPro = true` unless `FORCE_FREE_TIER`/`FORCE_PRO_TIER` are present.
-  - UI tests (`UI-TESTING` / `-ui_testing`)
-  - SwiftUI previews (`XCODE_RUNNING_FOR_PREVIEWS`)
-  - XCTest (`XCTestConfigurationFilePath`)
-- Debug override: in DEBUG builds, `FORCE_FREE_TIER`/`FORCE_PRO_TIER` can bypass RevenueCat for manual runs.
+- Computes `isPro` via `customerInfo.entitlements["pro"]?.isActive == true`.
+- Tracks annual/monthly product IDs and active product identifier.
+- Configures RevenueCat once at app start and listens through `PurchasesDelegate`.
+- Uses cached `CustomerInfo` first, then refreshes in the background.
+- Skips RevenueCat network/configuration in UI tests, SwiftUI previews, and XCTest after key validation; defaults to Pro unless `FORCE_FREE_TIER` is present.
+- In DEBUG manual runs, `FORCE_FREE_TIER` and `FORCE_PRO_TIER` can bypass RevenueCat.
+
+### Paywall surfaces
+- `PaywallContext` defines reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`, `manualUpgrade`.
+- `HomeSearchContainer` owns the global paywall sheet.
+- `ProPaywallSheetView` renders the native paywall and purchases the selected RevenueCat package.
+- `ProStatusView` handles restore, legal links, status display, and manual upgrade.
+- Paywall entry points include add-home, add-item, over-limit flows, manual upgrade, and shared-home Pro upsells.
+
+## Feature Gates
 
 ### `FeatureGate`
 File: `Cubby/Services/FeatureGate.swift`
 
-- Centralizes free-tier limits and Option B “downgrade-safe” logic.
-- Limits:
-  - Free max homes: `1`
-  - Free max items per home: `10`
-- Option B:
-  - If `!isPro` and `homeCount > 1`, deny **all creation** (homes + items) but allow view/search/edit.
-- Uses `ModelContext.fetchCount` with `FetchDescriptor` + `#Predicate` for counts.
+- Free limits:
+  - max owned homes: `1`
+  - max owned items per owned home: `10`
+- If a free user has more than 1 owned home, deny creation with `overLimit` but allow view/search/edit.
+- Core Data/AppStore paths should use `FeatureGateDataSource` so counts come from owner/private-store data and ignore collaborator shared homes.
+- SwiftData overloads remain for legacy tests and seed/migration support.
+- `USE_CORE_DATA_SHARING_STACK` controls the sharing stack and is default-on unless disabled through environment.
+- `shareManagementAccess` returns:
+  - `hidden` when sharing is disabled, home is missing, or current user is not owner
+  - `upgradeRequired` for free owners
+  - `allowed` for Pro owners
 
-### `PaywallContext` (global sheet trigger)
-File: `Cubby/Services/PaywallContext.swift`
+## Core Data Runtime
 
-- Defines `PaywallContext.Reason` (`homeLimitReached`, `itemLimitReached`, `overLimit`).
-- Provides an `EnvironmentValues.activePaywall` binding used to present a single, global `.sheet(item:)`.
+### `PersistenceController`
+File: `Cubby/Services/PersistenceController.swift`
 
-## Paywall + Pro entry points (where this is used)
+- Main runtime persistence stack.
+- Uses `NSPersistentCloudKitContainer` and Core Data model `Cubby.xcdatamodeld`.
+- Loads two stores:
+  - `Private.sqlite` with CloudKit private database scope
+  - `Shared.sqlite` with CloudKit shared database scope
+- Enables persistent history tracking and remote-change notifications on both stores.
+- Exposes helpers for `privatePersistentStore()`, `sharedPersistentStore()`, `fetchShares`, `isShared`, and `canEdit`.
+- Tests should use `PersistenceController(storeDirectory:)` with a temporary directory.
 
-- Global paywall host:
-  - `Cubby/Views/Home/HomeSearchContainer.swift` creates a single `ProAccessManager` and presents `ProPaywallSheetView` from `activePaywall`.
-- Paywall UI (native SwiftUI + RevenueCat purchases):
-  - `Cubby/Views/Pro/ProPaywallSheetView.swift` renders the custom Cubby Pro paywall, reads `proAccessManager.availablePackages`, and calls `proAccessManager.purchase(package:)` for the selected RevenueCat package.
-  - Auto-dismisses when `isPro` becomes `true`.
-- Always-available restore/manage:
-  - `Cubby/Views/Pro/ProStatusView.swift` (opened from HomePicker → “Cubby Pro”).
-  - Includes Restore Purchases, and “Manage Subscription” (Annual only, via `AppStore.showManageSubscriptions`).
+### `CoreDataAppRepository`
+File: `Cubby/AppData/CoreDataAppRepository.swift`
 
-## Gating integration points (just-in-time)
+- Maps Core Data entities to app value models.
+- Implements home, location, item, share, and feature-gate data-source protocols.
+- Keeps collaborator/shared records in the shared store.
+- Owner counts for gating should ignore shared-store records.
 
-- Add Home:
-  - `HomeView` → `HomePicker` gates “Add New Home” and triggers paywall via `activePaywall`.
-  - `AddHomeView` re-checks in `saveHome()` and shows an Upgrade/Restore alert (backup guard).
-- Add Item:
-  - `MainNavigationView` gates the toolbar “+” (main add item entry).
-  - `LocationDetailView` gates “Add Item” from the location menu.
-  - `AddItemView` re-checks in `saveItem()` and shows an Upgrade/Restore alert (backup guard).
+### `AppStore`
+File: `Cubby/AppData/AppStore.swift`
 
-## Local testing notes
+- Main observable state used by SwiftUI views.
+- Publishes `AppHome`, `AppStorageLocation`, and `AppInventoryItem`.
+- Owns mutations through repository methods.
+- Hides left/shared homes through `HiddenSharedHomeIDStore`.
+- Runs post-save AI emoji enhancement when supported.
 
-- To exercise paywalls:
-  - Try creating a **2nd home** (home limit).
-  - Try creating an **11th item** in a home (item limit).
-- To bypass gating for deterministic UI testing:
-  - Launch with `UI-TESTING` (and optionally `SEED_MOCK_DATA`); the app forces `isPro = true`.
+## Migration
 
-## Dashboard checklist reference
+### `DataMigrationService`
+File: `Cubby/Services/DataMigrationService.swift`
 
-See `docs/revenuecat-setup-checklist.md` for the App Store Connect + RevenueCat configuration required for the paywall to load products.
+- Migrates legacy SwiftData data into the Core Data private store.
+- Records completion with `coreDataMigrationComplete`.
+- Startup uses the live SwiftData container when seeding or running in-memory UI/test flows.
+- Keep migration idempotent: retries should upsert existing objects and recover after copy failures.
+- When adding persistent fields, update both mapping and migration if legacy data should survive.
 
-# CloudKit Sync (SwiftData)
-
-This folder also contains CloudKit scaffolding for metadata-only sync via SwiftData.
-
-## Core types and responsibilities
+## CloudKit Sync and Sharing
 
 ### `CloudKitSyncSettings`
 File: `Cubby/Services/CloudKitSyncSettings.swift`
 
-- Determines whether CloudKit is enabled for the current run.
-- Kill switch: launch with `DISABLE_CLOUDKIT` to force a local (non-CloudKit) store.
+- Container identifier: `iCloud.com.barronroth.CubbyV2`.
+- CloudKit is enabled by default outside tests.
 - UI tests and XCTest use in-memory stores and disable CloudKit.
+- Launch flags:
+  - `DISABLE_CLOUDKIT`
+  - `INIT_CLOUDKIT_SCHEMA`
+  - `STRICT_CLOUDKIT_STARTUP`
+  - `FORCE_CLOUDKIT_AVAILABILITY_AVAILABLE`
+  - `FORCE_CLOUDKIT_AVAILABILITY_NO_ACCOUNT`
+  - `FORCE_CLOUDKIT_AVAILABILITY_RESTRICTED`
+  - `FORCE_CLOUDKIT_AVAILABILITY_UNKNOWN`
+  - `FORCE_CLOUDKIT_AVAILABILITY_TEMP_UNAVAILABLE`
+  - `FORCE_CLOUDKIT_AVAILABILITY_ERROR`
 
-### `CloudKitAvailabilityChecker`
-File: `Cubby/Services/CloudKitAvailability.swift`
+### Startup policy
+- `CloudKitSchemaBootstrapper` initializes the development schema when requested.
+- `CloudKitStartupPolicy` allows DEBUG fallback after container creation errors unless `STRICT_CLOUDKIT_STARTUP` is present.
+- Release fallback is local-only if SwiftData container creation fails; Core Data startup failures show `RuntimeInitializationFailureView`.
 
-- Async check for iCloud account availability.
-- Logs a warning when iCloud is unavailable, but does not block app usage.
+### `CloudSyncCoordinator` and `CloudSyncState`
+- Model user-facing sync state: checking, syncing, synced, offline, iCloud unavailable, disabled.
+- Polls account availability and reacts to remote-change merge notifications.
+- Keep tests deterministic by injecting an availability checker.
 
-## Merge behavior (v1)
+### `RemoteChangeHandler`
+- Observes `.NSPersistentStoreRemoteChange`.
+- Merges private and shared store changes into the view context.
+- Posts app-level notifications so `AppStore`/sync state can refresh.
 
-- Use CloudKit's default conflict resolution (no custom merge engine).
-- `modifiedAt` is used for UI ordering only.
-- Photos are not synced yet (tracked in issue #53).
+### `HomeSharingService`
+- Creates and configures `CKShare` for owned homes.
+- Resolves stable share URLs.
+- Accepts incoming share invitations into the shared persistent store.
+- Allows collaborators to leave shared homes.
+- Rejects owner leave and already-shared creation cases with `HomeSharingServiceError`.
+- `DebugMockHomeSharingService` supports local UX review without real iCloud invites.
 
-## Testing guidance
+### `SharedHomesGateService`
+- Runtime gate for shared-home UI.
+- `SHARED_HOMES_ENABLED` controls runtime enablement and defaults to true when distribution is enabled.
+- `FORCE_ENABLE_SHARED_HOMES` / `FORCE_DISABLE_SHARED_HOMES` are local DEBUG/test overrides.
+- `SHARED_HOMES_LOCAL_OVERRIDE` supports env-driven local override.
 
-- Unit tests must not hit CloudKit; use `ModelConfiguration(..., cloudKitDatabase: .none)`.
-- Keep CloudKit tests scoped to config/availability logic rather than sync behavior.
+### `SharingErrorHandler`
+- Converts CloudKit/share errors into user-facing presentation copy.
+- Handles revoked share cleanup by removing the home from local visible state.
+
+## Photos and Cleanup
+
+### `PhotoService`
+- Saves item photos as JPEGs under `Documents/ItemPhotos/`.
+- Uses 0.7 compression.
+- Maintains an in-memory cache with count and memory limits.
+- Photo files are local device data; CloudKit currently syncs metadata, not image bytes.
+
+### `DataCleanupService`
+- Cleans orphaned local photos on app startup.
+- Reads active file names from Core Data `CDInventoryItem.photoFileName`.
+- Do not rewrite this to SwiftData unless the runtime persistence path changes.
+
+### `SyncedPhotoPresenceState`
+- Distinguishes no photo, loading, available, and missing-on-device states.
+- Missing local files should show explicit UI copy rather than a generic empty image.
+
+## Testing Guidance
+
+- Unit tests must not hit real CloudKit sync.
+- SwiftData tests should use `ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)`.
+- Core Data tests should use temporary store directories through `PersistenceController(storeDirectory:)`.
+- Use injected/stubbed CloudKit availability providers and sharing services.
+- Keep RevenueCat tests behind UI-test/debug overrides unless explicitly testing integration wiring.
