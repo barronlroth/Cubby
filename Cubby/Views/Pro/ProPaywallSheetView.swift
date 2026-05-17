@@ -240,7 +240,7 @@ struct ProPaywallSheetView: View {
                             .tint(.white)
                     }
 
-                    Text(isPurchasing ? "Unlocking..." : "Unlock Pro")
+                    Text(isPurchasing ? "Starting..." : ctaTitle)
                         .font(.custom("CircularStd-Medium", size: 17, relativeTo: .headline))
                 }
                 .frame(maxWidth: .infinity)
@@ -251,6 +251,14 @@ struct ProPaywallSheetView: View {
             .foregroundStyle(.white)
             .disabled(selectedPackage == nil || isPurchasing)
             .opacity(selectedPackage == nil ? 0.55 : 1)
+
+            if let selectedPackage, let termsText = selectedPlanTermsText(for: selectedPackage) {
+                Text(termsText)
+                    .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                    .foregroundStyle(PaywallPalette.softInk)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack(spacing: 16) {
                 Button("Restore Purchase") {
@@ -331,9 +339,21 @@ struct ProPaywallSheetView: View {
         selectedPackage == nil || isPurchasing ? PaywallPalette.softInk : PaywallPalette.ink
     }
 
+    private var ctaTitle: String {
+        if let selectedPackage, hasFreeTrial(selectedPackage) {
+            return "Try Cubby Pro Free"
+        }
+
+        return "Unlock Pro"
+    }
+
     private var subscriptionDetails: [String] {
         purchasePackages.map { package in
-            "\(planTitle(for: package)): \(priceText(for: package)) \(subscriptionCadence(for: package))"
+            if let termsText = selectedPlanTermsText(for: package) {
+                return "\(planTitle(for: package)): \(termsText)"
+            }
+
+            return "\(planTitle(for: package)): \(package.storeProduct.localizedPriceString) \(billingCadenceDescription(for: package))"
         }
     }
 
@@ -433,6 +453,10 @@ struct ProPaywallSheetView: View {
     }
 
     private func planSubtitle(for package: Package) -> String {
+        if let termsText = selectedPlanTermsText(for: package) {
+            return termsText
+        }
+
         if isAnnualPackage(package) {
             return "Best for keeping every home organized."
         }
@@ -440,10 +464,25 @@ struct ProPaywallSheetView: View {
     }
 
     private func priceText(for package: Package) -> String {
-        package.storeProduct.localizedPriceString
+        if let trialText = trialDurationText(for: package) {
+            return "\(trialText) free"
+        }
+
+        return package.storeProduct.localizedPriceString
     }
 
     private func priceDetailText(for package: Package) -> String? {
+        if let renewalText = renewalPriceText(for: package) {
+            if isAnnualPackage(package),
+               let monthlyPrice = monthlyEquivalentPrice(for: package),
+               let formatter = package.storeProduct.priceFormatter?.copy() as? NumberFormatter,
+               let formattedPrice = formatter.string(from: monthlyPrice) {
+                return "then \(renewalText), about \(formattedPrice)/mo"
+            }
+
+            return "then \(renewalText)"
+        }
+
         guard isAnnualPackage(package),
               let monthlyPrice = monthlyEquivalentPrice(for: package),
               let formatter = package.storeProduct.priceFormatter?.copy() as? NumberFormatter,
@@ -452,6 +491,34 @@ struct ProPaywallSheetView: View {
         }
 
         return "about \(formattedPrice)/mo"
+    }
+
+    private func hasFreeTrial(_ package: Package) -> Bool {
+        package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
+            && proAccessManager.introEligibilityStatus(for: package).isEligible
+    }
+
+    private func trialDurationText(for package: Package) -> String? {
+        guard hasFreeTrial(package),
+              let discount = package.storeProduct.introductoryDiscount else {
+            return nil
+        }
+
+        return trialLengthDescription(discount.subscriptionPeriod)
+    }
+
+    private func selectedPlanTermsText(for package: Package) -> String? {
+        guard let trialText = trialDurationText(for: package),
+              let renewalText = renewalPriceText(for: package) else {
+            return nil
+        }
+
+        return "\(trialText) free, then \(renewalText)."
+    }
+
+    private func renewalPriceText(for package: Package) -> String? {
+        guard hasFreeTrial(package) else { return nil }
+        return "\(package.storeProduct.localizedPriceString)\(shortCadenceSuffix(for: package))"
     }
 
     private func monthlyEquivalentPrice(for package: Package) -> NSDecimalNumber? {
@@ -473,6 +540,63 @@ struct ProPaywallSheetView: View {
 
     private func subscriptionCadence(for package: Package) -> String {
         "every \(subscriptionLengthDescription(package.storeProduct.subscriptionPeriod))"
+    }
+
+    private func billingCadenceDescription(for package: Package) -> String {
+        guard let period = package.storeProduct.subscriptionPeriod else {
+            return "per period"
+        }
+
+        if period.value == 1 {
+            switch period.unit {
+            case .day:
+                return "per day"
+            case .week:
+                return "per week"
+            case .month:
+                return "per month"
+            case .year:
+                return "per year"
+            @unknown default:
+                return "per period"
+            }
+        }
+
+        return "every \(subscriptionLengthDescription(period))"
+    }
+
+    private func shortCadenceSuffix(for package: Package) -> String {
+        guard let period = package.storeProduct.subscriptionPeriod else {
+            return ""
+        }
+
+        if period.value == 1 {
+            switch period.unit {
+            case .day:
+                return "/day"
+            case .week:
+                return "/week"
+            case .month:
+                return "/month"
+            case .year:
+                return "/year"
+            @unknown default:
+                return ""
+            }
+        }
+
+        return " every \(subscriptionLengthDescription(period))"
+    }
+
+    private func trialLengthDescription(_ period: SubscriptionPeriod) -> String {
+        switch period.unit {
+        case .week where period.value == 1:
+            return "7 days"
+        case .week:
+            return "\(period.value * 7) days"
+        default:
+            return subscriptionLengthDescription(period)
+        }
     }
 
     private func subscriptionLengthDescription(_ period: SubscriptionPeriod?) -> String {

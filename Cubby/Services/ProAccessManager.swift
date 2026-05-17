@@ -10,6 +10,7 @@ final class ProAccessManager: NSObject, ObservableObject {
     @Published private(set) var customerInfo: CustomerInfo?
     @Published private(set) var offerings: Offerings?
     @Published private(set) var availablePackages: [Package] = []
+    @Published private(set) var introEligibilityByProductIdentifier: [String: IntroEligibilityStatus] = [:]
     @Published private(set) var isPro: Bool = false
 
     @Published private(set) var isRefreshingCustomerInfo = false
@@ -150,6 +151,7 @@ final class ProAccessManager: NSObject, ObservableObject {
             self.offerings = offerings
             let packages = offerings.current?.availablePackages ?? []
             self.availablePackages = packages
+            await refreshIntroEligibility(for: packages)
             if offerings.current == nil || packages.isEmpty {
                 offeringsErrorMessage = "No purchase options found. Configure your Current Offering in RevenueCat."
             }
@@ -157,6 +159,10 @@ final class ProAccessManager: NSObject, ObservableObject {
             offeringsErrorMessage = "Couldn’t load purchase options. Please try again."
             DebugLogger.warning("RevenueCat loadOfferings failed: \(error.localizedDescription)")
         }
+    }
+
+    func introEligibilityStatus(for package: Package) -> IntroEligibilityStatus {
+        introEligibilityByProductIdentifier[package.storeProduct.productIdentifier] ?? .unknown
     }
 
     func purchase(package: Package) async throws {
@@ -195,9 +201,27 @@ final class ProAccessManager: NSObject, ObservableObject {
         customerInfo = info
         isPro = info.entitlements[Self.proEntitlementId]?.isActive == true
     }
+
+    private func refreshIntroEligibility(for packages: [Package]) async {
+        guard isConfigured else {
+            introEligibilityByProductIdentifier = [:]
+            return
+        }
+
+        let productIdentifiers = packages.map(\.storeProduct.productIdentifier)
+        guard !productIdentifiers.isEmpty else {
+            introEligibilityByProductIdentifier = [:]
+            return
+        }
+
+        let eligibility = await Purchases.shared.checkTrialOrIntroDiscountEligibility(
+            productIdentifiers: productIdentifiers
+        )
+        introEligibilityByProductIdentifier = eligibility.mapValues { $0.status }
+    }
 }
 
-extension ProAccessManager: PurchasesDelegate {
+extension ProAccessManager: @preconcurrency PurchasesDelegate {
     func purchases(_ purchases: Purchases, receivedUpdated customerInfo: CustomerInfo) {
         applyCustomerInfo(customerInfo)
     }
