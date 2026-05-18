@@ -199,7 +199,7 @@ struct MainNavigationView: View {
            let restoredHome = appStore.home(id: lastId) {
             selectedHome = restoredHome
         } else {
-            selectedHome = appStore.homes.first
+            selectedHome = appStore.preferredHomeForLaunch(lastUsedHomeId: lastUsedHomeId)
         }
         canAddItem = selectedHome != nil
     }
@@ -216,7 +216,7 @@ struct MainNavigationView: View {
                 )
             }
         } else if selectedHome == nil && !homes.isEmpty {
-            selectedHome = homes.first
+            selectedHome = appStore.preferredHomeForLaunch(lastUsedHomeId: lastUsedHomeId)
         }
 
         if let selectedLocation,
