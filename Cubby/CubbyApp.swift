@@ -281,17 +281,11 @@ struct CubbyApp: App {
         WindowGroup {
             Group {
                 if let appStore {
-                    Group {
-                        if hasCompletedOnboarding {
-                            HomeSearchContainer(
-                                cloudKitSettings: cloudKitSettings,
-                                sharedHomesGateService: sharedHomesGateService,
-                                homeSharingService: homeSharingService
-                            )
-                        } else {
-                            OnboardingView()
-                        }
-                    }
+                    LaunchContentView(
+                        cloudKitSettings: cloudKitSettings,
+                        sharedHomesGateService: sharedHomesGateService,
+                        homeSharingService: homeSharingService
+                    )
                     .environmentObject(appStore)
                 } else {
                     RuntimeInitializationFailureView()
@@ -314,6 +308,147 @@ struct CubbyApp: App {
             .onDisappear {
                 coreDataRemoteChangeHandler?.stop()
             }
+        }
+    }
+}
+
+private struct LaunchContentView: View {
+    let cloudKitSettings: CloudKitSyncSettings
+    let sharedHomesGateService: any SharedHomesGateServiceProtocol
+    let homeSharingService: (any HomeSharingServiceProtocol)?
+
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
+    @EnvironmentObject private var appStore: AppStore
+    @State private var shouldShowNewHomeSetup = false
+
+    var body: some View {
+        Group {
+            if hasCompletedOnboarding {
+                homeSearchContainer
+            } else if appStore.homes.isEmpty {
+                if cloudKitSettings.usesCloudKit && shouldShowNewHomeSetup == false {
+                    ExistingHomesRecoveryView {
+                        shouldShowNewHomeSetup = true
+                    }
+                } else {
+                    OnboardingView()
+                }
+            } else {
+                RestoringExistingHomeView()
+            }
+        }
+        .onAppear(perform: completeOnboardingIfExistingHomesAreAvailable)
+        .onChange(of: appStore.homes) { _, _ in
+            completeOnboardingIfExistingHomesAreAvailable()
+        }
+        .onChange(of: appStore.locations) { _, _ in
+            completeOnboardingIfExistingHomesAreAvailable()
+        }
+        .onChange(of: appStore.items) { _, _ in
+            completeOnboardingIfExistingHomesAreAvailable()
+        }
+    }
+
+    private var homeSearchContainer: some View {
+        HomeSearchContainer(
+            cloudKitSettings: cloudKitSettings,
+            sharedHomesGateService: sharedHomesGateService,
+            homeSharingService: homeSharingService
+        )
+    }
+
+    private func completeOnboardingIfExistingHomesAreAvailable() {
+        guard hasCompletedOnboarding == false else { return }
+        guard let homeID = HomeLaunchSelectionService.preferredHomeID(
+            lastUsedHomeId: lastUsedHomeId,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        ) else {
+            return
+        }
+
+        lastUsedHomeId = homeID.uuidString
+        hasCompletedOnboarding = true
+    }
+}
+
+private struct ExistingHomesRecoveryView: View {
+    let onSetUpNewHome: () -> Void
+
+    @State private var canSetUpNewHome = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .controlSize(.large)
+
+                    Text("Looking for your homes")
+                        .font(.title3.weight(.semibold))
+
+                    Text("Cubby is checking iCloud before starting a new inventory.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+
+                if canSetUpNewHome {
+                    Button(action: onSetUpNewHome) {
+                        Label("Set Up a New Home", systemImage: "house.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.horizontal, 40)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(appBackground)
+        }
+        .task {
+            guard canSetUpNewHome == false else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            canSetUpNewHome = true
+        }
+    }
+
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
+        }
+    }
+}
+
+private struct RestoringExistingHomeView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Loading your homes")
+                .font(.title3.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appBackground)
+    }
+
+    @Environment(\.colorScheme) private var colorScheme
+    private var appBackground: Color {
+        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
+            return Color("AppBackground")
+        } else {
+            return Color(.systemBackground)
         }
     }
 }

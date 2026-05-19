@@ -61,6 +61,19 @@ final class AppStore: ObservableObject {
         return homes.first { $0.id == id }
     }
 
+    func preferredHomeForLaunch(lastUsedHomeId: String?) -> AppHome? {
+        guard let preferredHomeID = HomeLaunchSelectionService.preferredHomeID(
+            lastUsedHomeId: lastUsedHomeId,
+            homes: homes,
+            locations: locations,
+            items: items
+        ) else {
+            return nil
+        }
+
+        return home(id: preferredHomeID)
+    }
+
     func location(id: UUID?) -> AppStorageLocation? {
         guard let id else { return nil }
         return locations.first { $0.id == id }
