@@ -3,6 +3,7 @@ import SwiftUI
 struct AddLocationView: View {
     let homeId: UUID?
     let parentLocation: AppStorageLocation?
+    let onLocationCreated: ((AppStorageLocation) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
@@ -12,8 +13,30 @@ struct AddLocationView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
 
+    init(
+        homeId: UUID?,
+        parentLocation: AppStorageLocation?,
+        onLocationCreated: ((AppStorageLocation) -> Void)? = nil
+    ) {
+        self.homeId = homeId
+        self.parentLocation = parentLocation
+        self.onLocationCreated = onLocationCreated
+    }
+
     private var resolvedHome: AppHome? {
         parentLocation.flatMap { appStore.home(id: $0.homeID) } ?? appStore.home(id: homeId)
+    }
+
+    private var isAddingSubLocation: Bool {
+        parentLocation != nil
+    }
+
+    private var title: String {
+        isAddingSubLocation ? "Add Sub-location" : "Add Storage Location"
+    }
+
+    private var nameFieldTitle: String {
+        isAddingSubLocation ? "Sub-location name" : "Location name"
     }
 
     var body: some View {
@@ -30,13 +53,13 @@ struct AddLocationView: View {
                     }
                 }
 
-                Section("Location Details") {
-                    TextField("Location Name", text: $locationName)
+                Section(nameFieldTitle) {
+                    TextField(nameFieldTitle, text: $locationName)
                         .textInputAutocapitalization(.words)
 
                     if let parentLocation {
                         HStack {
-                            Text("Parent Location")
+                            Text("Inside")
                             Spacer()
                             Text(parentLocation.name)
                                 .foregroundStyle(.secondary)
@@ -46,7 +69,7 @@ struct AddLocationView: View {
 
                 if let parentLocation {
                     Section {
-                        Label("This location will be nested under \"\(parentLocation.name)\"", systemImage: "info.circle")
+                        Label("Creates a sub-location inside \"\(parentLocation.name)\".", systemImage: "info.circle")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -58,7 +81,7 @@ struct AddLocationView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Add Storage Location")
+                    Text(title)
                         .font(.custom("AwesomeSerif-ExtraTall", size: 20))
                         .foregroundStyle(.primary)
                 }
@@ -68,6 +91,7 @@ struct AddLocationView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveLocation() }
                         .disabled(locationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canCreateLocationsInHome)
+                        .accessibilityIdentifier("save-location-button")
                 }
             }
             .alert("Error", isPresented: $showingError) {
@@ -95,11 +119,12 @@ struct AddLocationView: View {
         guard !trimmedName.isEmpty else { return }
 
         do {
-            _ = try appStore.createLocation(
+            let location = try appStore.createLocation(
                 name: trimmedName,
                 homeID: home.id,
                 parentLocationID: parentLocation?.id
             )
+            onLocationCreated?(location)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

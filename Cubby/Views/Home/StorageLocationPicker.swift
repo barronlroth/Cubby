@@ -38,7 +38,8 @@ struct StorageLocationPicker: View {
                             location: location,
                             selectedLocation: $selectedLocation,
                             expandedLocations: $expandedLocations,
-                            searchText: searchText
+                            searchText: searchText,
+                            onLocationCreated: handleLocationCreated
                         )
                     }
                 } else {
@@ -81,8 +82,26 @@ struct StorageLocationPicker: View {
                 }
             }
             .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(homeId: selectedHomeId, parentLocation: nil)
+                AddLocationView(
+                    homeId: selectedHomeId,
+                    parentLocation: nil,
+                    onLocationCreated: handleLocationCreated
+                )
             }
+        }
+    }
+
+    private func handleLocationCreated(_ location: AppStorageLocation) {
+        selectedLocation = location
+        searchText = ""
+        expandAncestors(of: location)
+    }
+
+    private func expandAncestors(of location: AppStorageLocation) {
+        var parentID = location.parentLocationID
+        while let id = parentID {
+            expandedLocations.insert(id)
+            parentID = appStore.location(id: id)?.parentLocationID
         }
     }
 
@@ -101,6 +120,7 @@ struct LocationPickerRow: View {
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var expandedLocations: Set<UUID>
     let searchText: String
+    let onLocationCreated: (AppStorageLocation) -> Void
 
     @State private var showingAddLocation = false
     @State private var showingDeleteConfirmation = false
@@ -161,7 +181,8 @@ struct LocationPickerRow: View {
                             location: childLocation,
                             selectedLocation: $selectedLocation,
                             expandedLocations: $expandedLocations,
-                            searchText: searchText
+                            searchText: searchText,
+                            onLocationCreated: onLocationCreated
                         )
                         .padding(.leading, 20)
                     }
@@ -187,6 +208,8 @@ struct LocationPickerRow: View {
                             .foregroundStyle(isSelected ? .white : Color.accentColor)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Add sub-location under \(location.name)")
+                    .accessibilityHint("Creates a nested storage location inside \(location.name).")
                 }
                 .padding(.vertical, 4)
                 .padding(.horizontal, 8)
@@ -213,7 +236,11 @@ struct LocationPickerRow: View {
                 }
             }
             .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(homeId: location.homeID, parentLocation: location)
+                AddLocationView(
+                    homeId: location.homeID,
+                    parentLocation: location,
+                    onLocationCreated: onLocationCreated
+                )
             }
             .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {}

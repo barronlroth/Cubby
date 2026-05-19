@@ -78,6 +78,9 @@ struct AddItemView: View {
                         }
                     }
                     .foregroundColor(.primary)
+                    .accessibilityIdentifier("add-item-location-picker-button")
+                    .accessibilityLabel("Storage Location")
+                    .accessibilityValue(selectedLocation?.fullPath ?? "Select")
                 }
 
                 Section("Tags") {
