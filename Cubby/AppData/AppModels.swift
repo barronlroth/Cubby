@@ -71,6 +71,8 @@ struct AppItemUpdateDraft: Equatable {
     let title: String
     let itemDescription: String?
     let tags: Set<String>
+    let emoji: String?
+    let isPendingAiEmoji: Bool
     let photoFileName: String?
     let removePhoto: Bool
 }

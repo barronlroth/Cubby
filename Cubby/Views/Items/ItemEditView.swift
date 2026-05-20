@@ -10,6 +10,9 @@ struct ItemEditView: View {
 
     @State private var title = ""
     @State private var itemDescription = ""
+    @State private var selectedEmoji: String?
+    @State private var initialEmoji: String?
+    @State private var initialIsPendingAiEmoji = false
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
 
@@ -129,11 +132,19 @@ struct ItemEditView: View {
 
     private var titleSection: some View {
         Section {
-            TextField("Title", text: $title)
-                .textInputAutocapitalization(.words)
-                .submitLabel(.done)
+            HStack(spacing: 12) {
+                ItemEmojiPickerButton(
+                    selectedEmoji: $selectedEmoji,
+                    fallbackEmoji: item.map { EmojiPicker.emoji(for: $0.id) } ?? "📦",
+                    isPendingAiEmoji: initialIsPendingAiEmoji
+                )
+
+                TextField("Title", text: $title)
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.done)
+            }
         } header: {
-            Text("Title")
+            Text("Name")
         } footer: {
             if case let .failure(message) = titleValidation {
                 Text(message)
@@ -262,6 +273,9 @@ struct ItemEditView: View {
 
         title = item.title
         itemDescription = item.itemDescription ?? ""
+        selectedEmoji = item.emoji
+        initialEmoji = item.emoji
+        initialIsPendingAiEmoji = item.isPendingAiEmoji
         tags = item.tagsSet
         didRemovePhoto = false
 
@@ -305,7 +319,9 @@ struct ItemEditView: View {
                 itemDescription: itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 tags: tags,
                 selectedPhoto: selectedPhoto,
-                removePhoto: didRemovePhoto
+                removePhoto: didRemovePhoto,
+                emoji: selectedEmoji ?? EmojiPicker.emoji(for: item.id),
+                isPendingAiEmoji: selectedEmoji == initialEmoji ? initialIsPendingAiEmoji : false
             )
             dismiss()
         } catch {

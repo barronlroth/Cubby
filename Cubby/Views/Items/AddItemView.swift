@@ -15,6 +15,8 @@ struct AddItemView: View {
     @State private var itemDescription = ""
     @State private var selectedLocation: AppStorageLocation?
     @State private var selectedImage: UIImage?
+    @State private var itemID = UUID()
+    @State private var selectedEmoji: String?
     @State private var showingLocationPicker = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
@@ -45,20 +47,28 @@ struct AddItemView: View {
                 }
 
                 Section("Item Details") {
-                    TextField("Title", text: $title)
-                        .textInputAutocapitalization(.words)
-                        .focused($titleIsFocused)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return }
-                            applyPreferredLocationIfNeeded()
-                            if !isSaving, selectedLocation != nil {
-                                Task { await saveItem() }
-                            } else if selectedLocation == nil {
-                                showingLocationPicker = true
+                    HStack(spacing: 12) {
+                        ItemEmojiPickerButton(
+                            selectedEmoji: $selectedEmoji,
+                            fallbackEmoji: EmojiPicker.emoji(for: itemID),
+                            isPendingAiEmoji: false
+                        )
+
+                        TextField("Title", text: $title)
+                            .textInputAutocapitalization(.words)
+                            .focused($titleIsFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                applyPreferredLocationIfNeeded()
+                                if !isSaving, selectedLocation != nil {
+                                    Task { await saveItem() }
+                                } else if selectedLocation == nil {
+                                    showingLocationPicker = true
+                                }
                             }
-                        }
+                    }
 
                     TextField("Description", text: $itemDescription, axis: .vertical)
                         .lineLimit(3...6)
@@ -209,7 +219,9 @@ struct AddItemView: View {
                 itemDescription: itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 storageLocationID: selectedLocation.id,
                 tags: tags,
-                selectedImage: selectedImage
+                selectedImage: selectedImage,
+                emoji: selectedEmoji,
+                itemID: itemID
             )
             dismiss()
         } catch {
