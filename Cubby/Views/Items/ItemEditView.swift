@@ -312,6 +312,14 @@ struct ItemEditView: View {
         isSaving = true
         defer { isSaving = false }
 
+        let didChangeEmoji = selectedEmoji != initialEmoji
+        let savedEmoji = didChangeEmoji
+            ? selectedEmoji ?? EmojiPicker.emoji(for: item.id)
+            : item.emoji
+        let savedIsPendingAiEmoji = didChangeEmoji
+            ? false
+            : item.isPendingAiEmoji
+
         do {
             _ = try await appStore.updateItem(
                 id: item.id,
@@ -320,8 +328,8 @@ struct ItemEditView: View {
                 tags: tags,
                 selectedPhoto: selectedPhoto,
                 removePhoto: didRemovePhoto,
-                emoji: selectedEmoji ?? EmojiPicker.emoji(for: item.id),
-                isPendingAiEmoji: selectedEmoji == initialEmoji ? initialIsPendingAiEmoji : false
+                emoji: savedEmoji,
+                isPendingAiEmoji: savedIsPendingAiEmoji
             )
             dismiss()
         } catch {
