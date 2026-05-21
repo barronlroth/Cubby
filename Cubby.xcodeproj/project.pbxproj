@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4F8A74E0377D47CB9E0D2C5C /* MCEmojiPicker in Frameworks */ = {isa = PBXBuildFile; productRef = 7F0CB39B1C654A3A90C0F4F9 /* MCEmojiPicker */; };
 		888C07D2D3EB4F949FEAC5AC /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 514BA6AD05BB44498B9DBD0C /* RevenueCat */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +72,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F8A74E0377D47CB9E0D2C5C /* MCEmojiPicker in Frameworks */,
 				888C07D2D3EB4F949FEAC5AC /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -143,6 +145,7 @@
 			name = Cubby;
 			packageProductDependencies = (
 				514BA6AD05BB44498B9DBD0C /* RevenueCat */,
+				7F0CB39B1C654A3A90C0F4F9 /* MCEmojiPicker */,
 			);
 			productName = Cubby;
 			productReference = 370E5BA92E5127EC003BFDC4 /* Cubby.app */;
@@ -228,6 +231,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C48ED792D3324BA2A6CD32BB /* XCRemoteSwiftPackageReference "purchases-ios" */,
+				F6E851580DBA413886332B51 /* XCRemoteSwiftPackageReference "MCEmojiPicker" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 370E5BAA2E5127EC003BFDC4 /* Products */;
@@ -612,6 +616,14 @@
 				minimumVersion = 5.0.0;
 			};
 		};
+		F6E851580DBA413886332B51 /* XCRemoteSwiftPackageReference "MCEmojiPicker" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/izyumkin/MCEmojiPicker";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.5;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -619,6 +631,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C48ED792D3324BA2A6CD32BB /* XCRemoteSwiftPackageReference "purchases-ios" */;
 			productName = RevenueCat;
+		};
+		7F0CB39B1C654A3A90C0F4F9 /* MCEmojiPicker */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6E851580DBA413886332B51 /* XCRemoteSwiftPackageReference "MCEmojiPicker" */;
+			productName = MCEmojiPicker;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
