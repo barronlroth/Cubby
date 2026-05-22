@@ -25,6 +25,7 @@ struct AddItemView: View {
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
     @FocusState private var titleIsFocused: Bool
+    @State private var shouldAutoFocusTitle = true
     @State private var showingGateAlert = false
     @State private var gatePaywallReason: PaywallContext.Reason = .itemLimitReached
 
@@ -46,12 +47,16 @@ struct AddItemView: View {
                     }
                 }
 
-                Section("Item Details") {
+                Section {
                     HStack(spacing: 12) {
                         ItemEmojiPickerButton(
                             selectedEmoji: $selectedEmoji,
                             fallbackEmoji: EmojiPicker.emoji(for: itemID),
-                            isPendingAiEmoji: false
+                            isPendingAiEmoji: false,
+                            onBeginEditing: {
+                                shouldAutoFocusTitle = false
+                                titleIsFocused = false
+                            }
                         )
 
                         TextField("Title", text: $title)
@@ -69,7 +74,11 @@ struct AddItemView: View {
                                 }
                             }
                     }
+                } header: {
+                    Text("Name")
+                }
 
+                Section("Description") {
                     TextField("Description", text: $itemDescription, axis: .vertical)
                         .lineLimit(3...6)
                         .textInputAutocapitalization(.sentences)
@@ -178,7 +187,11 @@ struct AddItemView: View {
             }
             .task {
                 try? await Task.sleep(nanoseconds: 150_000_000)
-                await MainActor.run { titleIsFocused = true }
+                await MainActor.run {
+                    if shouldAutoFocusTitle {
+                        titleIsFocused = true
+                    }
+                }
             }
             .disabled(isSaving || !canAddItemsToSelectedHome)
             .overlay {
