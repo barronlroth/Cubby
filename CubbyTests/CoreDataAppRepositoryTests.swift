@@ -314,6 +314,42 @@ struct CoreDataAppRepositoryTests {
         #expect(requiredLocationObject.objectID.persistentStore == sharedStore)
     }
 
+    @Test("Updating an item persists manual emoji selection")
+    @MainActor
+    func testUpdateItemPersistsManualEmojiSelection() throws {
+        let repository = try makeRepository()
+        let home = try repository.createHome(name: "Primary Home")
+        let location = try #require(try repository.listLocations().first { $0.homeID == home.id })
+        let item = try repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Passport",
+                itemDescription: nil,
+                storageLocationID: location.id,
+                tags: [],
+                emoji: "🛂",
+                isPendingAiEmoji: true,
+                photoFileName: nil
+            )
+        )
+
+        let updated = try repository.updateItem(
+            id: item.id,
+            draft: AppItemUpdateDraft(
+                title: "Passport",
+                itemDescription: nil,
+                tags: [],
+                emoji: "🇬🇧",
+                isPendingAiEmoji: false,
+                photoFileName: nil,
+                removePhoto: false
+            )
+        )
+
+        #expect(updated.emoji == "🇬🇧")
+        #expect(updated.isPendingAiEmoji == false)
+    }
+
     @Test("Moving an item inside a shared home keeps the shared store")
     @MainActor
     func testMoveItemWithinSharedHomeKeepsSharedStore() throws {

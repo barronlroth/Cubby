@@ -282,6 +282,8 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         item.setValue(draft.title, forKey: "title")
         item.setValue(draft.itemDescription, forKey: "itemDescription")
         item.setValue(Array(draft.tags).sorted(), forKey: "tags")
+        item.setValue(draft.emoji, forKey: "emoji")
+        item.setValue(draft.isPendingAiEmoji, forKey: "isPendingAiEmoji")
         if draft.removePhoto {
             item.setValue(nil, forKey: "photoFileName")
         } else {

@@ -15,6 +15,8 @@ struct AddItemView: View {
     @State private var itemDescription = ""
     @State private var selectedLocation: AppStorageLocation?
     @State private var selectedImage: UIImage?
+    @State private var itemID = UUID()
+    @State private var selectedEmoji: String?
     @State private var showingLocationPicker = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
@@ -23,6 +25,7 @@ struct AddItemView: View {
     @State private var tags: Set<String> = []
     @State private var tagInput = ""
     @FocusState private var titleIsFocused: Bool
+    @State private var shouldAutoFocusTitle = true
     @State private var showingGateAlert = false
     @State private var gatePaywallReason: PaywallContext.Reason = .itemLimitReached
 
@@ -44,22 +47,38 @@ struct AddItemView: View {
                     }
                 }
 
-                Section("Item Details") {
-                    TextField("Title", text: $title)
-                        .textInputAutocapitalization(.words)
-                        .focused($titleIsFocused)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return }
-                            applyPreferredLocationIfNeeded()
-                            if !isSaving, selectedLocation != nil {
-                                Task { await saveItem() }
-                            } else if selectedLocation == nil {
-                                showingLocationPicker = true
+                Section {
+                    HStack(spacing: 12) {
+                        ItemEmojiPickerButton(
+                            selectedEmoji: $selectedEmoji,
+                            fallbackEmoji: EmojiPicker.emoji(for: itemID),
+                            isPendingAiEmoji: false,
+                            onBeginEditing: {
+                                shouldAutoFocusTitle = false
+                                titleIsFocused = false
                             }
-                        }
+                        )
 
+                        TextField("Title", text: $title)
+                            .textInputAutocapitalization(.words)
+                            .focused($titleIsFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                applyPreferredLocationIfNeeded()
+                                if !isSaving, selectedLocation != nil {
+                                    Task { await saveItem() }
+                                } else if selectedLocation == nil {
+                                    showingLocationPicker = true
+                                }
+                            }
+                    }
+                } header: {
+                    Text("Name")
+                }
+
+                Section("Description") {
                     TextField("Description", text: $itemDescription, axis: .vertical)
                         .lineLimit(3...6)
                         .textInputAutocapitalization(.sentences)
@@ -168,7 +187,11 @@ struct AddItemView: View {
             }
             .task {
                 try? await Task.sleep(nanoseconds: 150_000_000)
-                await MainActor.run { titleIsFocused = true }
+                await MainActor.run {
+                    if shouldAutoFocusTitle {
+                        titleIsFocused = true
+                    }
+                }
             }
             .disabled(isSaving || !canAddItemsToSelectedHome)
             .overlay {
@@ -209,7 +232,9 @@ struct AddItemView: View {
                 itemDescription: itemDescription.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 storageLocationID: selectedLocation.id,
                 tags: tags,
-                selectedImage: selectedImage
+                selectedImage: selectedImage,
+                emoji: selectedEmoji,
+                itemID: itemID
             )
             dismiss()
         } catch {

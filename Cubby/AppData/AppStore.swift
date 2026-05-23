@@ -190,22 +190,25 @@ final class AppStore: ObservableObject {
         itemDescription: String?,
         storageLocationID: UUID,
         tags: Set<String>,
-        selectedImage: UIImage?
+        selectedImage: UIImage?,
+        emoji: String? = nil,
+        itemID: UUID = UUID()
     ) async throws -> AppInventoryItem {
         var savedPhotoFileName: String?
         if let selectedImage {
             savedPhotoFileName = try await PhotoService.shared.savePhoto(selectedImage)
         }
 
-        let newItemID = UUID()
+        let selectedEmoji = EmojiPicker.firstEmoji(in: emoji)
+        let shouldEnhanceEmoji = selectedEmoji == nil && FoundationModelEmojiService.isSupported
         let draft = AppItemDraft(
-            id: newItemID,
+            id: itemID,
             title: title,
             itemDescription: itemDescription,
             storageLocationID: storageLocationID,
             tags: tags,
-            emoji: EmojiPicker.emoji(for: newItemID),
-            isPendingAiEmoji: FoundationModelEmojiService.isSupported,
+            emoji: selectedEmoji ?? EmojiPicker.emoji(for: itemID),
+            isPendingAiEmoji: shouldEnhanceEmoji,
             photoFileName: savedPhotoFileName
         )
 
@@ -213,12 +216,14 @@ final class AppStore: ObservableObject {
             let item = try repository.createItem(draft)
             refresh()
             LastUsedLocationService.remember(location: location(id: storageLocationID))
-            Task {
-                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: item.id,
-                    title: item.title,
-                    persistenceController: repository.persistenceController
-                )
+            if shouldEnhanceEmoji {
+                Task {
+                    await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                        for: item.id,
+                        title: item.title,
+                        persistenceController: repository.persistenceController
+                    )
+                }
             }
             return item
         } catch {
@@ -235,7 +240,9 @@ final class AppStore: ObservableObject {
         itemDescription: String?,
         tags: Set<String>,
         selectedPhoto: UIImage?,
-        removePhoto: Bool
+        removePhoto: Bool,
+        emoji: String?,
+        isPendingAiEmoji: Bool
     ) async throws -> AppInventoryItem {
         let existingItem = try repository.item(id: id)
         let oldPhotoFileName = existingItem?.photoFileName
@@ -249,6 +256,8 @@ final class AppStore: ObservableObject {
             title: title,
             itemDescription: itemDescription,
             tags: tags,
+            emoji: EmojiPicker.firstEmoji(in: emoji),
+            isPendingAiEmoji: isPendingAiEmoji,
             photoFileName: replacementPhotoFileName,
             removePhoto: removePhoto
         )
