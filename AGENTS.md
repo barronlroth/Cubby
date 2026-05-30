@@ -147,7 +147,15 @@ xcrun simctl launch booted com.barronroth.Cubby DISABLE_CLOUDKIT
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution operations.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` contains App Store Connect export options for local `asc`/Xcode export flows.
-- Current project settings should be verified before release; as of this update, marketing version is `1.0.4`, build is `70`, and deployment target is iOS `26.0`.
+- Version/build numbers are release-sensitive. Before opening or updating any PR branch that can trigger Xcode Cloud/TestFlight/App Store distribution:
+  - Read the project values from `Cubby.xcodeproj/project.pbxproj`:
+    `rg -n "MARKETING_VERSION|CURRENT_PROJECT_VERSION" Cubby.xcodeproj/project.pbxproj`
+  - Check App Store Connect for already-uploaded builds:
+    `asc builds list --app 6751732388 --sort -uploadedDate --limit 20 --output table`
+  - Ensure `CURRENT_PROJECT_VERSION` is greater than every uploaded/submitted build for the same `MARKETING_VERSION`; if not, bump all `CURRENT_PROJECT_VERSION` occurrences to the next unused integer before pushing.
+  - Do not bump `MARKETING_VERSION` unless the user explicitly asks for a new App Store version or the release train requires it. For normal PR/TestFlight fixes, keep the current marketing version and only bump the build number.
+  - After pushing, monitor Xcode Cloud from GitHub with `gh pr checks --watch=false`; if it fails, inspect the Xcode Cloud details before bumping again.
+- Branches intended to launch the Codex Xcode Cloud/TestFlight workflow should keep the `codex/` prefix.
 - `fastlane/` is legacy. Historically it provided:
   - `fastlane beta`: increment build number, build an App Store export, upload to TestFlight, wait for processing, distribute externally.
   - `fastlane beta_internal`: same upload path without external distribution.
