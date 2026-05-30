@@ -618,10 +618,10 @@
 		};
 		F6E851580DBA413886332B51 /* XCRemoteSwiftPackageReference "MCEmojiPicker" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/codergon/MCEmojiPicker";
+			repositoryURL = "https://github.com/barronlroth/MCEmojiPicker";
 			requirement = {
 				kind = revision;
-				revision = 050136050a33d4a7ae76f31050084aa403c77e78;
+				revision = 2391491cb0dcbba479ec8b3425b726d3e8617d19;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

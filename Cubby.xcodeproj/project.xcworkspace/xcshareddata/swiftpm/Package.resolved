@@ -1,12 +1,12 @@
 {
-  "originHash" : "1146c8ca9802c5735f4a004554fceebda20f9e7b4b06b9e2171a711def783663",
+  "originHash" : "29321ae2c5875abe034601b5c84a05504a346984fdef54f437857dd3915426c8",
   "pins" : [
     {
       "identity" : "mcemojipicker",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/codergon/MCEmojiPicker",
+      "location" : "https://github.com/barronlroth/MCEmojiPicker",
       "state" : {
-        "revision" : "050136050a33d4a7ae76f31050084aa403c77e78"
+        "revision" : "2391491cb0dcbba479ec8b3425b726d3e8617d19"
       }
     },
     {
