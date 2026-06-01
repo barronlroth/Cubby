@@ -104,8 +104,7 @@ private struct ItemMCEmojiPickerController: UIViewControllerRepresentable {
 
         switch isPresented {
         case true:
-            if let emojiPicker = representableController.presentedViewController as? MCEmojiPickerViewController {
-                MCEmojiPickerCategoryBarRepair.schedule(in: emojiPicker.view)
+            if representableController.presentedViewController is MCEmojiPickerViewController {
                 return
             }
 
@@ -119,9 +118,7 @@ private struct ItemMCEmojiPickerController: UIViewControllerRepresentable {
             emojiPicker.feedBackGeneratorStyle = feedBackGeneratorStyle
 
             context.coordinator.addPickerDismissingObserver()
-            representableController.present(emojiPicker, animated: true) {
-                MCEmojiPickerCategoryBarRepair.schedule(in: emojiPicker.view)
-            }
+            representableController.present(emojiPicker, animated: true)
         case false:
             if representableController.presentedViewController is MCEmojiPickerViewController,
                context.coordinator.isPresented {
@@ -170,60 +167,5 @@ private struct ItemMCEmojiPickerController: UIViewControllerRepresentable {
         }
 
         private static let pickerDidDisappearNotification = Notification.Name("MCEmojiPickerDidDisappear")
-    }
-}
-
-private enum MCEmojiPickerCategoryBarRepair {
-    // MCEmojiPicker 1.2.5 appends category controls from draw(_:), so popover redraws can duplicate them.
-    private static let categoryCount = 9
-    private static let repairDelays: [TimeInterval] = [0, 0.05, 0.2, 0.45]
-
-    static func schedule(in rootView: UIView) {
-        repairDelays.forEach { delay in
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                repair(in: rootView)
-            }
-        }
-    }
-
-    private static func repair(in rootView: UIView) {
-        stackViews(in: rootView).forEach(repair)
-    }
-
-    private static func repair(_ stackView: UIStackView) {
-        let arrangedSubviews = stackView.arrangedSubviews
-        guard arrangedSubviews.count > categoryCount,
-              arrangedSubviews.allSatisfy(isCategoryView)
-        else { return }
-
-        let viewsToKeep = Set(arrangedSubviews.suffix(categoryCount).map { ObjectIdentifier($0) })
-        for view in arrangedSubviews where !viewsToKeep.contains(ObjectIdentifier(view)) {
-            stackView.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-
-        stackView.setNeedsLayout()
-        stackView.layoutIfNeeded()
-        stackView.arrangedSubviews.forEach {
-            $0.setNeedsLayout()
-            $0.setNeedsDisplay()
-        }
-    }
-
-    private static func isCategoryView(_ view: UIView) -> Bool {
-        String(reflecting: type(of: view)).contains("MCTouchableEmojiCategoryView")
-    }
-
-    private static func stackViews(in rootView: UIView) -> [UIStackView] {
-        var result = [UIStackView]()
-        if let stackView = rootView as? UIStackView {
-            result.append(stackView)
-        }
-
-        rootView.subviews.forEach {
-            result.append(contentsOf: stackViews(in: $0))
-        }
-
-        return result
     }
 }
