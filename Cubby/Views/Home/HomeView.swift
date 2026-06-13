@@ -30,6 +30,7 @@ struct HomeView: View {
     @State private var activeShareSheet: HomeShareSheetContext?
     @State private var shareErrorMessage: String?
     @State private var preparingShareHomeID: UUID?
+    @State private var collapsedLocationSectionIDs: Set<UUID> = []
 
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var appStore: AppStore
@@ -179,6 +180,7 @@ struct HomeView: View {
             }
             .onChange(of: selectedHome?.id) { _, _ in
                 searchText = ""
+                collapsedLocationSectionIDs.removeAll()
             }
     }
 
@@ -350,21 +352,45 @@ struct HomeView: View {
                 emptyState
             } else {
                 ForEach(sections) { section in
+                    let isCollapsed = isSectionCollapsed(section)
                     Section {
-                        ForEach(section.items) { item in
-                            ItemRow(item: item, showLocation: false)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
+                        if !isCollapsed {
+                            ForEach(section.items) { item in
+                                ItemRow(item: item, showLocation: false)
+                                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            }
                         }
                     } header: {
                         LocationSectionHeader(
                             locationPath: section.locationPath,
-                            itemCount: section.items.count
+                            itemCount: section.items.count,
+                            isCollapsed: isCollapsed,
+                            allowsCollapse: !isSearching,
+                            onCollapse: { collapseSection(section) },
+                            onExpand: { expandSection(section) }
                         )
                     }
                 }
             }
+        }
+    }
+
+    private func isSectionCollapsed(_ section: LocationSection) -> Bool {
+        !isSearching && collapsedLocationSectionIDs.contains(section.id)
+    }
+
+    private func collapseSection(_ section: LocationSection) {
+        guard !isSearching else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            _ = collapsedLocationSectionIDs.insert(section.id)
+        }
+    }
+
+    private func expandSection(_ section: LocationSection) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            _ = collapsedLocationSectionIDs.remove(section.id)
         }
     }
 
