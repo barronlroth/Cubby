@@ -34,32 +34,30 @@ struct LocationSectionHeader: View {
 
             Spacer(minLength: 8)
 
-            Text(itemCountText)
-                .font(.custom("CircularStd-Medium", size: 13, relativeTo: .caption))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
-                .accessibilityIdentifier("location-section-count-\(locationPath)")
+            if isCollapsed {
+                Text(itemCountText)
+                    .font(.custom("CircularStd-Medium", size: 13, relativeTo: .caption))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .accessibilityIdentifier("location-section-count-\(locationPath)")
+            }
 
-            if allowsCollapse {
+            if allowsCollapse, isCollapsed {
                 Button {
-                    if isCollapsed {
-                        onExpand()
-                    } else {
-                        onCollapse()
-                    }
+                    onExpand()
                 } label: {
-                    Image(systemName: isCollapsed ? "chevron.right.circle.fill" : "chevron.down.circle")
+                    Image(systemName: "chevron.right.circle.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(isCollapsed ? Color.accentColor : Color.primary.opacity(0.35))
+                        .foregroundStyle(Color.accentColor)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isCollapsed ? "Expand \(title)" : "Collapse \(title)")
+                .accessibilityLabel("Expand \(title)")
                 .accessibilityValue(itemCountText)
-                .accessibilityHint(isCollapsed ? "Shows the hidden items in this location." : "Hides the items in this location.")
+                .accessibilityHint("Shows the hidden items in this location.")
                 .accessibilityIdentifier("location-section-toggle-\(locationPath)")
             }
         }
@@ -71,6 +69,42 @@ struct LocationSectionHeader: View {
     }
 
     private var titleBlock: some View {
+        interactiveTitleContent
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel("\(title), \(itemCountText)")
+            .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+            .accessibilityHint(headerAccessibilityHint)
+            .accessibilityAction(named: isCollapsed ? "Expand section" : "Collapse section") {
+                guard allowsCollapse else { return }
+                if isCollapsed {
+                    onExpand()
+                } else {
+                    onCollapse()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var interactiveTitleContent: some View {
+        if allowsCollapse, isCollapsed {
+            titleContent
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onExpand()
+                }
+        } else if allowsCollapse {
+            titleContent
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.45) {
+                    onCollapse()
+                }
+        } else {
+            titleContent
+        }
+    }
+
+    private var titleContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.custom("CircularStd-Medium", size: 20))
@@ -102,30 +136,12 @@ struct LocationSectionHeader: View {
                 }
             }
         }
-        .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.45) {
-            guard allowsCollapse, !isCollapsed else { return }
-            onCollapse()
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(title), \(itemCountText)")
-        .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
-        .accessibilityHint(headerAccessibilityHint)
-        .accessibilityAction(named: isCollapsed ? "Expand section" : "Collapse section") {
-            guard allowsCollapse else { return }
-            if isCollapsed {
-                onExpand()
-            } else {
-                onCollapse()
-            }
-        }
     }
 
     private var headerAccessibilityHint: String {
         guard allowsCollapse else { return "" }
         return isCollapsed
-            ? "Use Expand to show items in this storage location."
+            ? "Tap to show items in this storage location."
             : "Long press to collapse this storage location."
     }
 }
