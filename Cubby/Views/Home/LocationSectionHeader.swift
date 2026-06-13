@@ -3,6 +3,10 @@ import SwiftUI
 struct LocationSectionHeader: View {
     let locationPath: String
     let itemCount: Int
+    var isCollapsed = false
+    var allowsCollapse = true
+    var onCollapse: () -> Void = {}
+    var onExpand: () -> Void = {}
     
     private var segments: [String] {
         // Support both " > " and ">" separators
@@ -14,17 +18,101 @@ struct LocationSectionHeader: View {
             return [locationPath]
         }
     }
+
+    private var title: String {
+        segments.last ?? locationPath
+    }
+
+    private var itemCountText: String {
+        itemCount == 1 ? "1 item" : "\(itemCount) items"
+    }
     
     var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            titleBlock
+                .layoutPriority(1)
+
+            Spacer(minLength: 8)
+
+            if isCollapsed {
+                Text(itemCountText)
+                    .font(.custom("CircularStd-Medium", size: 13, relativeTo: .caption))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .accessibilityIdentifier("location-section-count-\(locationPath)")
+            }
+
+            if allowsCollapse, isCollapsed {
+                Button {
+                    onExpand()
+                } label: {
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Expand \(title)")
+                .accessibilityValue(itemCountText)
+                .accessibilityHint("Shows the hidden items in this location.")
+                .accessibilityIdentifier("location-section-toggle-\(locationPath)")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+    }
+
+    private var titleBlock: some View {
+        interactiveTitleContent
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel("\(title), \(itemCountText)")
+            .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+            .accessibilityHint(headerAccessibilityHint)
+            .accessibilityAction(named: isCollapsed ? "Expand section" : "Collapse section") {
+                guard allowsCollapse else { return }
+                if isCollapsed {
+                    onExpand()
+                } else {
+                    onCollapse()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var interactiveTitleContent: some View {
+        if allowsCollapse, isCollapsed {
+            titleContent
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onExpand()
+                }
+        } else if allowsCollapse {
+            titleContent
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.45) {
+                    onCollapse()
+                }
+        } else {
+            titleContent
+        }
+    }
+
+    private var titleContent: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Title (current/leaf location)
-            Text(segments.last ?? locationPath)
+            Text(title)
                 .font(.custom("CircularStd-Medium", size: 20))
                 .foregroundStyle(Color.primary.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .accessibilityIdentifier("location-section-title-\(locationPath)")
 
-            // Subtitle path (ancestors only)
             if segments.count > 1 {
                 let ancestors = Array(segments.dropLast().reversed())
                 HStack(spacing: 4) {
@@ -48,10 +136,12 @@ struct LocationSectionHeader: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.clear)
+    }
+
+    private var headerAccessibilityHint: String {
+        guard allowsCollapse else { return "" }
+        return isCollapsed
+            ? "Tap to show items in this storage location."
+            : "Long press to collapse this storage location."
     }
 }
