@@ -56,9 +56,12 @@ struct CloudSyncCoordinatorTests {
         )
 
         coordinator.start()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        let didSync = await waitUntil {
+            let callCount = await checker.readCallCount()
+            return coordinator.state.mode == .synced && callCount >= 1
+        }
 
-        #expect(coordinator.state.mode == .synced)
+        #expect(didSync)
         #expect(await checker.readCallCount() >= 1)
 
         coordinator.stop()
@@ -74,7 +77,10 @@ struct CloudSyncCoordinatorTests {
         )
 
         coordinator.start()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        let didStart = await waitUntil {
+            await checker.readCallCount() >= 1
+        }
+        #expect(didStart)
 
         let beforeStopCount = await checker.readCallCount()
         coordinator.stop()
@@ -84,6 +90,24 @@ struct CloudSyncCoordinatorTests {
 
         #expect(coordinator.isRunning == false)
         #expect(afterStopCount == beforeStopCount)
+    }
+
+    @MainActor
+    @Test func testImmediateStopCancelsPendingInitialRefresh() async {
+        let checker = StubChecker(response: .available)
+        let coordinator = CloudSyncCoordinator(
+            isCloudKitEnabled: true,
+            availabilityChecker: checker,
+            pollIntervalNanoseconds: 5_000_000_000
+        )
+
+        coordinator.start()
+        coordinator.stop()
+
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(coordinator.isRunning == false)
+        #expect(await checker.readCallCount() == 0)
     }
 
     @MainActor
@@ -120,5 +144,23 @@ struct CloudSyncCoordinatorTests {
 
         coordinator.handleScenePhase(.background)
         #expect(coordinator.isRunning == false)
+    }
+
+    private func waitUntil(
+        timeoutNanoseconds: UInt64 = 1_000_000_000,
+        pollIntervalNanoseconds: UInt64 = 10_000_000,
+        condition: () async -> Bool
+    ) async -> Bool {
+        let start = ContinuousClock.now
+        let timeout = Duration.nanoseconds(Int64(timeoutNanoseconds))
+
+        while ContinuousClock.now - start < timeout {
+            if await condition() {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+        }
+
+        return await condition()
     }
 }

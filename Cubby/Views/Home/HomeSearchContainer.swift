@@ -10,6 +10,7 @@ struct HomeSearchContainer: View {
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
     @StateObject private var proAccessManager = ProAccessManager()
+    @EnvironmentObject private var appStore: AppStore
 
     init(
         cloudKitSettings: CloudKitSyncSettings,
@@ -19,6 +20,11 @@ struct HomeSearchContainer: View {
         self.cloudKitSettings = cloudKitSettings
         self.sharedHomesGateService = sharedHomesGateService
         self.homeSharingService = homeSharingService
+        _activePaywall = State(
+            initialValue: ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+                ? PaywallContext(reason: .subscriptionRequired)
+                : nil
+        )
 
 #if canImport(UIKit)
         let resolvedService = self.homeSharingService
@@ -41,6 +47,24 @@ struct HomeSearchContainer: View {
         .sheet(item: $activePaywall) { context in
             ProPaywallSheetView(context: context)
                 .environmentObject(proAccessManager)
+                .interactiveDismissDisabled(context.isBlocking)
+        }
+        .alert(
+            "Storage Recovered",
+            isPresented: Binding(
+                get: { appStore.recoveryMessage != nil },
+                set: { isPresented in
+                    if isPresented == false {
+                        appStore.recoveryMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                appStore.recoveryMessage = nil
+            }
+        } message: {
+            Text(appStore.recoveryMessage ?? "")
         }
     }
 }

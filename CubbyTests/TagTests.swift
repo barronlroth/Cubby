@@ -13,6 +13,13 @@ struct TagTests {
         #expect("--leading-trailing--".formatAsTag() == "leading-trailing")
         #expect("123numbers456".formatAsTag() == "123numbers456")
     }
+
+    @Test func testTagInputFormattingPreservesPendingSeparator() {
+        #expect("Emergency ".formatAsTagInput() == "emergency-")
+        #expect("Emergency K".formatAsTagInput() == "emergency-k")
+        #expect("  Emergency Kit  ".formatAsTagInput() == "emergency-kit--")
+        #expect("Emergency Kit".formatAsTag() == "emergency-kit")
+    }
     
     @Test func testTagValidation() {
         #expect(TagValidator.isValid("tech") == true)
@@ -60,5 +67,37 @@ struct TagTests {
         let sorted = Array(tags).sorted()
         
         #expect(sorted == ["alpha", "beta", "middle", "zebra"])
+    }
+
+    @Test func testTagSuggestionsMatchFormattedInput() {
+        let suggestions = TagSuggestionService.suggestions(
+            for: "tech gear",
+            existingTags: [
+                "tech-gear",
+                "technology",
+                "spare-tech-gear",
+                "kitchen"
+            ]
+        )
+
+        #expect(suggestions == ["spare-tech-gear"])
+    }
+
+    @Test func testTagSuggestionsDeduplicateSortAndLimit() {
+        let suggestions = TagSuggestionService.suggestions(
+            for: "doc",
+            existingTags: [
+                "documents",
+                "travel-documents",
+                "documents",
+                "dock",
+                "doc-kit",
+                "medical-documents",
+                "tax-documents"
+            ],
+            limit: 3
+        )
+
+        #expect(suggestions == ["doc-kit", "dock", "documents"])
     }
 }

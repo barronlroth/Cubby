@@ -66,6 +66,7 @@ final class CloudSyncCoordinator: ObservableObject {
 
         pollingTask = Task { [weak self] in
             guard let self else { return }
+            guard Task.isCancelled == false else { return }
 
             await self.refreshNow()
             while Task.isCancelled == false {

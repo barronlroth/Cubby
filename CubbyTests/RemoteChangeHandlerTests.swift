@@ -44,8 +44,11 @@ struct RemoteChangeHandlerTests {
             notificationCenter: notificationCenter
         )
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let didMerge = await waitUntil {
+            mergeCount == 1
+        }
 
+        #expect(didMerge)
         #expect(mergeCount == 1)
         handler.stop()
     }
@@ -55,14 +58,14 @@ struct RemoteChangeHandlerTests {
         let notificationCenter = NotificationCenter()
         let controller = try makeController()
         var mergeCount = 0
-        var latestUserInfo: [AnyHashable: Any] = [:]
+        let notificationCapture = RemoteChangeCapture()
 
         let observer = notificationCenter.addObserver(
             forName: RemoteChangeHandler.didMergeRemoteChangesNotification,
             object: nil,
             queue: nil
         ) { notification in
-            latestUserInfo = notification.userInfo ?? [:]
+            notificationCapture.record(notification.userInfo ?? [:])
         }
 
         let handler = RemoteChangeHandler(
@@ -84,16 +87,27 @@ struct RemoteChangeHandlerTests {
             notificationCenter: notificationCenter
         )
 
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        let didMergeBothStores = await waitUntil {
+            mergeCount == 1 &&
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == true &&
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == true
+        }
 
+        #expect(didMergeBothStores)
         #expect(mergeCount == 1)
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges]
-                as? Bool == true
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == true
         )
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges]
-                as? Bool == true
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == true
         )
 
         notificationCenter.removeObserver(observer)
@@ -104,14 +118,14 @@ struct RemoteChangeHandlerTests {
     func test_remoteChange_handlesPrivateStoreUpdates() async throws {
         let notificationCenter = NotificationCenter()
         let controller = try makeController()
-        var latestUserInfo: [AnyHashable: Any] = [:]
+        let notificationCapture = RemoteChangeCapture()
 
         let observer = notificationCenter.addObserver(
             forName: RemoteChangeHandler.didMergeRemoteChangesNotification,
             object: nil,
             queue: nil
         ) { notification in
-            latestUserInfo = notification.userInfo ?? [:]
+            notificationCapture.record(notification.userInfo ?? [:])
         }
 
         let handler = RemoteChangeHandler(
@@ -127,15 +141,25 @@ struct RemoteChangeHandlerTests {
             notificationCenter: notificationCenter
         )
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let didMergePrivateStore = await waitUntil {
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == true &&
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == false
+        }
 
+        #expect(didMergePrivateStore)
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges]
-                as? Bool == true
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == true
         )
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges]
-                as? Bool == false
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == false
         )
 
         notificationCenter.removeObserver(observer)
@@ -146,14 +170,14 @@ struct RemoteChangeHandlerTests {
     func test_remoteChange_handlesSharedStoreUpdates() async throws {
         let notificationCenter = NotificationCenter()
         let controller = try makeController()
-        var latestUserInfo: [AnyHashable: Any] = [:]
+        let notificationCapture = RemoteChangeCapture()
 
         let observer = notificationCenter.addObserver(
             forName: RemoteChangeHandler.didMergeRemoteChangesNotification,
             object: nil,
             queue: nil
         ) { notification in
-            latestUserInfo = notification.userInfo ?? [:]
+            notificationCapture.record(notification.userInfo ?? [:])
         }
 
         let handler = RemoteChangeHandler(
@@ -169,18 +193,63 @@ struct RemoteChangeHandlerTests {
             notificationCenter: notificationCenter
         )
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let didMergeSharedStore = await waitUntil {
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == false &&
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == true
+        }
 
+        #expect(didMergeSharedStore)
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges]
-                as? Bool == false
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesPrivateStoreChanges
+            ) == false
         )
         #expect(
-            latestUserInfo[RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges]
-                as? Bool == true
+            notificationCapture.bool(
+                for: RemoteChangeHandler.NotificationUserInfoKey.includesSharedStoreChanges
+            ) == true
         )
 
         notificationCenter.removeObserver(observer)
         handler.stop()
+    }
+
+    private func waitUntil(
+        timeoutNanoseconds: UInt64 = 1_000_000_000,
+        pollIntervalNanoseconds: UInt64 = 10_000_000,
+        condition: () -> Bool
+    ) async -> Bool {
+        let start = ContinuousClock.now
+        let timeout = Duration.nanoseconds(Int64(timeoutNanoseconds))
+
+        while ContinuousClock.now - start < timeout {
+            if condition() {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+        }
+
+        return condition()
+    }
+
+    private final class RemoteChangeCapture: @unchecked Sendable {
+        private let lock = NSLock()
+        private var userInfo: [AnyHashable: Any] = [:]
+
+        func record(_ userInfo: [AnyHashable: Any]) {
+            lock.lock()
+            self.userInfo = userInfo
+            lock.unlock()
+        }
+
+        func bool(for key: String) -> Bool? {
+            lock.lock()
+            defer { lock.unlock() }
+            return userInfo[key] as? Bool
+        }
     }
 }
