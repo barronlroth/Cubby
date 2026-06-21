@@ -12,6 +12,11 @@ struct TagInputView: View {
     var canAddMoreTags: Bool {
         tags.count < maxTags
     }
+
+    private var canSubmitCurrentTag: Bool {
+        let formatted = currentInput.formatAsTag()
+        return canAddMoreTags && TagValidator.isValid(formatted) && !tags.contains(formatted)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,18 +48,30 @@ struct TagInputView: View {
                 
                 if canAddMoreTags {
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("Add tag", text: $currentInput)
-                            .textFieldStyle(.roundedBorder)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($inputFocus)
-                            .onSubmit {
+                        HStack(spacing: 8) {
+                            TextField("Add tag", text: $currentInput)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($inputFocus)
+                                .onSubmit {
+                                    addTag()
+                                }
+                                .onChange(of: currentInput) { _, newValue in
+                                    currentInput = newValue.formatAsTagInput()
+                                    showingSuggestions = !currentInput.isEmpty && !suggestions.isEmpty
+                                }
+
+                            Button("Add") {
                                 addTag()
                             }
-                            .onChange(of: currentInput) { _, newValue in
-                                currentInput = newValue.formatAsTag()
-                                showingSuggestions = !newValue.isEmpty && !suggestions.isEmpty
-                            }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!canSubmitCurrentTag)
+                            .accessibilityLabel("Add Tag")
+                            .accessibilityHint("Adds the typed tag.")
+                        }
                         
                         if showingSuggestions && !suggestions.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
@@ -134,7 +151,7 @@ struct TagTextField: ViewModifier {
                 #endif
             }
             .onChange(of: text) { _, newValue in
-                text = newValue.formatAsTag()
+                text = newValue.formatAsTagInput()
             }
     }
 }

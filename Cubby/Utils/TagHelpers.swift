@@ -6,18 +6,32 @@ extension String {
     }
 
     func formatAsTag(maxLength: Int) -> String {
+        formatAsTagInput(maxLength: maxLength)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    func formatAsTagInput() -> String {
+        formatAsTagInput(maxLength: TagValidator.maxLength)
+    }
+
+    func formatAsTagInput(maxLength: Int) -> String {
         let allowed = CharacterSet.lowercaseLetters
             .union(.decimalDigits)
             .union(CharacterSet(charactersIn: "-"))
-        
-        return self.lowercased()
+
+        var formatted = self.lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .unicodeScalars
             .filter { allowed.contains($0) }
             .map { String($0) }
             .joined()
             .prefix(maxLength)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+
+        while formatted.first == "-" {
+            formatted.removeFirst()
+        }
+
+        return String(formatted)
     }
 }
 
