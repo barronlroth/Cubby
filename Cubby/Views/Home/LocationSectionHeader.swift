@@ -7,6 +7,7 @@ struct LocationSectionHeader: View {
     var allowsCollapse = true
     var onCollapse: () -> Void = {}
     var onExpand: () -> Void = {}
+    var onSelect: () -> Void = {}
     
     private var segments: [String] {
         // Support both " > " and ">" separators
@@ -75,6 +76,9 @@ struct LocationSectionHeader: View {
             .accessibilityLabel("\(title), \(itemCountText)")
             .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
             .accessibilityHint(headerAccessibilityHint)
+            .accessibilityAction(named: "Open location") {
+                onSelect()
+            }
             .accessibilityAction(named: isCollapsed ? "Expand section" : "Collapse section") {
                 guard allowsCollapse else { return }
                 if isCollapsed {
@@ -96,11 +100,19 @@ struct LocationSectionHeader: View {
         } else if allowsCollapse {
             titleContent
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.45) {
-                    onCollapse()
+                .onTapGesture {
+                    onSelect()
                 }
+                .highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.45)
+                        .onEnded { _ in onCollapse() }
+                )
         } else {
             titleContent
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onSelect()
+                }
         }
     }
 
@@ -142,6 +154,6 @@ struct LocationSectionHeader: View {
         guard allowsCollapse else { return "" }
         return isCollapsed
             ? "Tap to show items in this storage location."
-            : "Long press to collapse this storage location."
+            : "Tap to open this storage location. Long press to collapse it."
     }
 }

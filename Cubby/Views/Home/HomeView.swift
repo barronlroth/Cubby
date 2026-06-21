@@ -26,6 +26,7 @@ struct HomeView: View {
 
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
+    @State private var showingSearch = false
     @State private var showingProStatus = false
     @State private var activeShareSheet: HomeShareSheetContext?
     @State private var shareErrorMessage: String?
@@ -123,6 +124,9 @@ struct HomeView: View {
             .background(appBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $selectedLocation) { location in
+                LocationDetailView(location: location)
+            }
             .sheet(isPresented: $showingAddLocation) {
                 if let homeId = selectedHome?.id {
                     AddLocationView(homeId: homeId, parentLocation: nil)
@@ -130,6 +134,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showingAddHome) {
                 AddHomeView(selectedHome: $selectedHome)
+            }
+            .sheet(isPresented: $showingSearch) {
+                SearchView()
             }
             .sheet(isPresented: $showingProStatus) {
                 ProStatusView()
@@ -190,6 +197,7 @@ struct HomeView: View {
                 HomePicker(
                     selectedHome: $selectedHome,
                     showingAddHome: $showingAddHome,
+                    showingSearch: $showingSearch,
                     showingProStatus: $showingProStatus
                 )
                 .buttonStyle(.plain)
@@ -369,7 +377,8 @@ struct HomeView: View {
                             isCollapsed: isCollapsed,
                             allowsCollapse: !isSearching,
                             onCollapse: { collapseSection(section) },
-                            onExpand: { expandSection(section) }
+                            onExpand: { expandSection(section) },
+                            onSelect: { selectedLocation = section.location }
                         )
                     }
                 }
@@ -610,6 +619,7 @@ private struct ShareHomeButtonStyle: ViewModifier {
 struct HomePicker: View {
     @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
+    @Binding var showingSearch: Bool
     @Binding var showingProStatus: Bool
 
     @State private var isPickerPresented = false
@@ -714,6 +724,11 @@ struct HomePicker: View {
                 .padding(.top, 8)
 
             VStack(alignment: .leading, spacing: 2) {
+                utilityRow(title: "Search All Items", systemImage: "magnifyingglass") {
+                    isPickerPresented = false
+                    showingSearch = true
+                }
+
                 utilityRow(title: "Cubby Pro", systemImage: "crown") {
                     isPickerPresented = false
                     showingProStatus = true
