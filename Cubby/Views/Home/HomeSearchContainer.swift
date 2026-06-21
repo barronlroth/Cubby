@@ -10,6 +10,7 @@ struct HomeSearchContainer: View {
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
     @StateObject private var proAccessManager = ProAccessManager()
+    @EnvironmentObject private var appStore: AppStore
 
     init(
         cloudKitSettings: CloudKitSyncSettings,
@@ -41,6 +42,23 @@ struct HomeSearchContainer: View {
         .sheet(item: $activePaywall) { context in
             ProPaywallSheetView(context: context)
                 .environmentObject(proAccessManager)
+        }
+        .alert(
+            "Storage Recovered",
+            isPresented: Binding(
+                get: { appStore.recoveryMessage != nil },
+                set: { isPresented in
+                    if isPresented == false {
+                        appStore.recoveryMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                appStore.recoveryMessage = nil
+            }
+        } message: {
+            Text(appStore.recoveryMessage ?? "")
         }
     }
 }

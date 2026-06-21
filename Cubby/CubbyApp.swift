@@ -33,6 +33,7 @@ struct CubbyApp: App {
     private let appStore: AppStore?
     private let sharedHomesGateService: any SharedHomesGateServiceProtocol
     private let homeSharingService: (any HomeSharingServiceProtocol)?
+    private let forceExistingHomesRecoveryView: Bool
 
     private static func logModelContainerError(_ message: String, error: Error) {
         let nsError = error as NSError
@@ -61,6 +62,11 @@ struct CubbyApp: App {
         self.shouldSeedEmptyHomeData = args.contains("SEED_EMPTY_HOME")
         self.shouldSeedMissingLocalPhotoData = args.contains("SEED_MISSING_LOCAL_PHOTO")
         self.skipSeeding = args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
+        #if DEBUG
+        self.forceExistingHomesRecoveryView = args.contains("FORCE_EXISTING_HOMES_RECOVERY")
+        #else
+        self.forceExistingHomesRecoveryView = false
+        #endif
         self.cloudKitSettings = CloudKitSyncSettings.resolve(
             arguments: args,
             environment: environment,
@@ -241,6 +247,11 @@ struct CubbyApp: App {
                     shareService: resolvedHomeSharingService
                 )
                 configuredAppStore = AppStore(repository: repository)
+                #if DEBUG
+                if args.contains("FORCE_MIGRATION_RECOVERY_MESSAGE") {
+                    configuredAppStore?.recoveryMessage = DataMigrationService.recoveryMessage
+                }
+                #endif
                 configuredPersistenceController = persistenceController
                 configuredRemoteChangeHandler = remoteChangeHandler
                 configuredHomeSharingService = resolvedHomeSharingService
@@ -284,7 +295,8 @@ struct CubbyApp: App {
                     LaunchContentView(
                         cloudKitSettings: cloudKitSettings,
                         sharedHomesGateService: sharedHomesGateService,
-                        homeSharingService: homeSharingService
+                        homeSharingService: homeSharingService,
+                        forceExistingHomesRecoveryView: forceExistingHomesRecoveryView
                     )
                     .environmentObject(appStore)
                 } else {
@@ -316,6 +328,7 @@ private struct LaunchContentView: View {
     let cloudKitSettings: CloudKitSyncSettings
     let sharedHomesGateService: any SharedHomesGateServiceProtocol
     let homeSharingService: (any HomeSharingServiceProtocol)?
+    let forceExistingHomesRecoveryView: Bool
 
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
@@ -327,7 +340,7 @@ private struct LaunchContentView: View {
             if hasCompletedOnboarding {
                 homeSearchContainer
             } else if appStore.homes.isEmpty {
-                if cloudKitSettings.usesCloudKit && shouldShowNewHomeSetup == false {
+                if shouldShowRecoveryView && shouldShowNewHomeSetup == false {
                     ExistingHomesRecoveryView {
                         shouldShowNewHomeSetup = true
                     }
@@ -356,6 +369,10 @@ private struct LaunchContentView: View {
             sharedHomesGateService: sharedHomesGateService,
             homeSharingService: homeSharingService
         )
+    }
+
+    private var shouldShowRecoveryView: Bool {
+        cloudKitSettings.usesCloudKit || forceExistingHomesRecoveryView
     }
 
     private func completeOnboardingIfExistingHomesAreAvailable() {
