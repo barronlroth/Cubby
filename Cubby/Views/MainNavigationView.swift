@@ -82,6 +82,8 @@ struct MainNavigationView: View {
                             .foregroundColor(.white)
                             .clipShape(Circle())
                     }
+                    .accessibilityLabel("Dismiss Undo")
+                    .accessibilityHint("Hides the undo prompt.")
                 }
                 .transition(.scale.combined(with: .opacity))
                 .padding(.top, 8)
