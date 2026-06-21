@@ -46,8 +46,10 @@ struct ProPaywallSheetView: View {
                 purchaseBar
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                if context.isBlocking == false {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
+                    }
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -81,11 +83,12 @@ struct ProPaywallSheetView: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 4) {
-                Text("Cubby Pro")
+                Text(title)
                     .font(.custom("AwesomeSerif-ExtraTall", size: 50, relativeTo: .largeTitle))
                     .foregroundStyle(PaywallPalette.ink)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.72)
+                    .multilineTextAlignment(.center)
 
                 Text(subtitle)
                     .font(.custom("CircularStd-Book", size: 17, relativeTo: .body))
@@ -140,7 +143,7 @@ struct ProPaywallSheetView: View {
 
                 Spacer()
 
-                Text("Free: 1 home, 10 items")
+                Text(planBadgeTitle)
                     .font(.custom("CircularStd-Medium", size: 12, relativeTo: .caption))
                     .foregroundStyle(PaywallPalette.copper)
                     .padding(.horizontal, 10)
@@ -340,11 +343,16 @@ struct ProPaywallSheetView: View {
     }
 
     private var ctaTitle: String {
-        if let selectedPackage, hasFreeTrial(selectedPackage) {
-            return "Try Cubby Pro Free"
+        if let selectedPackage,
+           let trialText = trialDurationText(for: selectedPackage) {
+            if trialText == "7 days" {
+                return "Start 7-Day Free Trial"
+            }
+
+            return "Start Free Trial"
         }
 
-        return "Unlock Pro"
+        return context.isBlocking ? "Continue with Pro" : "Unlock Pro"
     }
 
     private var subscriptionDetails: [String] {
@@ -358,23 +366,55 @@ struct ProPaywallSheetView: View {
     }
 
     private var perks: [ProPerk] {
-        [
+        if context.isBlocking {
+            return [
+                ProPerk(emoji: "🏠", title: "Every home from day one", detail: "Set up your inventory without starter limits."),
+                ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory with photos, tags, and exact paths."),
+                ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Invite a partner or household when you are ready.")
+            ]
+        }
+
+        return [
             ProPerk(emoji: "🏠", title: "Unlimited homes", detail: "Track every place you store things."),
             ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory, not just the first 10."),
             ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Keep a household organized together.")
         ]
     }
 
+    private var title: String {
+        if context.isBlocking,
+           selectedPackageHasFreeTrial,
+           selectedTrialDurationText == "7 days" {
+            return "Start your 7-day free trial"
+        }
+
+        return context.isBlocking ? "Start with Cubby Pro" : "Cubby Pro"
+    }
+
+    private var planBadgeTitle: String {
+        if selectedPackageHasFreeTrial {
+            return "Free trial included"
+        }
+
+        return context.isBlocking ? "Subscription required" : "No free-plan limits"
+    }
+
     private var subtitle: String {
         switch context.reason {
+        case .subscriptionRequired:
+            if let trialText = selectedTrialDurationText {
+                return "Cubby Pro is required to create and use your home inventory. Start with \(trialText) free."
+            }
+
+            return "Cubby Pro is required to create and use your home inventory."
         case .homeLimitReached:
-            "Add every home without bumping into the free limit."
+            return "Add every home without starter-plan limits."
         case .itemLimitReached:
-            "Make room for the rest of your inventory."
+            return "Make room for the rest of your inventory."
         case .overLimit:
-            "Keep creating without deleting what you already organized."
+            return "Keep creating without deleting what you already organized."
         case .manualUpgrade:
-            "Room for every home, every item, every detail."
+            return "Room for every home, every item, every detail."
         }
     }
 
@@ -494,14 +534,32 @@ struct ProPaywallSheetView: View {
     }
 
     private func hasFreeTrial(_ package: Package) -> Bool {
-        package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
-            && proAccessManager.introEligibilityStatus(for: package).isEligible
+        if isFreeTrialPreviewForced && package.storeProduct.productCategory == .subscription {
+            return true
+        }
+
+        guard package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial else {
+            return false
+        }
+
+        switch proAccessManager.introEligibilityStatus(for: package) {
+        case .ineligible, .noIntroOfferExists:
+            return false
+        case .eligible, .unknown:
+            return true
+        @unknown default:
+            return false
+        }
     }
 
     private func trialDurationText(for package: Package) -> String? {
-        guard hasFreeTrial(package),
-              let discount = package.storeProduct.introductoryDiscount else {
+        guard hasFreeTrial(package) else {
             return nil
+        }
+
+        guard let discount = package.storeProduct.introductoryDiscount,
+              discount.paymentMode == .freeTrial else {
+            return isFreeTrialPreviewForced ? "7 days" : nil
         }
 
         return trialLengthDescription(discount.subscriptionPeriod)
@@ -519,6 +577,24 @@ struct ProPaywallSheetView: View {
     private func renewalPriceText(for package: Package) -> String? {
         guard hasFreeTrial(package) else { return nil }
         return "\(package.storeProduct.localizedPriceString)\(shortCadenceSuffix(for: package))"
+    }
+
+    private var selectedPackageHasFreeTrial: Bool {
+        guard let selectedPackage else { return false }
+        return hasFreeTrial(selectedPackage)
+    }
+
+    private var selectedTrialDurationText: String? {
+        guard let selectedPackage else { return nil }
+        return trialDurationText(for: selectedPackage)
+    }
+
+    private var isFreeTrialPreviewForced: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("FORCE_FREE_TRIAL_PREVIEW")
+        #else
+        false
+        #endif
     }
 
     private func monthlyEquivalentPrice(for package: Package) -> NSDecimalNumber? {

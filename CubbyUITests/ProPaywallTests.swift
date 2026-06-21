@@ -37,7 +37,10 @@ final class ProPaywallTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Unlimited items"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Shared home inventories"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["Photos, notes, exact paths"].exists)
-        XCTAssertTrue(app.buttons["Unlock Pro"].waitForExistence(timeout: 10))
+        let unlockProButton = app.buttons["Unlock Pro"]
+        XCTAssertTrue(unlockProButton.waitForExistence(timeout: 10))
+        XCTAssertFalse(unlockProButton.isEnabled)
+        XCTAssertTrue(app.staticTexts["Purchase options are not available in this build."].waitForExistence(timeout: 10))
 
         let termsLink = app.buttons["Terms"]
         let privacyLink = app.buttons["Privacy"]
@@ -57,5 +60,24 @@ final class ProPaywallTests: XCTestCase {
         fullScreenPaywallScreenshot.name = "Paywall shown full screen"
         fullScreenPaywallScreenshot.lifetime = .keepAlways
         add(fullScreenPaywallScreenshot)
+    }
+
+    @MainActor
+    func testUnavailablePurchaseOptionsShowRetryAndRestoreActions() throws {
+        let app = XCUIApplication(bundleIdentifier: "com.barronroth.Cubby")
+        app.launchArguments.append(contentsOf: ["UI-TESTING", "SEED_ITEM_LIMIT_REACHED", "FORCE_FREE_TIER"])
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Main Home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Add Item"].waitForExistence(timeout: 10))
+        app.buttons["Add Item"].tap()
+
+        XCTAssertTrue(app.staticTexts["Cubby Pro"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Purchase options are not available in this build."].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Restore Purchase"].waitForExistence(timeout: 10))
+
+        XCTAssertTrue(app.staticTexts["Unable to load purchase options. Please check your connection and try again."].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.buttons["Try Again"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Restore"].waitForExistence(timeout: 5))
     }
 }

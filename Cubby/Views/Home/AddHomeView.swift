@@ -65,6 +65,8 @@ struct AddHomeView: View {
 
     private var gateAlertMessage: String {
         switch gatePaywallReason {
+        case .subscriptionRequired:
+            "Cubby Pro is required to create and use your home inventory."
         case .homeLimitReached:
             "Free includes 1 home. Upgrade to Cubby Pro to add more."
         case .overLimit:

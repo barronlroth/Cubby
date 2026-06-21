@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PaywallContext: Identifiable, Equatable {
     enum Reason: String, Equatable {
+        case subscriptionRequired
         case homeLimitReached
         case itemLimitReached
         case overLimit
@@ -11,6 +12,10 @@ struct PaywallContext: Identifiable, Equatable {
 
     let id = UUID()
     let reason: Reason
+
+    var isBlocking: Bool {
+        reason == .subscriptionRequired
+    }
 }
 
 private struct ActivePaywallKey: EnvironmentKey {
