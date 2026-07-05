@@ -729,7 +729,7 @@ struct HomePicker: View {
                     showingSearch = true
                 }
 
-                utilityRow(title: "Cubby Pro", systemImage: "crown") {
+                utilityRow(title: "Options", systemImage: "ellipsis.circle") {
                     isPickerPresented = false
                     showingProStatus = true
                 }

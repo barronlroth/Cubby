@@ -18,7 +18,7 @@ struct ProStatusView: View {
                     HStack {
                         Text("Status")
                         Spacer()
-                        Text(proAccessManager.isPro ? "Pro" : "Free")
+                        Text(proAccessManager.isPro ? "Active" : "No active subscription")
                             .foregroundStyle(proAccessManager.isPro ? .green : .secondary)
                     }
 
@@ -44,12 +44,10 @@ struct ProStatusView: View {
                     }
                     .disabled(proAccessManager.isRestoringPurchases)
 
-                    if proAccessManager.hasActiveAnnualSubscription {
-                        Button {
-                            Task { await showManageSubscriptions() }
-                        } label: {
-                            Label("Manage Subscription", systemImage: "creditcard")
-                        }
+                    Button {
+                        Task { await showManageSubscriptions() }
+                    } label: {
+                        Label("Manage Subscription", systemImage: "creditcard")
                     }
 
                     if let message = proAccessManager.restoreMessage {
@@ -60,11 +58,11 @@ struct ProStatusView: View {
                 }
 
                 if !proAccessManager.isPro {
-                    Section("Upgrade") {
+                    Section("Subscription") {
                         Button {
                             showingPaywall = true
                         } label: {
-                            Label("View Upgrade Options", systemImage: "sparkles")
+                            Label("View Subscription Options", systemImage: "sparkles")
                         }
                     }
                 }
@@ -87,7 +85,7 @@ struct ProStatusView: View {
                     }
                 }
             }
-            .navigationTitle("Cubby Pro")
+            .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

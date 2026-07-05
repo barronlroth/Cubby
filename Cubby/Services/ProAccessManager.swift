@@ -7,11 +7,22 @@ final class ProAccessManager: NSObject, ObservableObject {
     static let annualProductId = "cubby_pro_annual"
     static let monthlyProductId = "cubby_pro_monthly"
 
+    nonisolated static func forcedProAccess(arguments: [String]) -> Bool? {
+        if arguments.contains("FORCE_PRO_TIER") {
+            return true
+        }
+        if arguments.contains("FORCE_FREE_TIER") {
+            return false
+        }
+        return nil
+    }
+
     @Published private(set) var customerInfo: CustomerInfo?
     @Published private(set) var offerings: Offerings?
     @Published private(set) var availablePackages: [Package] = []
     @Published private(set) var introEligibilityByProductIdentifier: [String: IntroEligibilityStatus] = [:]
     @Published private(set) var isPro: Bool = false
+    @Published private(set) var entitlementState: ProEntitlementState = .resolving
 
     @Published private(set) var isRefreshingCustomerInfo = false
     @Published private(set) var isLoadingOfferings = false
@@ -32,15 +43,7 @@ final class ProAccessManager: NSObject, ObservableObject {
         let isUITestingOverride = args.contains("UI-TESTING") || args.contains("-ui_testing")
         let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-        let forcedProAccess: Bool? = {
-            if args.contains("FORCE_PRO_TIER") {
-                return true
-            }
-            if args.contains("FORCE_FREE_TIER") {
-                return false
-            }
-            return nil
-        }()
+        let forcedProAccess = Self.forcedProAccess(arguments: args)
 
         let shouldBypassRevenueCat: Bool
         if isUITestingOverride || isPreview || isRunningTests {
@@ -86,12 +89,15 @@ final class ProAccessManager: NSObject, ObservableObject {
         super.init()
 
         if shouldBypassRevenueCat {
-            self.isPro = forcedProAccess ?? true
+            let resolvedIsPro = forcedProAccess ?? true
+            self.isPro = resolvedIsPro
+            self.entitlementState = resolvedIsPro ? .pro : .notPro
             return
         }
 
         guard shouldConfigureRevenueCat else {
             self.offeringsErrorMessage = apiKeyErrorMessage
+            self.entitlementState = .notPro
             return
         }
 
@@ -136,6 +142,9 @@ final class ProAccessManager: NSObject, ObservableObject {
             let info = try await Purchases.shared.customerInfo()
             applyCustomerInfo(info)
         } catch {
+            if customerInfo == nil {
+                entitlementState = .notPro
+            }
             DebugLogger.warning("RevenueCat refresh failed: \(error.localizedDescription)")
         }
     }
@@ -200,6 +209,7 @@ final class ProAccessManager: NSObject, ObservableObject {
     private func applyCustomerInfo(_ info: CustomerInfo) {
         customerInfo = info
         isPro = info.entitlements[Self.proEntitlementId]?.isActive == true
+        entitlementState = isPro ? .pro : .notPro
     }
 
     private func refreshIntroEligibility(for packages: [Package]) async {
