@@ -355,6 +355,165 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         return restored
     }
 
+    func commitInventoryImportPlan(
+        _ plan: InventoryImportPlan,
+        testFailureAfterMutationCount: Int? = nil
+    ) throws -> InventoryImportCommitResult {
+        guard let homeObject = try fetchHomeObject(id: plan.selectedHomeID) else {
+            throw InventoryImportCommitError.selectedHomeNotFound
+        }
+
+        let selectedHome = makeHome(homeObject)
+        guard selectedHome.permission.canMutate else {
+            throw InventoryImportCommitError.selectedHomeReadOnly
+        }
+        guard plan.canCommit else {
+            throw InventoryImportCommitError.planHasBlockingErrors(plan.blockingErrors)
+        }
+
+        var didMutate = false
+        var mutationCount = 0
+
+        func recordMutation() throws {
+            mutationCount += 1
+            if testFailureAfterMutationCount == mutationCount {
+                throw InventoryImportCommitError.simulatedFailure
+            }
+        }
+
+        do {
+            var locationsByPathKey = try makeImportLocationObjectIndex(selectedHomeID: plan.selectedHomeID)
+            var createdLocationIDs: [UUID] = []
+            var createdItemIDs: [UUID] = []
+            var updatedItemIDs: [UUID] = []
+            var pendingEmojiItemIDs: [UUID] = []
+            let now = Date()
+
+            for plannedLocation in plan.newLocations {
+                let pathKey = importLocationPathKey(plannedLocation.path)
+                if locationsByPathKey[pathKey] != nil {
+                    continue
+                }
+
+                let parentLocation: NSManagedObject?
+                if let parentPath = plannedLocation.parentPath {
+                    guard let resolvedParent = locationsByPathKey[importLocationPathKey(parentPath)] else {
+                        throw InventoryImportCommitError.locationResolutionFailed(parentPath)
+                    }
+                    parentLocation = resolvedParent
+                } else {
+                    parentLocation = nil
+                }
+
+                let parentDepth = parentLocation?.intValue(forKey: "depth") ?? -1
+                if parentDepth >= StorageLocation.maxNestingDepth - 1 {
+                    throw AppRepositoryError.maximumNestingDepthReached
+                }
+
+                guard let store = persistentStoreForLocationGraph(
+                    home: homeObject,
+                    parentLocation: parentLocation
+                ) else {
+                    throw InventoryImportCommitError.locationResolutionFailed(plannedLocation.path)
+                }
+
+                let locationID = UUID()
+                let location = NSEntityDescription.insertNewObject(
+                    forEntityName: "CDStorageLocation",
+                    into: viewContext
+                )
+                viewContext.assign(location, to: store)
+                location.setValue(locationID, forKey: "id")
+                location.setValue(plannedLocation.name, forKey: "name")
+                location.setValue(Int16(parentDepth + 1), forKey: "depth")
+                location.setValue(now, forKey: "createdAt")
+                location.setValue(now, forKey: "modifiedAt")
+                location.setValue(homeObject, forKey: "home")
+                location.setValue(parentLocation, forKey: "parentLocation")
+
+                didMutate = true
+                createdLocationIDs.append(locationID)
+                locationsByPathKey[pathKey] = location
+                try recordMutation()
+            }
+
+            for plannedItem in plan.newItems {
+                guard let location = try resolveImportLocation(
+                    matchedLocationID: plannedItem.matchedLocationID,
+                    locationPath: plannedItem.locationPath,
+                    selectedHomeID: plan.selectedHomeID,
+                    locationsByPathKey: locationsByPathKey
+                ) else {
+                    throw InventoryImportCommitError.locationResolutionFailed(plannedItem.locationPath)
+                }
+                guard let store = location.objectID.persistentStore else {
+                    throw InventoryImportCommitError.locationResolutionFailed(plannedItem.locationPath)
+                }
+
+                let itemID = UUID()
+                let selectedEmoji = EmojiPicker.firstEmoji(in: plannedItem.emoji)
+                let isPendingAiEmoji = selectedEmoji == nil && FoundationModelEmojiService.isSupported
+                let item = NSEntityDescription.insertNewObject(
+                    forEntityName: "CDInventoryItem",
+                    into: viewContext
+                )
+                viewContext.assign(item, to: store)
+                item.setValue(itemID, forKey: "id")
+                item.setValue(plannedItem.title, forKey: "title")
+                item.setValue(plannedItem.itemDescription, forKey: "itemDescription")
+                item.setValue(nil, forKey: "photoFileName")
+                item.setValue(selectedEmoji ?? EmojiPicker.emoji(for: itemID), forKey: "emoji")
+                item.setValue(isPendingAiEmoji, forKey: "isPendingAiEmoji")
+                item.setValue(now, forKey: "createdAt")
+                item.setValue(now, forKey: "modifiedAt")
+                item.setValue(Array(Set(plannedItem.tags)).sorted(), forKey: "tags")
+                item.setValue(location, forKey: "storageLocation")
+
+                didMutate = true
+                createdItemIDs.append(itemID)
+                if isPendingAiEmoji {
+                    pendingEmojiItemIDs.append(itemID)
+                }
+                try recordMutation()
+            }
+
+            for plannedUpdate in plan.updatedItems {
+                guard let item = try fetchItemObject(id: plannedUpdate.existingItemID),
+                      item.uuidValue(forKey: "storageLocation.home.id") == plan.selectedHomeID else {
+                    throw InventoryImportCommitError.itemNotFound(plannedUpdate.existingItemID)
+                }
+
+                let currentEmoji = item.value(forKey: "emoji") as? String
+                item.setValue(plannedUpdate.proposedTitle, forKey: "title")
+                item.setValue(plannedUpdate.proposedDescription, forKey: "itemDescription")
+                item.setValue(Array(Set(plannedUpdate.proposedTags)).sorted(), forKey: "tags")
+                item.setValue(plannedUpdate.proposedEmoji, forKey: "emoji")
+                if plannedUpdate.proposedEmoji != currentEmoji {
+                    item.setValue(false, forKey: "isPendingAiEmoji")
+                }
+                item.setValue(Date(), forKey: "modifiedAt")
+
+                didMutate = true
+                updatedItemIDs.append(plannedUpdate.existingItemID)
+                try recordMutation()
+            }
+
+            try saveContext()
+
+            return InventoryImportCommitResult(
+                createdLocationIDs: createdLocationIDs,
+                createdItemIDs: createdItemIDs,
+                updatedItemIDs: updatedItemIDs,
+                pendingEmojiItemIDs: pendingEmojiItemIDs
+            )
+        } catch {
+            if didMutate {
+                viewContext.rollback()
+            }
+            throw error
+        }
+    }
+
     func shareForController(
         homeID: UUID,
         completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
@@ -492,6 +651,34 @@ private extension CoreDataAppRepository {
 
     func fetchItems(predicate: NSPredicate) throws -> [NSManagedObject] {
         try fetchObjects(entityName: "CDInventoryItem", predicate: predicate)
+    }
+
+    func makeImportLocationObjectIndex(selectedHomeID: UUID) throws -> [String: NSManagedObject] {
+        try fetchLocations().reduce(into: [:]) { result, location in
+            guard location.uuidValue(forKey: "home.id") == selectedHomeID else { return }
+            let key = importLocationPathKey(importPathComponents(fromFullPath: fullPath(for: location)))
+            result[key] = location
+        }
+    }
+
+    func resolveImportLocation(
+        matchedLocationID: UUID?,
+        locationPath: [String],
+        selectedHomeID: UUID,
+        locationsByPathKey: [String: NSManagedObject]
+    ) throws -> NSManagedObject? {
+        if let location = locationsByPathKey[importLocationPathKey(locationPath)] {
+            return location
+        }
+
+        guard let matchedLocationID else {
+            return nil
+        }
+        guard let location = try fetchLocationObject(id: matchedLocationID),
+              location.uuidValue(forKey: "home.id") == selectedHomeID else {
+            return nil
+        }
+        return location
     }
 
     func fetchHomeObject(id: UUID) throws -> NSManagedObject? {
@@ -700,6 +887,31 @@ private extension CoreDataAppRepository {
             current = currentObject.value(forKey: "parentLocation") as? NSManagedObject
         }
         return names.joined(separator: " > ")
+    }
+
+    func importPathComponents(fromFullPath fullPath: String) -> [String] {
+        fullPath
+            .components(separatedBy: " > ")
+            .map(importCleanDisplayString)
+            .filter { !$0.isEmpty }
+    }
+
+    func importLocationPathKey(_ path: [String]) -> String {
+        path
+            .map(importNormalizedKeyComponent)
+            .map { "\($0.count):\($0)" }
+            .joined(separator: "|")
+    }
+
+    func importNormalizedKeyComponent(_ value: String) -> String {
+        importCleanDisplayString(value).lowercased()
+    }
+
+    func importCleanDisplayString(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
     }
 
     func participantSummary(for homeID: UUID) -> String? {

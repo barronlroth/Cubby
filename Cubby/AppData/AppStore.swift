@@ -305,6 +305,24 @@ final class AppStore: ObservableObject {
         refresh()
     }
 
+    func commitInventoryImportPlan(_ plan: InventoryImportPlan) throws -> InventoryImportCommitResult {
+        let result = try repository.commitInventoryImportPlan(plan)
+        refresh()
+
+        for itemID in result.pendingEmojiItemIDs {
+            guard let item = item(id: itemID) else { continue }
+            Task {
+                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: item.id,
+                    title: item.title,
+                    persistenceController: repository.persistenceController
+                )
+            }
+        }
+
+        return result
+    }
+
     func deleteSnapshot(for itemID: UUID) -> AppDeletedItemSnapshot? {
         guard let item = item(id: itemID),
               let storageLocationID = item.storageLocationID else {

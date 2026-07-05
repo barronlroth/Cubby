@@ -411,6 +411,193 @@ struct InventoryImportExportPlannerTests {
     }
 }
 
+@Suite("Inventory Import/Export Commit Tests")
+struct InventoryImportExportCommitTests {
+    @Test("AppStore commits missing locations and new items")
+    @MainActor
+    func appStoreCommitsMissingLocationsAndNewItems() throws {
+        let fixture = try makeHomeOnlyFixture()
+        let appStore = AppStore(repository: fixture.repository, notificationCenter: NotificationCenter())
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Socket Set",
+                  "locationPath": ["Garage", "Tool Wall"],
+                  "description": "Metric and SAE",
+                  "tags": ["tools"],
+                  "emoji": "🔧"
+                },
+                {
+                  "title": "Label Maker",
+                  "locationPath": ["Garage", "Tool Wall"],
+                  "tags": ["office"]
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: fixture.home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+
+        let result = try appStore.commitInventoryImportPlan(plan)
+
+        #expect(result.createdLocationIDs.count == 2)
+        #expect(result.createdItemIDs.count == 2)
+        #expect(result.updatedItemIDs.isEmpty)
+        let garage = try #require(appStore.locations.first { $0.homeID == fixture.home.id && $0.fullPath == "Garage" })
+        let toolWall = try #require(appStore.locations.first { $0.homeID == fixture.home.id && $0.fullPath == "Garage > Tool Wall" })
+        #expect(toolWall.parentLocationID == garage.id)
+
+        let socketSet = try #require(appStore.items.first { $0.title == "Socket Set" })
+        #expect(socketSet.storageLocationID == toolWall.id)
+        #expect(socketSet.itemDescription == "Metric and SAE")
+        #expect(socketSet.tags == ["tools"])
+        #expect(socketSet.emoji == "🔧")
+        #expect(socketSet.photoFileName == nil)
+
+        let labelMaker = try #require(appStore.items.first { $0.title == "Label Maker" })
+        #expect(labelMaker.storageLocationID == toolWall.id)
+        #expect(labelMaker.tags == ["office"])
+        #expect(labelMaker.emoji == EmojiPicker.emoji(for: labelMaker.id))
+        #expect(labelMaker.photoFileName == nil)
+    }
+
+    @Test("Commit updates existing items while preserving photo and omitted emoji state")
+    @MainActor
+    func commitUpdatesExistingItemWhilePreservingPhotoAndOmittedEmojiState() throws {
+        let repository = try makeRepository()
+        let home = try repository.createHome(name: "Main Home")
+        let location = try #require(try repository.listLocations().first { $0.homeID == home.id })
+        let existing = try repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Passport",
+                itemDescription: "Old note",
+                storageLocationID: location.id,
+                tags: ["documents"],
+                emoji: "🛂",
+                isPendingAiEmoji: true,
+                photoFileName: "passport-photo.jpg"
+            )
+        )
+        let appStore = AppStore(repository: repository, notificationCenter: NotificationCenter())
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Passport",
+                  "locationPath": ["Unsorted"],
+                  "description": "Updated note",
+                  "tags": ["travel", "documents"]
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+
+        let result = try appStore.commitInventoryImportPlan(plan)
+
+        #expect(result.createdLocationIDs.isEmpty)
+        #expect(result.createdItemIDs.isEmpty)
+        #expect(result.updatedItemIDs == [existing.id])
+        let updated = try #require(appStore.item(id: existing.id))
+        #expect(updated.itemDescription == "Updated note")
+        #expect(updated.tags == ["documents", "travel"])
+        #expect(updated.emoji == "🛂")
+        #expect(updated.isPendingAiEmoji)
+        #expect(updated.photoFileName == "passport-photo.jpg")
+    }
+
+    @Test("Read-only selected home is rejected before writing")
+    @MainActor
+    func readOnlySelectedHomeIsRejectedBeforeWriting() throws {
+        let repository = try makeRepository(
+            shareService: DebugMockHomeSharingService(mode: .readOnlyParticipant)
+        )
+        let home = try repository.createHome(name: "Read Only Home")
+        let appStore = AppStore(repository: repository, notificationCenter: NotificationCenter())
+        let originalLocations = appStore.locations
+        let originalItems = appStore.items
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Socket Set",
+                  "locationPath": ["Garage"]
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+
+        #expect(plan.canCommit == false)
+        #expect(throws: InventoryImportCommitError.selectedHomeReadOnly) {
+            try appStore.commitInventoryImportPlan(plan)
+        }
+        appStore.refresh()
+        #expect(appStore.locations == originalLocations)
+        #expect(appStore.items == originalItems)
+    }
+
+    @Test("Repository rolls back all changes when commit fails mid-batch")
+    @MainActor
+    func repositoryRollsBackAllChangesWhenCommitFailsMidBatch() throws {
+        let fixture = try makeHomeOnlyFixture()
+        let originalLocations = try fixture.repository.listLocations()
+        let originalItems = try fixture.repository.listItems()
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Socket Set",
+                  "locationPath": ["Garage", "Tool Wall"],
+                  "tags": ["tools"]
+                }
+              ]
+            }
+            """
+        )
+        let plan = try planImport(document, fixture: fixture)
+
+        #expect(throws: InventoryImportCommitError.simulatedFailure) {
+            try fixture.repository.commitInventoryImportPlan(
+                plan,
+                testFailureAfterMutationCount: 1
+            )
+        }
+        #expect(try fixture.repository.listLocations() == originalLocations)
+        #expect(try fixture.repository.listItems() == originalItems)
+    }
+}
+
 @MainActor
 private struct ImportExportFixture {
     let repository: CoreDataAppRepository
@@ -421,12 +608,14 @@ private struct ImportExportFixture {
 }
 
 @MainActor
-private func makeRepository() throws -> CoreDataAppRepository {
+private func makeRepository(
+    shareService: (any HomeSharingServiceProtocol)? = nil
+) throws -> CoreDataAppRepository {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("InventoryImportExportTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let controller = try PersistenceController(storeDirectory: directory)
-    return CoreDataAppRepository(persistenceController: controller, shareService: nil)
+    return CoreDataAppRepository(persistenceController: controller, shareService: shareService)
 }
 
 @MainActor

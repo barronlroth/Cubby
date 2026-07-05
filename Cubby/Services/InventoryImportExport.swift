@@ -355,6 +355,51 @@ struct InventoryImportPlanError: Identifiable, Equatable {
     let matchingItemIDs: [UUID]
 }
 
+struct InventoryImportCommitResult: Equatable {
+    let createdLocationIDs: [UUID]
+    let createdItemIDs: [UUID]
+    let updatedItemIDs: [UUID]
+    let pendingEmojiItemIDs: [UUID]
+
+    init(
+        createdLocationIDs: [UUID] = [],
+        createdItemIDs: [UUID] = [],
+        updatedItemIDs: [UUID] = [],
+        pendingEmojiItemIDs: [UUID] = []
+    ) {
+        self.createdLocationIDs = createdLocationIDs
+        self.createdItemIDs = createdItemIDs
+        self.updatedItemIDs = updatedItemIDs
+        self.pendingEmojiItemIDs = pendingEmojiItemIDs
+    }
+}
+
+enum InventoryImportCommitError: LocalizedError, Equatable {
+    case selectedHomeNotFound
+    case selectedHomeReadOnly
+    case planHasBlockingErrors([InventoryImportPlanError])
+    case locationResolutionFailed([String])
+    case itemNotFound(UUID)
+    case simulatedFailure
+
+    var errorDescription: String? {
+        switch self {
+        case .selectedHomeNotFound:
+            "The selected home could not be found."
+        case .selectedHomeReadOnly:
+            "The selected home is read-only."
+        case .planHasBlockingErrors:
+            "The import plan still has blocking errors."
+        case .locationResolutionFailed:
+            "A planned location could not be resolved."
+        case .itemNotFound:
+            "A planned item update could not be resolved."
+        case .simulatedFailure:
+            "The import failed during the batch."
+        }
+    }
+}
+
 struct InventoryImportDryRunPlanner {
     func plan(
         document: InventoryImportDocument,
