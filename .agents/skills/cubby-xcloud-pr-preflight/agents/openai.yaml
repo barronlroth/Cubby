@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cubby Xcode Cloud Preflight"
+  short_description: "Check Cubby PR versioning before Xcode Cloud or TestFlight."
+  default_prompt: "Run the Cubby Xcode Cloud preflight before pushing or uploading this PR."
