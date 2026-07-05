@@ -33,7 +33,7 @@ File: `Cubby/Services/ProAccessManager.swift`
 - `PaywallContext` defines reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`, `manualUpgrade`.
 - `HomeSearchContainer` owns the global paywall sheet.
 - `ProPaywallSheetView` renders the native paywall and purchases the selected RevenueCat package.
-- `ProStatusView` handles restore, legal links, status display, and manual upgrade.
+- `OptionsView` handles restore, legal links, status display, manual upgrade, and power-user import/export tools.
 - Paywall entry points include add-home, add-item, over-limit flows, manual upgrade, and shared-home Pro upsells.
 
 ## Feature Gates

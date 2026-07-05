@@ -1,13 +1,16 @@
 import StoreKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(iOS)
 import UIKit
 #endif
 
+typealias InventoryImportConfirmAction = (InventoryImportPlan) throws -> InventoryImportCommitResult
+
 struct OptionsView: View {
     let selectedHomeID: UUID?
-    let onConfirmImport: (InventoryImportPlan) -> Void
+    private let importCommitter: InventoryImportConfirmAction?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -17,10 +20,10 @@ struct OptionsView: View {
 
     init(
         selectedHomeID: UUID?,
-        onConfirmImport: @escaping (InventoryImportPlan) -> Void = { _ in }
+        importCommitter: InventoryImportConfirmAction? = nil
     ) {
         self.selectedHomeID = selectedHomeID
-        self.onConfirmImport = onConfirmImport
+        self.importCommitter = importCommitter
     }
 
     var body: some View {
@@ -77,7 +80,7 @@ struct OptionsView: View {
             NavigationLink {
                 InventoryImportJSONView(
                     selectedHomeID: selectedHomeID,
-                    onConfirmImport: onConfirmImport
+                    importCommitter: resolvedImportCommitter
                 )
             } label: {
                 Label("Import JSON", systemImage: "square.and.arrow.down")
@@ -174,6 +177,12 @@ struct OptionsView: View {
         }
     }
 
+    private var resolvedImportCommitter: InventoryImportConfirmAction {
+        importCommitter ?? { plan in
+            try appStore.commitInventoryImportPlan(plan)
+        }
+    }
+
     private func planName(for productId: String) -> String {
         switch productId {
         case ProAccessManager.annualProductId:
@@ -209,6 +218,7 @@ private struct InventoryExportView: View {
     @State private var exportText = ""
     @State private var errorMessage: String?
     @State private var didCopy = false
+    @State private var exportFileURL: URL?
 
     private let model = InventoryImportExportOptionsModel()
 
@@ -242,7 +252,7 @@ private struct InventoryExportView: View {
                     .accessibilityIdentifier("inventory-export-copy-button")
 
                     if !exportText.isEmpty {
-                        ShareLink(item: exportText) {
+                        ShareLink(item: exportFileURL ?? fallbackExportFileURL) {
                             Label("Share Export JSON", systemImage: "square.and.arrow.up")
                         }
                         .accessibilityIdentifier("inventory-export-share-button")
@@ -265,10 +275,12 @@ private struct InventoryExportView: View {
                 locations: appStore.locations,
                 items: appStore.items
             )
+            exportFileURL = try writeExportFile(contents: exportText)
             errorMessage = nil
             didCopy = false
         } catch {
             exportText = ""
+            exportFileURL = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -279,15 +291,43 @@ private struct InventoryExportView: View {
         #endif
         didCopy = true
     }
+
+    private var fallbackExportFileURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("Cubby-Export.json")
+    }
+
+    private func writeExportFile(contents: String) throws -> URL {
+        let homeName = appStore.home(id: selectedHomeID)?.name ?? "Home"
+        let fileName = "Cubby-\(Self.safeFileName(homeName))-Export.json"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        guard let data = contents.data(using: .utf8) else {
+            throw InventoryImportExportOptionsError.exportFailed("Unable to encode export JSON.")
+        }
+        try data.write(to: url, options: [.atomic])
+        return url
+    }
+
+    private static func safeFileName(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let sanitized = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let compacted = String(sanitized)
+            .split(separator: "-")
+            .joined(separator: "-")
+        return compacted.isEmpty ? "Home" : compacted
+    }
 }
 
 private struct InventoryImportJSONView: View {
     let selectedHomeID: UUID?
-    let onConfirmImport: (InventoryImportPlan) -> Void
+    let importCommitter: InventoryImportConfirmAction
 
     @EnvironmentObject private var appStore: AppStore
     @State private var jsonText = ""
     @State private var reviewRoute: InventoryImportReviewRoute?
+    @State private var showingFileImporter = false
+    @State private var fileImportErrorMessage: String?
 
     private let model = InventoryImportExportOptionsModel()
 
@@ -301,15 +341,25 @@ private struct InventoryImportJSONView: View {
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("inventory-import-json-editor")
 
-                HStack {
-                    PasteButton(payloadType: String.self) { strings in
-                        if let pasted = strings.first {
-                            jsonText = pasted
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        PasteButton(payloadType: String.self) { strings in
+                            if let pasted = strings.first {
+                                jsonText = pasted
+                                fileImportErrorMessage = nil
+                            }
                         }
-                    }
-                    .accessibilityIdentifier("inventory-import-paste-button")
+                        .accessibilityIdentifier("inventory-import-paste-button")
 
-                    Spacer()
+                        Button {
+                            showingFileImporter = true
+                        } label: {
+                            Label("Open JSON File", systemImage: "doc.badge.plus")
+                        }
+                        .accessibilityIdentifier("inventory-import-open-file-button")
+
+                        Spacer()
+                    }
 
                     Button {
                         reviewImport()
@@ -318,6 +368,13 @@ private struct InventoryImportJSONView: View {
                     }
                     .disabled(jsonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("inventory-import-review-button")
+                }
+
+                if let fileImportErrorMessage {
+                    Text(fileImportErrorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("inventory-import-file-error")
                 }
             }
 
@@ -332,8 +389,14 @@ private struct InventoryImportJSONView: View {
         .navigationDestination(item: $reviewRoute) { route in
             InventoryImportReviewView(
                 summary: route.summary,
-                onConfirm: onConfirmImport
+                importCommitter: importCommitter
             )
+        }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.json, .plainText]
+        ) { result in
+            loadImportFile(result)
         }
     }
 
@@ -346,6 +409,23 @@ private struct InventoryImportJSONView: View {
             items: appStore.items
         )
         reviewRoute = InventoryImportReviewRoute(summary: summary)
+    }
+
+    private func loadImportFile(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            jsonText = try String(contentsOf: url, encoding: .utf8)
+            fileImportErrorMessage = nil
+        } catch {
+            fileImportErrorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -364,9 +444,11 @@ private struct InventoryImportReviewRoute: Identifiable, Hashable {
 
 private struct InventoryImportReviewView: View {
     let summary: InventoryImportReviewSummary
-    let onConfirm: (InventoryImportPlan) -> Void
+    let importCommitter: InventoryImportConfirmAction
 
     @Environment(\.dismiss) private var dismiss
+    @State private var isCommitting = false
+    @State private var commitAlert: InventoryImportCommitAlert?
 
     var body: some View {
         List {
@@ -404,14 +486,39 @@ private struct InventoryImportReviewView: View {
                 Button {
                     confirmImport()
                 } label: {
-                    Label("Confirm Import", systemImage: "checkmark.circle")
+                    if isCommitting {
+                        Label("Importing", systemImage: "hourglass")
+                    } else {
+                        Label("Confirm Import", systemImage: "checkmark.circle")
+                    }
                 }
-                .disabled(!summary.canConfirm)
+                .disabled(!summary.canConfirm || isCommitting)
                 .accessibilityIdentifier("inventory-import-confirm-button")
             }
         }
         .navigationTitle(reviewTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            commitAlert?.title ?? "",
+            isPresented: Binding(
+                get: { commitAlert != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        commitAlert = nil
+                    }
+                }
+            ),
+            presenting: commitAlert
+        ) { alert in
+            Button(alert.buttonTitle) {
+                commitAlert = nil
+                if alert.dismissesReview {
+                    dismiss()
+                }
+            }
+        } message: { alert in
+            Text(alert.message)
+        }
     }
 
     private var reviewTitle: String {
@@ -420,8 +527,65 @@ private struct InventoryImportReviewView: View {
 
     private func confirmImport() {
         guard let plan = summary.plan, plan.canCommit else { return }
-        onConfirm(plan)
-        dismiss()
+        isCommitting = true
+        do {
+            let result = try importCommitter(plan)
+            commitAlert = .success(result)
+        } catch {
+            commitAlert = .failure(error.localizedDescription)
+        }
+        isCommitting = false
+    }
+}
+
+private struct InventoryImportCommitAlert: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let message: String
+    let buttonTitle: String
+    let dismissesReview: Bool
+
+    static func success(_ result: InventoryImportCommitResult) -> InventoryImportCommitAlert {
+        InventoryImportCommitAlert(
+            id: "success",
+            title: "Import Complete",
+            message: successMessage(for: result),
+            buttonTitle: "Done",
+            dismissesReview: true
+        )
+    }
+
+    static func failure(_ message: String) -> InventoryImportCommitAlert {
+        InventoryImportCommitAlert(
+            id: "failure-\(message)",
+            title: "Import Failed",
+            message: message,
+            buttonTitle: "OK",
+            dismissesReview: false
+        )
+    }
+
+    private static func successMessage(for result: InventoryImportCommitResult) -> String {
+        var parts: [String] = []
+        appendCount(result.createdLocationIDs.count, singular: "location", action: "Created", to: &parts)
+        appendCount(result.createdItemIDs.count, singular: "item", action: "Created", to: &parts)
+        appendCount(result.updatedItemIDs.count, singular: "item", action: "Updated", to: &parts)
+
+        guard !parts.isEmpty else {
+            return "No changes were needed."
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    private static func appendCount(
+        _ count: Int,
+        singular: String,
+        action: String,
+        to parts: inout [String]
+    ) {
+        guard count > 0 else { return }
+        let noun = count == 1 ? singular : "\(singular)s"
+        parts.append("\(action) \(count) \(noun).")
     }
 }
 
