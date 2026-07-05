@@ -227,6 +227,7 @@ struct InventoryHomeContextExportBuilder {
             .sorted { lhs, rhs in
                 lhs.fullPath.localizedCaseInsensitiveCompare(rhs.fullPath) == .orderedAscending
             }
+        let locationPathsByID = makeLocationPathIndex(from: selectedLocations)
 
         let selectedItems = items
             .filter { $0.homeID == selectedHomeID }
@@ -244,7 +245,7 @@ struct InventoryHomeContextExportBuilder {
                 InventoryExportLocation(
                     id: location.id,
                     name: location.name,
-                    path: pathComponents(fromFullPath: location.fullPath),
+                    path: locationPathsByID[location.id] ?? pathComponents(fromFullPath: location.fullPath),
                     parentLocationId: location.parentLocationID
                 )
             },
@@ -252,7 +253,9 @@ struct InventoryHomeContextExportBuilder {
                 InventoryExportItem(
                     id: item.id,
                     title: item.title,
-                    locationPath: item.storageLocationPath.map(pathComponents(fromFullPath:)) ?? [],
+                    locationPath: item.storageLocationID.flatMap { locationPathsByID[$0] }
+                        ?? item.storageLocationPath.map(pathComponents(fromFullPath:))
+                        ?? [],
                     itemDescription: item.itemDescription,
                     tags: item.tags,
                     emoji: item.emoji
@@ -273,6 +276,38 @@ struct InventoryHomeContextExportBuilder {
             .components(separatedBy: " > ")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    private static func makeLocationPathIndex(from locations: [AppStorageLocation]) -> [UUID: [String]] {
+        let locationsByID = Dictionary(uniqueKeysWithValues: locations.map { ($0.id, $0) })
+        var pathsByID: [UUID: [String]] = [:]
+
+        func path(for location: AppStorageLocation, visitedIDs: Set<UUID> = []) -> [String] {
+            if let cached = pathsByID[location.id] {
+                return cached
+            }
+
+            guard !visitedIDs.contains(location.id) else {
+                return [location.name]
+            }
+
+            let components: [String]
+            if let parentID = location.parentLocationID,
+               let parent = locationsByID[parentID] {
+                components = path(for: parent, visitedIDs: visitedIDs.union([location.id])) + [location.name]
+            } else {
+                components = [location.name]
+            }
+
+            pathsByID[location.id] = components
+            return components
+        }
+
+        for location in locations {
+            pathsByID[location.id] = path(for: location)
+        }
+
+        return pathsByID
     }
 }
 
@@ -378,6 +413,7 @@ enum InventoryImportCommitError: LocalizedError, Equatable {
     case selectedHomeNotFound
     case selectedHomeReadOnly
     case planHasBlockingErrors([InventoryImportPlanError])
+    case planBecameStale
     case locationResolutionFailed([String])
     case itemNotFound(UUID)
     case simulatedFailure
@@ -390,6 +426,8 @@ enum InventoryImportCommitError: LocalizedError, Equatable {
             "The selected home is read-only."
         case .planHasBlockingErrors:
             "The import plan still has blocking errors."
+        case .planBecameStale:
+            "Inventory changed since review. Review the import again before confirming."
         case .locationResolutionFailed:
             "A planned location could not be resolved."
         case .itemNotFound:
@@ -436,8 +474,9 @@ struct InventoryImportDryRunPlanner {
 
         let selectedLocations = locations.filter { $0.homeID == selectedHomeID }
         let selectedItems = items.filter { $0.homeID == selectedHomeID }
-        let locationIndex = makeLocationIndex(from: selectedLocations)
-        let itemIndex = makeItemIndex(from: selectedItems)
+        let locationPathsByID = makeLocationPathIndex(from: selectedLocations)
+        let locationIndex = makeLocationIndex(from: selectedLocations, locationPathsByID: locationPathsByID)
+        let itemIndex = makeItemIndex(from: selectedItems, locationPathsByID: locationPathsByID)
 
         var errors: [InventoryImportPlanError] = []
         var validatedItems: [ValidatedImportItem] = []
@@ -496,7 +535,9 @@ struct InventoryImportDryRunPlanner {
             }
 
             let resolvedLocation = locationIndex[item.locationPathKey]
-            let canonicalLocationPath = resolvedLocation.map { pathComponents(fromFullPath: $0.fullPath) }
+            let canonicalLocationPath = resolvedLocation.map {
+                locationPathsByID[$0.id] ?? pathComponents(fromFullPath: $0.fullPath)
+            }
                 ?? item.cleanedLocationPath
 
             if resolvedLocation == nil {
@@ -681,21 +722,27 @@ private extension InventoryImportDryRunPlanner {
     }
 
     func makeLocationIndex(
-        from locations: [AppStorageLocation]
+        from locations: [AppStorageLocation],
+        locationPathsByID: [UUID: [String]]
     ) -> [String: AppStorageLocation] {
         locations.reduce(into: [:]) { result, location in
-            result[Self.locationPathKey(pathComponents(fromFullPath: location.fullPath))] = location
+            let path = locationPathsByID[location.id] ?? pathComponents(fromFullPath: location.fullPath)
+            result[Self.locationPathKey(path)] = location
         }
     }
 
     func makeItemIndex(
-        from items: [AppInventoryItem]
+        from items: [AppInventoryItem],
+        locationPathsByID: [UUID: [String]]
     ) -> [String: [AppInventoryItem]] {
         items.reduce(into: [:]) { result, item in
-            guard let storageLocationPath = item.storageLocationPath else { return }
+            guard let path = item.storageLocationID.flatMap({ locationPathsByID[$0] })
+                    ?? item.storageLocationPath.map(pathComponents(fromFullPath:)) else {
+                return
+            }
             let key = Self.targetKey(
                 normalizedTitle: Self.normalizedKeyComponent(item.title),
-                locationPathKey: Self.locationPathKey(pathComponents(fromFullPath: storageLocationPath))
+                locationPathKey: Self.locationPathKey(path)
             )
             result[key, default: []].append(item)
         }
@@ -789,5 +836,38 @@ private extension InventoryImportDryRunPlanner {
             .components(separatedBy: " > ")
             .map(Self.cleanDisplayString)
             .filter { !$0.isEmpty }
+    }
+
+    func makeLocationPathIndex(from locations: [AppStorageLocation]) -> [UUID: [String]] {
+        let locationsByID = Dictionary(uniqueKeysWithValues: locations.map { ($0.id, $0) })
+        var pathsByID: [UUID: [String]] = [:]
+
+        func path(for location: AppStorageLocation, visitedIDs: Set<UUID> = []) -> [String] {
+            if let cached = pathsByID[location.id] {
+                return cached
+            }
+
+            guard !visitedIDs.contains(location.id) else {
+                return [Self.cleanDisplayString(location.name)]
+            }
+
+            let components: [String]
+            if let parentID = location.parentLocationID,
+               let parent = locationsByID[parentID] {
+                components = path(for: parent, visitedIDs: visitedIDs.union([location.id]))
+                    + [Self.cleanDisplayString(location.name)]
+            } else {
+                components = [Self.cleanDisplayString(location.name)]
+            }
+
+            pathsByID[location.id] = components
+            return components
+        }
+
+        for location in locations {
+            pathsByID[location.id] = path(for: location)
+        }
+
+        return pathsByID
     }
 }

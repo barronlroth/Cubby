@@ -383,6 +383,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
         do {
             var locationsByPathKey = try makeImportLocationObjectIndex(selectedHomeID: plan.selectedHomeID)
+            var itemsByTargetKey = try makeImportItemObjectIndex(selectedHomeID: plan.selectedHomeID)
             var createdLocationIDs: [UUID] = []
             var createdItemIDs: [UUID] = []
             var updatedItemIDs: [UUID] = []
@@ -438,6 +439,14 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             }
 
             for plannedItem in plan.newItems {
+                let targetKey = importItemTargetKey(
+                    title: plannedItem.title,
+                    locationPath: plannedItem.locationPath
+                )
+                if itemsByTargetKey[targetKey]?.isEmpty == false {
+                    throw InventoryImportCommitError.planBecameStale
+                }
+
                 guard let location = try resolveImportLocation(
                     matchedLocationID: plannedItem.matchedLocationID,
                     locationPath: plannedItem.locationPath,
@@ -471,6 +480,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
                 didMutate = true
                 createdItemIDs.append(itemID)
+                itemsByTargetKey[targetKey, default: []].append(item)
                 if isPendingAiEmoji {
                     pendingEmojiItemIDs.append(itemID)
                 }
@@ -481,6 +491,26 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
                 guard let item = try fetchItemObject(id: plannedUpdate.existingItemID),
                       item.uuidValue(forKey: "storageLocation.home.id") == plan.selectedHomeID else {
                     throw InventoryImportCommitError.itemNotFound(plannedUpdate.existingItemID)
+                }
+                guard let location = item.value(forKey: "storageLocation") as? NSManagedObject else {
+                    throw InventoryImportCommitError.itemNotFound(plannedUpdate.existingItemID)
+                }
+
+                let targetKey = importItemTargetKey(
+                    title: plannedUpdate.proposedTitle,
+                    locationPath: plannedUpdate.locationPath
+                )
+                let currentTargetKey = importItemTargetKey(
+                    title: item.stringValue(forKey: "title"),
+                    locationPath: importPathComponents(for: location)
+                )
+                guard currentTargetKey == targetKey else {
+                    throw InventoryImportCommitError.planBecameStale
+                }
+                let matchingItems = itemsByTargetKey[targetKey] ?? []
+                guard matchingItems.count == 1,
+                      matchingItems.first?.uuidValue(forKey: "id") == plannedUpdate.existingItemID else {
+                    throw InventoryImportCommitError.planBecameStale
                 }
 
                 let currentEmoji = item.value(forKey: "emoji") as? String
@@ -656,8 +686,23 @@ private extension CoreDataAppRepository {
     func makeImportLocationObjectIndex(selectedHomeID: UUID) throws -> [String: NSManagedObject] {
         try fetchLocations().reduce(into: [:]) { result, location in
             guard location.uuidValue(forKey: "home.id") == selectedHomeID else { return }
-            let key = importLocationPathKey(importPathComponents(fromFullPath: fullPath(for: location)))
+            let key = importLocationPathKey(importPathComponents(for: location))
             result[key] = location
+        }
+    }
+
+    func makeImportItemObjectIndex(selectedHomeID: UUID) throws -> [String: [NSManagedObject]] {
+        try fetchItems().reduce(into: [:]) { result, item in
+            guard let location = item.value(forKey: "storageLocation") as? NSManagedObject,
+                  location.uuidValue(forKey: "home.id") == selectedHomeID else {
+                return
+            }
+
+            let key = importItemTargetKey(
+                title: item.stringValue(forKey: "title"),
+                locationPath: importPathComponents(for: location)
+            )
+            result[key, default: []].append(item)
         }
     }
 
@@ -889,11 +934,22 @@ private extension CoreDataAppRepository {
         return names.joined(separator: " > ")
     }
 
-    func importPathComponents(fromFullPath fullPath: String) -> [String] {
-        fullPath
-            .components(separatedBy: " > ")
-            .map(importCleanDisplayString)
-            .filter { !$0.isEmpty }
+    func importPathComponents(for locationObject: NSManagedObject) -> [String] {
+        var components: [String] = []
+        var currentLocation: NSManagedObject? = locationObject
+        var visitedObjectIDs = Set<NSManagedObjectID>()
+
+        while let location = currentLocation,
+              !visitedObjectIDs.contains(location.objectID) {
+            visitedObjectIDs.insert(location.objectID)
+            let name = importCleanDisplayString(location.stringValue(forKey: "name"))
+            if !name.isEmpty {
+                components.insert(name, at: 0)
+            }
+            currentLocation = location.value(forKey: "parentLocation") as? NSManagedObject
+        }
+
+        return components
     }
 
     func importLocationPathKey(_ path: [String]) -> String {
@@ -901,6 +957,11 @@ private extension CoreDataAppRepository {
             .map(importNormalizedKeyComponent)
             .map { "\($0.count):\($0)" }
             .joined(separator: "|")
+    }
+
+    func importItemTargetKey(title: String, locationPath: [String]) -> String {
+        let normalizedTitle = importNormalizedKeyComponent(title)
+        return "\(normalizedTitle.count):\(normalizedTitle)|\(importLocationPathKey(locationPath))"
     }
 
     func importNormalizedKeyComponent(_ value: String) -> String {

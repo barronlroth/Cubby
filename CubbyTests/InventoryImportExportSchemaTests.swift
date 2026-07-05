@@ -121,6 +121,71 @@ struct InventoryImportExportPlannerTests {
         #expect(plan.updatedItems.isEmpty)
     }
 
+    @Test("Location names containing path delimiter are single path segments")
+    @MainActor
+    func locationNamesContainingPathDelimiterAreSinglePathSegments() throws {
+        let repository = try makeRepository()
+        let home = try repository.createHome(name: "Main Home")
+        let location = try repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Spare > Parts",
+                homeID: home.id,
+                parentLocationID: nil
+            )
+        )
+        let item = try repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Fuses",
+                itemDescription: nil,
+                storageLocationID: location.id,
+                tags: [],
+                emoji: nil,
+                isPendingAiEmoji: false,
+                photoFileName: nil
+            )
+        )
+
+        let exportDocument = try InventoryHomeContextExportBuilder.build(
+            selectedHomeID: home.id,
+            homes: try repository.listHomes(),
+            locations: try repository.listLocations(),
+            items: try repository.listItems(),
+            exportedAt: Date(timeIntervalSince1970: 1_783_254_400)
+        )
+
+        #expect(exportDocument.locations.first { $0.id == location.id }?.path == ["Spare > Parts"])
+        #expect(exportDocument.items.first { $0.id == item.id }?.locationPath == ["Spare > Parts"])
+
+        let importDocument = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Fuses",
+                  "locationPath": ["Spare > Parts"],
+                  "description": "Mini blade"
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: importDocument,
+            selectedHomeID: home.id,
+            homes: try repository.listHomes(),
+            locations: try repository.listLocations(),
+            items: try repository.listItems()
+        )
+
+        #expect(plan.blockingErrors.isEmpty)
+        #expect(plan.newLocations.isEmpty)
+        #expect(plan.newItems.isEmpty)
+        #expect(plan.updatedItems.first?.existingItemID == item.id)
+        #expect(plan.updatedItems.first?.locationPath == ["Spare > Parts"])
+    }
+
     @Test("Plans missing locations from item location path")
     @MainActor
     func plansMissingLocationsFromItemLocationPath() throws {
@@ -595,6 +660,121 @@ struct InventoryImportExportCommitTests {
         }
         #expect(try fixture.repository.listLocations() == originalLocations)
         #expect(try fixture.repository.listItems() == originalItems)
+    }
+
+    @Test("Commit rejects stale plan when a planned new item now exists")
+    @MainActor
+    func commitRejectsStalePlanWhenPlannedNewItemNowExists() throws {
+        let fixture = try makeHomeOnlyFixture()
+        let appStore = AppStore(repository: fixture.repository, notificationCenter: NotificationCenter())
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Socket Set",
+                  "locationPath": ["Garage"]
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: fixture.home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+        let garage = try fixture.repository.createLocation(
+            AppLocationCreationDraft(
+                name: "Garage",
+                homeID: fixture.home.id,
+                parentLocationID: nil
+            )
+        )
+        _ = try fixture.repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Socket Set",
+                itemDescription: nil,
+                storageLocationID: garage.id,
+                tags: [],
+                emoji: nil,
+                isPendingAiEmoji: false,
+                photoFileName: nil
+            )
+        )
+
+        #expect(throws: InventoryImportCommitError.planBecameStale) {
+            try appStore.commitInventoryImportPlan(plan)
+        }
+        appStore.refresh()
+        #expect(appStore.items.filter { $0.title == "Socket Set" }.count == 1)
+    }
+
+    @Test("Commit rejects stale plan when an update no longer matches target")
+    @MainActor
+    func commitRejectsStalePlanWhenUpdateNoLongerMatchesTarget() throws {
+        let repository = try makeRepository()
+        let home = try repository.createHome(name: "Main Home")
+        let location = try #require(try repository.listLocations().first { $0.homeID == home.id })
+        let existing = try repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Passport",
+                itemDescription: "Old note",
+                storageLocationID: location.id,
+                tags: [],
+                emoji: "🛂",
+                isPendingAiEmoji: false,
+                photoFileName: "passport-photo.jpg"
+            )
+        )
+        let appStore = AppStore(repository: repository, notificationCenter: NotificationCenter())
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Passport",
+                  "locationPath": ["Unsorted"],
+                  "description": "Updated note"
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+        _ = try repository.updateItem(
+            id: existing.id,
+            draft: AppItemUpdateDraft(
+                title: "Driver License",
+                itemDescription: existing.itemDescription,
+                tags: existing.tagsSet,
+                emoji: existing.emoji,
+                isPendingAiEmoji: existing.isPendingAiEmoji,
+                photoFileName: existing.photoFileName,
+                removePhoto: false
+            )
+        )
+
+        #expect(throws: InventoryImportCommitError.planBecameStale) {
+            try appStore.commitInventoryImportPlan(plan)
+        }
+        appStore.refresh()
+        let unchanged = try #require(appStore.item(id: existing.id))
+        #expect(unchanged.title == "Driver License")
+        #expect(unchanged.itemDescription == "Old note")
+        #expect(unchanged.photoFileName == "passport-photo.jpg")
     }
 }
 
