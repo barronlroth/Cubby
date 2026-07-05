@@ -513,7 +513,15 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
                     throw InventoryImportCommitError.planBecameStale
                 }
 
+                let currentDescription = item.value(forKey: "itemDescription") as? String
+                let currentTags = (item.value(forKey: "tags") as? [String] ?? []).sorted()
                 let currentEmoji = item.value(forKey: "emoji") as? String
+                guard currentDescription == plannedUpdate.currentDescription,
+                      currentTags == plannedUpdate.currentTags.sorted(),
+                      currentEmoji == plannedUpdate.currentEmoji else {
+                    throw InventoryImportCommitError.planBecameStale
+                }
+
                 item.setValue(plannedUpdate.proposedTitle, forKey: "title")
                 item.setValue(plannedUpdate.proposedDescription, forKey: "itemDescription")
                 item.setValue(Array(Set(plannedUpdate.proposedTags)).sorted(), forKey: "tags")

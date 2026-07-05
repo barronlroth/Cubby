@@ -776,6 +776,69 @@ struct InventoryImportExportCommitTests {
         #expect(unchanged.itemDescription == "Old note")
         #expect(unchanged.photoFileName == "passport-photo.jpg")
     }
+
+    @Test("Commit rejects stale plan when preserved update fields changed")
+    @MainActor
+    func commitRejectsStalePlanWhenPreservedUpdateFieldsChanged() throws {
+        let repository = try makeRepository()
+        let home = try repository.createHome(name: "Main Home")
+        let location = try #require(try repository.listLocations().first { $0.homeID == home.id })
+        let existing = try repository.createItem(
+            AppItemDraft(
+                id: UUID(),
+                title: "Passport",
+                itemDescription: "Old note",
+                storageLocationID: location.id,
+                tags: ["travel"],
+                emoji: "🛂",
+                isPendingAiEmoji: false,
+                photoFileName: nil
+            )
+        )
+        let appStore = AppStore(repository: repository, notificationCenter: NotificationCenter())
+        let document = try decodeImportDocument(
+            """
+            {
+              "schemaVersion": "cubby-import-v1",
+              "items": [
+                {
+                  "title": "Passport",
+                  "locationPath": ["Unsorted"],
+                  "description": "Updated note"
+                }
+              ]
+            }
+            """
+        )
+        let plan = InventoryImportDryRunPlanner().plan(
+            document: document,
+            selectedHomeID: home.id,
+            homes: appStore.homes,
+            locations: appStore.locations,
+            items: appStore.items
+        )
+        _ = try repository.updateItem(
+            id: existing.id,
+            draft: AppItemUpdateDraft(
+                title: existing.title,
+                itemDescription: existing.itemDescription,
+                tags: ["identity", "travel"],
+                emoji: "📄",
+                isPendingAiEmoji: false,
+                photoFileName: existing.photoFileName,
+                removePhoto: false
+            )
+        )
+
+        #expect(throws: InventoryImportCommitError.planBecameStale) {
+            try appStore.commitInventoryImportPlan(plan)
+        }
+        appStore.refresh()
+        let unchanged = try #require(appStore.item(id: existing.id))
+        #expect(unchanged.itemDescription == "Old note")
+        #expect(unchanged.tags == ["identity", "travel"])
+        #expect(unchanged.emoji == "📄")
+    }
 }
 
 @MainActor
