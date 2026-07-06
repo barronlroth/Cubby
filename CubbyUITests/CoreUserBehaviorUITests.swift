@@ -238,17 +238,17 @@ final class CoreUserBehaviorUITests: XCTestCase {
     }
 
     @MainActor
-    func testProStatusShowsFreeStateAndUpgradeEntry() throws {
+    func testOptionsShowsFreeStateAndUpgradeEntry() throws {
         let app = launchApp(["UI-TESTING", "SEED_EMPTY_HOME", "FORCE_FREE_TIER"])
 
         XCTAssertTrue(app.staticTexts["Empty Home"].waitForExistence(timeout: 10))
         app.buttons["Home Picker"].tap()
 
-        let proStatusButton = app.buttons["Cubby Pro"]
-        XCTAssertTrue(proStatusButton.waitForExistence(timeout: 5))
-        proStatusButton.tap()
+        let optionsButton = app.buttons["Options"]
+        XCTAssertTrue(optionsButton.waitForExistence(timeout: 5))
+        optionsButton.tap()
 
-        XCTAssertTrue(app.staticTexts["Cubby Pro"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Options"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Status"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Free"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Restore Purchases"].waitForExistence(timeout: 5))
