@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cubby Transcript Import JSON"
+  short_description: "Turn rambling inventory transcripts into Cubby import JSON."
+  default_prompt: "Convert this inventory transcript into Cubby import JSON, using any provided Cubby export as context."
