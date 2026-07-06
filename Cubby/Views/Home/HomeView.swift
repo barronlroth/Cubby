@@ -27,7 +27,7 @@ struct HomeView: View {
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
     @State private var showingSearch = false
-    @State private var showingProStatus = false
+    @State private var showingOptions = false
     @State private var activeShareSheet: HomeShareSheetContext?
     @State private var shareErrorMessage: String?
     @State private var preparingShareHomeID: UUID?
@@ -138,8 +138,8 @@ struct HomeView: View {
             .sheet(isPresented: $showingSearch) {
                 SearchView()
             }
-            .sheet(isPresented: $showingProStatus) {
-                ProStatusView()
+            .sheet(isPresented: $showingOptions) {
+                OptionsView(selectedHomeID: selectedHome?.id)
             }
             .sheet(isPresented: $showingAddItem) {
                 if let homeId = selectedHome?.id {
@@ -198,7 +198,7 @@ struct HomeView: View {
                     selectedHome: $selectedHome,
                     showingAddHome: $showingAddHome,
                     showingSearch: $showingSearch,
-                    showingProStatus: $showingProStatus
+                    showingOptions: $showingOptions
                 )
                 .buttonStyle(.plain)
 
@@ -620,7 +620,7 @@ struct HomePicker: View {
     @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
     @Binding var showingSearch: Bool
-    @Binding var showingProStatus: Bool
+    @Binding var showingOptions: Bool
 
     @State private var isPickerPresented = false
     @State private var isEditingHomes = false
@@ -729,9 +729,9 @@ struct HomePicker: View {
                     showingSearch = true
                 }
 
-                utilityRow(title: "Options", systemImage: "ellipsis.circle") {
+                utilityRow(title: "Options", systemImage: "slider.horizontal.3") {
                     isPickerPresented = false
-                    showingProStatus = true
+                    showingOptions = true
                 }
 
                 utilityRow(title: "Manage Homes", systemImage: "gearshape") {
