@@ -229,17 +229,35 @@ final class CoreUserBehaviorUITests: XCTestCase {
     }
 
     @MainActor
-    func testHardPaywallPreviewCannotBeClosed() throws {
-        let app = launchApp(["UI-TESTING", "SEED_MOCK_DATA", "FORCE_FREE_TIER", "HARD_PAYWALL_PREVIEW"])
+    func testForcedFreeOnboardingShowsNonDismissibleTrialPaywall() throws {
+        let app = launchApp(["UI-TESTING", "SNAPSHOT_ONBOARDING", "FORCE_FREE_TIER", "FORCE_FREE_TRIAL_PREVIEW"])
 
+        XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 10))
+
+        let homeNameField = app.textFields["Home Name"]
+        XCTAssertTrue(homeNameField.waitForExistence(timeout: 5))
+        homeNameField.tap()
+        homeNameField.typeText("Trial House")
+
+        submitOnboarding(in: app)
+
+        let trialTitle = app.staticTexts["Start your 7-day free trial"]
+        XCTAssertTrue(trialTitle.waitForExistence(timeout: 10))
         let requiredCopy = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Cubby Pro is required")).firstMatch
-        XCTAssertTrue(requiredCopy.waitForExistence(timeout: 10))
+        XCTAssertTrue(requiredCopy.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Start 7-Day Free Trial"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Restore Purchase"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Manage Subscription"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Close"].exists)
+
+        app.swipeDown()
+        XCTAssertTrue(trialTitle.waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Close"].exists)
     }
 
     @MainActor
-    func testOptionsShowsFreeStateAndUpgradeEntry() throws {
-        let app = launchApp(["UI-TESTING", "SEED_EMPTY_HOME", "FORCE_FREE_TIER"])
+    func testOptionsShowsSubscriptionManagementForProUser() throws {
+        let app = launchApp(["UI-TESTING", "SEED_EMPTY_HOME", "FORCE_PRO_TIER"])
 
         XCTAssertTrue(app.staticTexts["Empty Home"].waitForExistence(timeout: 10))
         app.buttons["Home Picker"].tap()
@@ -250,9 +268,10 @@ final class CoreUserBehaviorUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Options"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Status"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Free"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Active"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Restore Purchases"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["View Upgrade Options"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Manage Subscription"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["View Subscription Options"].exists)
 
         let terms = app.buttons["Terms of Use"]
         let privacy = app.buttons["Privacy Policy"]
@@ -261,9 +280,6 @@ final class CoreUserBehaviorUITests: XCTestCase {
         }
         XCTAssertTrue(terms.waitForExistence(timeout: 5))
         XCTAssertTrue(privacy.waitForExistence(timeout: 5))
-
-        app.buttons["View Upgrade Options"].tap()
-        XCTAssertTrue(app.buttons["Unlock Pro"].waitForExistence(timeout: 10))
     }
 
     @MainActor

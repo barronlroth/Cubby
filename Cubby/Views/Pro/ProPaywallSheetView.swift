@@ -1,5 +1,10 @@
 import RevenueCat
+import StoreKit
 import SwiftUI
+
+#if os(iOS)
+import UIKit
+#endif
 
 struct ProPaywallSheetView: View {
     let context: PaywallContext
@@ -269,6 +274,14 @@ struct ProPaywallSheetView: View {
                 }
                 .disabled(proAccessManager.isRestoringPurchases)
 
+                Button("Manage Subscription") {
+                    Task { await showManageSubscriptions() }
+                }
+            }
+            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+            .foregroundStyle(PaywallPalette.softInk)
+
+            HStack(spacing: 16) {
                 Link("Terms", destination: termsURL)
                 Link("Privacy", destination: privacyURL)
             }
@@ -343,13 +356,8 @@ struct ProPaywallSheetView: View {
     }
 
     private var ctaTitle: String {
-        if let selectedPackage,
-           let trialText = trialDurationText(for: selectedPackage) {
-            if trialText == "7 days" {
-                return "Start 7-Day Free Trial"
-            }
-
-            return "Start Free Trial"
+        if let trialCopy = selectedTrialCopy {
+            return trialCopy.ctaTitle
         }
 
         return context.isBlocking ? "Continue with Pro" : "Unlock Pro"
@@ -368,7 +376,7 @@ struct ProPaywallSheetView: View {
     private var perks: [ProPerk] {
         if context.isBlocking {
             return [
-                ProPerk(emoji: "🏠", title: "Every home from day one", detail: "Set up your inventory without starter limits."),
+                ProPerk(emoji: "🏠", title: "Every home from day one", detail: "Set up your inventory with full access."),
                 ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory with photos, tags, and exact paths."),
                 ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Invite a partner or household when you are ready.")
             ]
@@ -376,16 +384,15 @@ struct ProPaywallSheetView: View {
 
         return [
             ProPerk(emoji: "🏠", title: "Unlimited homes", detail: "Track every place you store things."),
-            ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory, not just the first 10."),
+            ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory with photos, tags, and exact paths."),
             ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Keep a household organized together.")
         ]
     }
 
     private var title: String {
         if context.isBlocking,
-           selectedPackageHasFreeTrial,
-           selectedTrialDurationText == "7 days" {
-            return "Start your 7-day free trial"
+           let trialCopy = selectedTrialCopy {
+            return trialCopy.title
         }
 
         return context.isBlocking ? "Start with Cubby Pro" : "Cubby Pro"
@@ -396,23 +403,23 @@ struct ProPaywallSheetView: View {
             return "Free trial included"
         }
 
-        return context.isBlocking ? "Subscription required" : "No free-plan limits"
+        return context.isBlocking ? "Subscription required" : "Full access"
     }
 
     private var subtitle: String {
         switch context.reason {
         case .subscriptionRequired:
-            if let trialText = selectedTrialDurationText {
-                return "Cubby Pro is required to create and use your home inventory. Start with \(trialText) free."
+            if let trialCopy = selectedTrialCopy {
+                return trialCopy.blockingSubtitle()
             }
 
             return "Cubby Pro is required to create and use your home inventory."
         case .homeLimitReached:
-            return "Add every home without starter-plan limits."
+            return "Add every home with Cubby Pro."
         case .itemLimitReached:
-            return "Make room for the rest of your inventory."
+            return "Add every item with Cubby Pro."
         case .overLimit:
-            return "Keep creating without deleting what you already organized."
+            return "Keep creating with Cubby Pro without deleting what you already organized."
         case .manualUpgrade:
             return "Room for every home, every item, every detail."
         }
@@ -505,7 +512,7 @@ struct ProPaywallSheetView: View {
 
     private func priceText(for package: Package) -> String {
         if let trialText = trialDurationText(for: package) {
-            return "\(trialText) free"
+            return TrialOfferCopy(durationText: trialText)?.priceText ?? "\(trialText) free"
         }
 
         return package.storeProduct.localizedPriceString
@@ -571,7 +578,8 @@ struct ProPaywallSheetView: View {
             return nil
         }
 
-        return "\(trialText) free, then \(renewalText)."
+        return TrialOfferCopy(durationText: trialText)?.termsText(renewalText: renewalText)
+            ?? "\(trialText) free, then \(renewalText)."
     }
 
     private func renewalPriceText(for package: Package) -> String? {
@@ -580,13 +588,21 @@ struct ProPaywallSheetView: View {
     }
 
     private var selectedPackageHasFreeTrial: Bool {
-        guard let selectedPackage else { return false }
+        guard let selectedPackage else {
+            return isFreeTrialPreviewForced && context.isBlocking
+        }
         return hasFreeTrial(selectedPackage)
     }
 
     private var selectedTrialDurationText: String? {
-        guard let selectedPackage else { return nil }
+        guard let selectedPackage else {
+            return isFreeTrialPreviewForced && context.isBlocking ? "7 days" : nil
+        }
         return trialDurationText(for: selectedPackage)
+    }
+
+    private var selectedTrialCopy: TrialOfferCopy? {
+        TrialOfferCopy(durationText: selectedTrialDurationText)
     }
 
     private var isFreeTrialPreviewForced: Bool {
@@ -664,7 +680,7 @@ struct ProPaywallSheetView: View {
         return " every \(subscriptionLengthDescription(period))"
     }
 
-    private func trialLengthDescription(_ period: SubscriptionPeriod) -> String {
+    private func trialLengthDescription(_ period: RevenueCat.SubscriptionPeriod) -> String {
         switch period.unit {
         case .week where period.value == 1:
             return "7 days"
@@ -675,7 +691,7 @@ struct ProPaywallSheetView: View {
         }
     }
 
-    private func subscriptionLengthDescription(_ period: SubscriptionPeriod?) -> String {
+    private func subscriptionLengthDescription(_ period: RevenueCat.SubscriptionPeriod?) -> String {
         guard let period else { return "period" }
         let unit: String
         switch period.unit {
@@ -691,6 +707,22 @@ struct ProPaywallSheetView: View {
             unit = "period"
         }
         return "\(period.value) \(unit)"
+    }
+
+    @MainActor
+    private func showManageSubscriptions() async {
+        #if os(iOS)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            do {
+                try await StoreKit.AppStore.showManageSubscriptions(in: windowScene)
+                return
+            } catch { }
+        }
+        #endif
+
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            openURL(url)
+        }
     }
 }
 

@@ -94,7 +94,7 @@ struct OptionsView: View {
             HStack {
                 Text("Status")
                 Spacer()
-                Text(proAccessManager.isPro ? "Pro" : "Free")
+                Text(proAccessManager.isPro ? "Active" : "No active subscription")
                     .foregroundStyle(proAccessManager.isPro ? .green : .secondary)
             }
             .accessibilityIdentifier("options-subscription-status")
@@ -125,14 +125,12 @@ struct OptionsView: View {
             .disabled(proAccessManager.isRestoringPurchases)
             .accessibilityIdentifier("options-restore-purchases-button")
 
-            if proAccessManager.hasActiveAnnualSubscription {
-                Button {
-                    Task { await showManageSubscriptions() }
-                } label: {
-                    Label("Manage Subscription", systemImage: "creditcard")
-                }
-                .accessibilityIdentifier("options-manage-subscription-button")
+            Button {
+                Task { await showManageSubscriptions() }
+            } label: {
+                Label("Manage Subscription", systemImage: "creditcard")
             }
+            .accessibilityIdentifier("options-manage-subscription-button")
 
             if let message = proAccessManager.restoreMessage {
                 Text(message)
@@ -146,11 +144,11 @@ struct OptionsView: View {
     @ViewBuilder
     private var upgradeSection: some View {
         if !proAccessManager.isPro {
-            Section("Upgrade") {
+            Section("Subscription") {
                 Button {
                     showingPaywall = true
                 } label: {
-                    Label("View Upgrade Options", systemImage: "sparkles")
+                    Label("View Subscription Options", systemImage: "sparkles")
                 }
                 .accessibilityIdentifier("options-upgrade-button")
             }

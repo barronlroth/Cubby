@@ -49,6 +49,10 @@ struct HomeSearchContainer: View {
                 .environmentObject(proAccessManager)
                 .interactiveDismissDisabled(context.isBlocking)
         }
+        .onAppear(perform: reconcileHardPaywall)
+        .onChange(of: proAccessManager.entitlementState) { _, _ in
+            reconcileHardPaywall()
+        }
         .alert(
             "Storage Recovered",
             isPresented: Binding(
@@ -66,5 +70,40 @@ struct HomeSearchContainer: View {
         } message: {
             Text(appStore.recoveryMessage ?? "")
         }
+    }
+
+    private func reconcileHardPaywall() {
+        if isHardPaywallPreviewForced {
+            activePaywall = PaywallContext(reason: .subscriptionRequired)
+            return
+        }
+
+        let access = HardPaywallPolicy.access(
+            hasCompletedOnboarding: true,
+            entitlementState: proAccessManager.entitlementState
+        )
+
+        switch access {
+        case .allowed:
+            if activePaywall?.isBlocking == true {
+                activePaywall = nil
+            }
+        case .waitingForEntitlement:
+            if activePaywall?.isBlocking == true {
+                activePaywall = nil
+            }
+        case let .blocked(reason):
+            if activePaywall?.reason != reason {
+                activePaywall = PaywallContext(reason: reason)
+            }
+        }
+    }
+
+    private var isHardPaywallPreviewForced: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+        #else
+        false
+        #endif
     }
 }

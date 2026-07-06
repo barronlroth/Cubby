@@ -248,13 +248,13 @@ struct AddItemView: View {
         case .subscriptionRequired:
             "Cubby Pro is required to create and use your home inventory."
         case .itemLimitReached:
-            "Free includes up to 10 items. Upgrade to Cubby Pro to add more."
+            "Cubby Pro is required to add more items."
         case .overLimit:
-            "You’re over the Free limit. Upgrade to Pro or delete down to continue creating."
+            "Cubby Pro is required to keep adding homes and items."
         case .homeLimitReached:
-            "Upgrade to Cubby Pro to add more."
+            "Cubby Pro is required to add another home."
         case .manualUpgrade:
-            "Upgrade to Cubby Pro to unlock unlimited homes and items."
+            "Cubby Pro unlocks every home and item."
         }
     }
 
