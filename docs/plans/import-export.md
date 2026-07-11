@@ -253,7 +253,7 @@ You are working in a dedicated worktree for /Users/barron/Developer/Cubby.
 
 Task: implement the TDD-first schema/export/dry-run planner slice for issue #16. Do not build UI and do not implement persistence commit.
 
-Read AGENTS.md, Cubby/Services/AGENTS.md, CubbyTests/AGENTS.md, and plan.md before coding.
+Read AGENTS.md, Cubby/Services/AGENTS.md, CubbyTests/AGENTS.md, and docs/plans/import-export.md before coding.
 
 Start by writing failing Swift Testing unit tests for:
 - decoding supported and unsupported import schema versions;

@@ -54,7 +54,7 @@ struct CubbyApp: App {
             environment: environment,
             bundlePath: bundlePath
         ) || NSClassFromString("XCTestCase") != nil
-        // Fastlane snapshot passes "-ui_testing"; support both.
+        // Existing screenshot tests may pass the legacy "-ui_testing" spelling.
         self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
         self.forceOnboardingSnapshot = args.contains("SNAPSHOT_ONBOARDING")
         self.shouldSeedItemLimitReachedData = args.contains("SEED_ITEM_LIMIT_REACHED")

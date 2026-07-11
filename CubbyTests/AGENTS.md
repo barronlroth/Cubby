@@ -50,7 +50,7 @@ Common UI/snapshot args:
 - `FORCE_PRO_TIER`
 - `MOCK_SHARED_HOMES_MIXED`
 
-The Fastlane-compatible snapshot helper injects `-FASTLANE_SNAPSHOT YES -ui_testing` only when snapshots are run through that legacy path.
+The snapshot helper also supports the historical `-FASTLANE_SNAPSHOT YES -ui_testing` launch arguments for compatibility with existing screenshot tests.
 
 ## Running Tests
 

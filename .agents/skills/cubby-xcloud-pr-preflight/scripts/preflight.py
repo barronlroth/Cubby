@@ -103,6 +103,7 @@ def app_store_versions(app_id: str) -> list[dict[str, Any]]:
             "IOS",
             "--limit",
             "200",
+            "--paginate",
             "--output",
             "json",
         ]
@@ -123,6 +124,7 @@ def builds(app_id: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
             "-uploadedDate",
             "--limit",
             "200",
+            "--paginate",
             "--output",
             "json",
         ]
