@@ -9,16 +9,23 @@ struct HomeSearchContainer: View {
     @State private var showingAddItem = false
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
-    @StateObject private var proAccessManager = ProAccessManager()
+    @StateObject private var proAccessManager: ProAccessManager
+    private let initialSelectedHomeID: UUID?
 
     init(
         cloudKitSettings: CloudKitSyncSettings,
         sharedHomesGateService: any SharedHomesGateServiceProtocol,
-        homeSharingService: (any HomeSharingServiceProtocol)?
+        homeSharingService: (any HomeSharingServiceProtocol)?,
+        proAccessManager: ProAccessManager? = nil,
+        initialSelectedHomeID: UUID? = nil
     ) {
         self.cloudKitSettings = cloudKitSettings
         self.sharedHomesGateService = sharedHomesGateService
         self.homeSharingService = homeSharingService
+        self.initialSelectedHomeID = initialSelectedHomeID
+        _proAccessManager = StateObject(
+            wrappedValue: proAccessManager ?? ProAccessManager()
+        )
 
 #if canImport(UIKit)
         let resolvedService = self.homeSharingService
@@ -32,7 +39,8 @@ struct HomeSearchContainer: View {
         MainNavigationView(
             searchText: $searchText,
             showingAddItem: $showingAddItem,
-            canAddItem: $canAddItem
+            canAddItem: $canAddItem,
+            initialSelectedHomeID: initialSelectedHomeID
         )
         .environmentObject(proAccessManager)
         .environment(\.activePaywall, $activePaywall)

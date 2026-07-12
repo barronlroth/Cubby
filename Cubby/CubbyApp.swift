@@ -33,6 +33,10 @@ struct CubbyApp: App {
     private let appStore: AppStore?
     private let sharedHomesGateService: any SharedHomesGateServiceProtocol
     private let homeSharingService: (any HomeSharingServiceProtocol)?
+    #if DEBUG
+    private let showsDesignCatalog: Bool
+    private let designValidationProfile: DesignValidationProfile
+    #endif
 
     private static func logModelContainerError(_ message: String, error: Error) {
         let nsError = error as NSError
@@ -49,6 +53,13 @@ struct CubbyApp: App {
         let args = ProcessInfo.processInfo.arguments
         let environment = ProcessInfo.processInfo.environment
         let bundlePath = Bundle.main.bundlePath
+        #if DEBUG
+        let showsDesignCatalog = args.contains("DESIGN_CATALOG")
+        self.showsDesignCatalog = showsDesignCatalog
+        self.designValidationProfile = DesignValidationProfile.resolve(arguments: args)
+        #else
+        let showsDesignCatalog = false
+        #endif
         let isRunningTests = CloudKitSyncSettings.isRunningTests(
             environment: environment,
             bundlePath: bundlePath
@@ -65,7 +76,7 @@ struct CubbyApp: App {
             arguments: args,
             environment: environment,
             bundlePath: bundlePath,
-            isUITesting: isUITesting,
+            isUITesting: isUITesting || showsDesignCatalog,
             isRunningTestsOverride: isRunningTests
         )
         self.shouldSeedMockData = !skipSeeding && !forceOnboardingSnapshot && (
@@ -280,6 +291,20 @@ struct CubbyApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
+                #if DEBUG
+                if showsDesignCatalog {
+                    DesignCatalogView()
+                } else if let appStore {
+                    LaunchContentView(
+                        cloudKitSettings: cloudKitSettings,
+                        sharedHomesGateService: sharedHomesGateService,
+                        homeSharingService: homeSharingService
+                    )
+                    .environmentObject(appStore)
+                } else {
+                    RuntimeInitializationFailureView()
+                }
+                #else
                 if let appStore {
                     LaunchContentView(
                         cloudKitSettings: cloudKitSettings,
@@ -290,8 +315,15 @@ struct CubbyApp: App {
                 } else {
                     RuntimeInitializationFailureView()
                 }
+                #endif
             }
+            #if DEBUG
+            .modifier(DesignValidationEnvironmentModifier(traits: designValidationProfile.traits))
+            #endif
             .task {
+                #if DEBUG
+                guard showsDesignCatalog == false else { return }
+                #endif
                 coreDataRemoteChangeHandler?.start()
 
                 if cloudKitSettings.usesCloudKit {
@@ -423,7 +455,7 @@ private struct ExistingHomesRecoveryView: View {
 
 }
 
-private struct RestoringExistingHomeView: View {
+struct RestoringExistingHomeView: View {
     var body: some View {
         VStack(spacing: 16) {
             ProgressView()
@@ -436,7 +468,7 @@ private struct RestoringExistingHomeView: View {
     }
 }
 
-private struct RuntimeInitializationFailureView: View {
+struct RuntimeInitializationFailureView: View {
     var body: some View {
         ContentUnavailableView(
             "Cubby Couldn’t Start",

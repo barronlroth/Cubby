@@ -72,7 +72,7 @@ struct StorageLocationPicker: View {
                         dismiss()
                         onDone?()
                     }
-                    .fontWeight(.semibold)
+                    .font(.body.weight(.semibold))
                     .disabled(selectedLocation == nil)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

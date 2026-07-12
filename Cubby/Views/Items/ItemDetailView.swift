@@ -423,6 +423,7 @@ private struct ItemDetailMetadata: View {
             Image(systemName: systemImage)
                 .frame(width: 20)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

@@ -259,13 +259,25 @@ struct ProPaywallSheetView: View {
             }
 
             HStack(spacing: 16) {
-                Button("Restore Purchase") {
+                Button {
                     Task { await proAccessManager.restorePurchases() }
+                } label: {
+                    Text("Restore Purchase")
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
                 }
                 .disabled(proAccessManager.isRestoringPurchases)
 
-                Link("Terms", destination: termsURL)
-                Link("Privacy", destination: privacyURL)
+                Link(destination: termsURL) {
+                    Text("Terms")
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                }
+                Link(destination: privacyURL) {
+                    Text("Privacy")
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                }
             }
             .font(CubbyDesign.Typography.captionSmall)
             .foregroundStyle(PaywallPalette.softInk)
