@@ -73,6 +73,9 @@ struct MainNavigationView: View {
                         .foregroundColor(.white)
                         .clipShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
 
                     Button(action: { undoManager.dismissUndo() }) {
                         Image(systemName: "xmark")
@@ -82,6 +85,10 @@ struct MainNavigationView: View {
                             .foregroundColor(.white)
                             .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(.rect)
+                    .accessibilityLabel("Dismiss undo")
                 }
                 .transition(.scale.combined(with: .opacity))
                 .padding(.top, 8)

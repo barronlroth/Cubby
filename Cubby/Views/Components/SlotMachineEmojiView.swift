@@ -48,6 +48,7 @@ struct SlotMachineEmojiView: View {
             .task(id: SlotMachineTaskState(isPendingAiEmoji: isPendingAiEmoji, reduceMotion: reduceMotion)) {
                 if reduceMotion {
                     wasSpinning = false
+                    scale = scaleNormal
                     currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
                     return
                 }

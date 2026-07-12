@@ -6,63 +6,71 @@ struct OnboardingView: View {
 
     @State private var homeName = ""
     @State private var isCreatingHome = false
+    @FocusState private var isHomeNameFocused: Bool
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 40) {
-                Spacer()
+            ScrollView {
+                VStack(spacing: 32) {
+                    VStack(spacing: 12) {
+                        Image("OnboardingLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 120, height: 120)
+                            .clipShape(.rect(cornerRadius: 24))
+                            .shadow(radius: 10)
+                            .accessibilityHidden(true)
 
-                VStack(spacing: 12) {
-                    Image("OnboardingLogo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 120, height: 120)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .shadow(radius: 10)
+                        Text("Welcome to Cubby")
+                            .font(CubbyDesign.Typography.display)
+                            .fontWeight(.bold)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Welcome to Cubby")
-                        .font(CubbyDesign.Typography.display)
-                        .fontWeight(.bold)
-                        .multilineTextAlignment(.center)
-
-                    Text("Let's set up your first home")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(spacing: 20) {
-                    TextField("Home Name", text: $homeName)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.title3)
-                        .multilineTextAlignment(.center)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            createHome()
-                        }
-
-                    Button(action: createHome) {
-                        Label("Get Started", systemImage: "arrow.right.circle.fill")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(homeName.isEmpty ? Color.gray : Color.accentColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                        Text("Let's set up your first home")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .disabled(homeName.isEmpty || isCreatingHome)
-                }
-                .padding(.horizontal, 40)
 
-                Spacer()
+                    VStack(spacing: 20) {
+                        TextField("Home Name", text: $homeName)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.title3)
+                            .multilineTextAlignment(.center)
+                            .submitLabel(.done)
+                            .focused($isHomeNameFocused)
+                            .onSubmit {
+                                createHome()
+                            }
+
+                        Button(action: createHome) {
+                            Label("Get Started", systemImage: "arrow.right.circle.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(homeName.isEmpty ? Color.gray : Color.accentColor)
+                                .foregroundStyle(.white)
+                                .clipShape(.rect(cornerRadius: 12))
+                        }
+                        .disabled(homeName.isEmpty || isCreatingHome)
+                    }
+                    .frame(maxWidth: 480)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, CubbyDesign.Spacing.xLarge)
+                .padding(.vertical, CubbyDesign.Spacing.xxLarge)
             }
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .defaultScrollAnchor(.center)
+            .scrollDismissesKeyboard(.interactively)
             .background(CubbyDesign.Palette.canvas)
         }
     }
 
     private func createHome() {
         guard !homeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isHomeNameFocused = false
         isCreatingHome = true
 
         do {

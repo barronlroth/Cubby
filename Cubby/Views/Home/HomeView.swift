@@ -742,6 +742,8 @@ struct HomePicker: View {
                         .background(Color.red, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(.rect)
                 .disabled(isPerformingHomeAction)
                 .accessibilityLabel(PendingHomeAction(home: home).accessibilityLabel)
 

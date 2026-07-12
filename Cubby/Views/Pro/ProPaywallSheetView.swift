@@ -38,8 +38,7 @@ struct ProPaywallSheetView: View {
                         complianceSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, -36)
-                    .padding(.bottom, 140)
+                    .padding(.top, 12)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -76,8 +75,7 @@ struct ProPaywallSheetView: View {
             Image("ProPaywallHero")
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 136)
-                .padding(.horizontal, -14)
+                .frame(maxWidth: 360, maxHeight: 136)
                 .accessibilityHidden(true)
 
             VStack(spacing: 4) {
@@ -279,7 +277,7 @@ struct ProPaywallSheetView: View {
             PaywallPalette.background
                 .opacity(0.96)
                 .shadow(color: .black.opacity(0.08), radius: 18, x: 0, y: -8)
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: .bottom)
         }
     }
 

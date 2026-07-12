@@ -78,10 +78,13 @@ struct TagInputView: View {
                                             .clipShape(Capsule())
                                         }
                                         .buttonStyle(.plain)
+                                        .frame(minHeight: 44)
+                                        .contentShape(.rect)
+                                        .accessibilityIdentifier("tag-suggestion-\(suggestion)")
                                     }
                                 }
                             }
-                            .frame(height: 28)
+                            .frame(minHeight: 44)
                         }
                     }
                 } else {
