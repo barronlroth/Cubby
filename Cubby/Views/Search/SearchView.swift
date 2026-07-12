@@ -76,7 +76,7 @@ struct SearchResultRow: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(UIColor(named: "ItemIconBackground") != nil ? Color("ItemIconBackground") : Color(.secondarySystemBackground))
+                    .fill(CubbyDesign.Palette.itemIconBackground)
                     .frame(width: 48, height: 48)
                 Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
                     .font(.system(size: 24))

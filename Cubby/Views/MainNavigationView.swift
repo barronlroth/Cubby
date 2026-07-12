@@ -87,8 +87,8 @@ struct MainNavigationView: View {
                 .padding(.top, 8)
             }
         }
-        .animation(.spring(response: 0.3), value: undoManager.canUndo)
-        .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
+        .cubbyAnimation(.emphasized, value: undoManager.canUndo)
+        .cubbyAnimation(.standard, value: undoManager.timeRemaining)
         .onAppear(perform: restoreSelectedHomeIfNeeded)
         .onChange(of: appStore.homes) { _, newHomes in
             synchronizeSelectedHome(with: newHomes)
@@ -102,7 +102,7 @@ struct MainNavigationView: View {
             }
             canAddItem = newHome != nil
         }
-        .animation(.spring(response: 0.3), value: selectedHome?.id)
+        .cubbyAnimation(.emphasized, value: selectedHome?.id)
     }
 
     static func selectionAfterRemovingHome(
@@ -263,6 +263,6 @@ private struct ContentTopMarginZero: ViewModifier {
 private struct ApplyHomeDesign: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color("CubbyHomeBackground"))
+            .background(CubbyDesign.Palette.homeCanvas)
     }
 }

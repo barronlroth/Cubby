@@ -76,13 +76,13 @@ struct AddLocationView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(appBackground)
+            .background(CubbyDesign.Palette.canvas)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(title)
-                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
+                        .font(CubbyDesign.Typography.navigationTitle)
                         .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -138,12 +138,4 @@ struct AddLocationView: View {
         return home.permission.canCreateLocations
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }

@@ -412,7 +412,7 @@ private struct ExistingHomesRecoveryView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appBackground)
+            .background(CubbyDesign.Palette.canvas)
         }
         .task {
             guard canSetUpNewHome == false else { return }
@@ -421,14 +421,6 @@ private struct ExistingHomesRecoveryView: View {
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }
 
 private struct RestoringExistingHomeView: View {
@@ -440,16 +432,7 @@ private struct RestoringExistingHomeView: View {
                 .font(.title3.weight(.semibold))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(appBackground)
-    }
-
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
+        .background(CubbyDesign.Palette.canvas)
     }
 }
 

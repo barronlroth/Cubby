@@ -21,7 +21,7 @@ struct OnboardingView: View {
                         .shadow(radius: 10)
 
                     Text("Welcome to Cubby")
-                        .font(.custom("AwesomeSerif-ExtraTall", size: 40))
+                        .font(CubbyDesign.Typography.display)
                         .fontWeight(.bold)
                         .multilineTextAlignment(.center)
 
@@ -57,7 +57,7 @@ struct OnboardingView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appBackground)
+            .background(CubbyDesign.Palette.canvas)
         }
     }
 
@@ -76,12 +76,4 @@ struct OnboardingView: View {
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }

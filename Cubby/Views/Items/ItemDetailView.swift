@@ -56,7 +56,7 @@ struct ItemDetailView: View {
                     .padding(.bottom, 32)
                 }
                 .scrollIndicators(.hidden)
-                .background(appBackground)
+                .background(CubbyDesign.Palette.canvas)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -137,7 +137,7 @@ struct ItemDetailView: View {
                     description: Text("This item may have been deleted.")
                 )
                 .padding()
-                .background(appBackground)
+                .background(CubbyDesign.Palette.canvas)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
@@ -235,14 +235,6 @@ struct ItemDetailView: View {
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }
 
 private enum PresentedSheet: Identifiable {
@@ -266,7 +258,7 @@ private struct ItemDetailHeader: View {
         VStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(iconBackground)
+                    .fill(CubbyDesign.Palette.itemIconBackground)
                     .frame(width: badgeSize, height: badgeSize)
                 SlotMachineEmojiView(
                     emoji: item.emoji,
@@ -277,7 +269,7 @@ private struct ItemDetailHeader: View {
             }
 
             Text(item.title)
-                .font(CubbyTypography.itemTitleSerif)
+                .font(CubbyDesign.Typography.title)
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -287,13 +279,6 @@ private struct ItemDetailHeader: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var iconBackground: Color {
-        if UIColor(named: "ItemIconBackground") != nil {
-            return Color("ItemIconBackground")
-        } else {
-            return Color(.secondarySystemBackground)
-        }
-    }
 }
 
 private struct ItemDetailPhotoCard: View {

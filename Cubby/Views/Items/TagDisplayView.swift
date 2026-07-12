@@ -17,7 +17,7 @@ struct TagDisplayView: View {
                 ))
             }
         }
-        .animation(.spring(duration: 0.3), value: tags)
+        .cubbyAnimation(.emphasized, value: tags)
     }
 }
 

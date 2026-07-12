@@ -33,6 +33,7 @@ struct HomeView: View {
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
 
     @Environment(\.activePaywall) private var activePaywall
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appStore: AppStore
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
@@ -120,7 +121,7 @@ struct HomeView: View {
         listView(for: displayedSections)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(appBackground)
+            .background(CubbyDesign.Palette.canvas)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingAddLocation) {
@@ -383,25 +384,17 @@ struct HomeView: View {
 
     private func collapseSection(_ section: LocationSection) {
         guard !isSearching else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
+        withAnimation(CubbyDesign.Motion.animation(for: .quick, reduceMotion: reduceMotion)) {
             _ = collapsedLocationSectionIDs.insert(section.id)
         }
     }
 
     private func expandSection(_ section: LocationSection) {
-        withAnimation(.easeInOut(duration: 0.18)) {
+        withAnimation(CubbyDesign.Motion.animation(for: .quick, reduceMotion: reduceMotion)) {
             _ = collapsedLocationSectionIDs.remove(section.id)
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
     @ViewBuilder
     private func sharedHomeStatusRow(for home: AppHome) -> some View {
         switch Self.sharedStatusPresentation(
@@ -628,7 +621,7 @@ struct HomePicker: View {
         } label: {
             HStack(spacing: 6) {
                 Text(selectedHome?.name ?? "Select Home")
-                    .font(CubbyTypography.homeTitleSerif)
+                    .font(CubbyDesign.Typography.title)
                     .foregroundStyle(.primary)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)

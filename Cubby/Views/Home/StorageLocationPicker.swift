@@ -52,13 +52,13 @@ struct StorageLocationPicker: View {
             }
             .searchable(text: $searchText, prompt: "Search locations")
             .scrollContentBackground(.hidden)
-            .background(appBackground)
+            .background(CubbyDesign.Palette.canvas)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Select Location")
-                        .font(.custom("AwesomeSerif-ExtraTall", size: 20))
+                        .font(CubbyDesign.Typography.navigationTitle)
                         .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -105,14 +105,6 @@ struct StorageLocationPicker: View {
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }
 
 struct LocationPickerRow: View {

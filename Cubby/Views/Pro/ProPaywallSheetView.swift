@@ -29,7 +29,7 @@ struct ProPaywallSheetView: View {
 
                         if let message = proAccessManager.restoreMessage {
                             Text(message)
-                                .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
+                                .font(CubbyDesign.Typography.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
@@ -82,13 +82,13 @@ struct ProPaywallSheetView: View {
 
             VStack(spacing: 4) {
                 Text("Cubby Pro")
-                    .font(.custom("AwesomeSerif-ExtraTall", size: 50, relativeTo: .largeTitle))
+                    .font(CubbyDesign.Typography.displayLarge)
                     .foregroundStyle(PaywallPalette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
                 Text(subtitle)
-                    .font(.custom("CircularStd-Book", size: 17, relativeTo: .body))
+                    .font(CubbyDesign.Typography.body)
                     .foregroundStyle(PaywallPalette.softInk)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -108,11 +108,11 @@ struct ProPaywallSheetView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(perk.title)
-                            .font(.custom("CircularStd-Medium", size: 16, relativeTo: .body))
+                            .font(CubbyDesign.Typography.bodyCompactEmphasized)
                             .foregroundStyle(PaywallPalette.ink)
 
                         Text(perk.detail)
-                            .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
+                            .font(CubbyDesign.Typography.caption)
                             .foregroundStyle(PaywallPalette.softInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -135,13 +135,13 @@ struct ProPaywallSheetView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Choose your plan")
-                    .font(.custom("CircularStd-Medium", size: 15, relativeTo: .body))
+                    .font(CubbyDesign.Typography.bodySmallEmphasized)
                     .foregroundStyle(PaywallPalette.ink)
 
                 Spacer()
 
                 Text("Free: 1 home, 10 items")
-                    .font(.custom("CircularStd-Medium", size: 12, relativeTo: .caption))
+                    .font(CubbyDesign.Typography.label)
                     .foregroundStyle(PaywallPalette.copper)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -179,7 +179,7 @@ struct ProPaywallSheetView: View {
         HStack(spacing: 12) {
             ProgressView()
             Text(proAccessManager.isRevenueCatConfigured ? "Loading purchase options..." : "Purchase options are not available in this build.")
-                .font(.custom("CircularStd-Book", size: 14, relativeTo: .body))
+                .font(CubbyDesign.Typography.bodySmall)
                 .foregroundStyle(PaywallPalette.softInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,7 +194,7 @@ struct ProPaywallSheetView: View {
     private func errorRetryView(message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(message)
-                .font(.custom("CircularStd-Book", size: 14, relativeTo: .body))
+                .font(CubbyDesign.Typography.bodySmall)
                 .foregroundStyle(PaywallPalette.softInk)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -225,7 +225,7 @@ struct ProPaywallSheetView: View {
         VStack(spacing: 9) {
             if let purchaseErrorMessage {
                 Text(purchaseErrorMessage)
-                    .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                    .font(CubbyDesign.Typography.captionSmall)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -241,7 +241,7 @@ struct ProPaywallSheetView: View {
                     }
 
                     Text(isPurchasing ? "Starting..." : ctaTitle)
-                        .font(.custom("CircularStd-Medium", size: 17, relativeTo: .headline))
+                        .font(CubbyDesign.Typography.callToAction)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
@@ -254,7 +254,7 @@ struct ProPaywallSheetView: View {
 
             if let selectedPackage, let termsText = selectedPlanTermsText(for: selectedPackage) {
                 Text(termsText)
-                    .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                    .font(CubbyDesign.Typography.finePrint)
                     .foregroundStyle(PaywallPalette.softInk)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -269,7 +269,7 @@ struct ProPaywallSheetView: View {
                 Link("Terms", destination: termsURL)
                 Link("Privacy", destination: privacyURL)
             }
-            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+            .font(CubbyDesign.Typography.captionSmall)
             .foregroundStyle(PaywallPalette.softInk)
         }
         .padding(.horizontal, 20)
@@ -286,23 +286,23 @@ struct ProPaywallSheetView: View {
     private var complianceSection: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Subscription Information")
-                .font(.custom("CircularStd-Medium", size: 13, relativeTo: .footnote))
+                .font(CubbyDesign.Typography.captionEmphasized)
                 .foregroundStyle(PaywallPalette.ink)
 
             if subscriptionDetails.isEmpty {
                 Text("Subscription title, length, and price are shown in the purchase options above.")
-                    .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                    .font(CubbyDesign.Typography.finePrint)
                     .foregroundStyle(PaywallPalette.softInk)
             } else {
                 ForEach(subscriptionDetails, id: \.self) { detail in
                     Text(detail)
-                        .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                        .font(CubbyDesign.Typography.finePrint)
                         .foregroundStyle(PaywallPalette.softInk)
                 }
             }
 
             Text("Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period. Manage or cancel in your App Store account settings.")
-                .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                .font(CubbyDesign.Typography.finePrint)
                 .foregroundStyle(PaywallPalette.softInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -638,12 +638,12 @@ private struct ProPlanRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(title)
-                        .font(.custom("CircularStd-Medium", size: 17, relativeTo: .body))
+                        .font(CubbyDesign.Typography.bodyEmphasized)
                         .foregroundStyle(PaywallPalette.ink)
 
                     if let badge {
                         Text(badge)
-                            .font(.custom("CircularStd-Medium", size: 11, relativeTo: .caption2))
+                            .font(CubbyDesign.Typography.finePrintEmphasized)
                             .foregroundStyle(PaywallPalette.copper)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -652,7 +652,7 @@ private struct ProPlanRow: View {
                 }
 
                 Text(subtitle)
-                    .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
+                    .font(CubbyDesign.Typography.caption)
                     .foregroundStyle(PaywallPalette.softInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -661,14 +661,14 @@ private struct ProPlanRow: View {
 
             VStack(alignment: .trailing, spacing: 6) {
                 Text(price)
-                    .font(.custom("CircularStd-Medium", size: 17, relativeTo: .body))
+                    .font(CubbyDesign.Typography.bodyEmphasized)
                     .foregroundStyle(PaywallPalette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
                 if let priceDetail {
                     Text(priceDetail)
-                        .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                        .font(CubbyDesign.Typography.captionSmall)
                         .foregroundStyle(PaywallPalette.softInk)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)

@@ -9,6 +9,7 @@ struct SlotMachineEmojiView: View {
     @State private var currentEmoji: String
     @State private var scale: CGFloat = 1.0
     @State private var wasSpinning = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     // Animation Constants
     private let initialSpinDelay: UInt64 = 160_000_000 // 0.16s
@@ -44,7 +45,13 @@ struct SlotMachineEmojiView: View {
             .font(.system(size: fontSize))
             .scaleEffect(scale)
             .blur(radius: isPendingAiEmoji ? 0.5 : 0)
-            .task(id: isPendingAiEmoji) {
+            .task(id: SlotMachineTaskState(isPendingAiEmoji: isPendingAiEmoji, reduceMotion: reduceMotion)) {
+                if reduceMotion {
+                    wasSpinning = false
+                    currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
+                    return
+                }
+
                 if isPendingAiEmoji {
                     wasSpinning = true
                     await spinWithAcceleration()
@@ -144,4 +151,9 @@ struct SlotMachineEmojiView: View {
         lockFeedbackGenerator = generator
         return generator
     }
+}
+
+private struct SlotMachineTaskState: Hashable {
+    let isPendingAiEmoji: Bool
+    let reduceMotion: Bool
 }

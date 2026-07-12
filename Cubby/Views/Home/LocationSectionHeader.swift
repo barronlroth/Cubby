@@ -36,7 +36,7 @@ struct LocationSectionHeader: View {
 
             if isCollapsed {
                 Text(itemCountText)
-                    .font(.custom("CircularStd-Medium", size: 13, relativeTo: .caption))
+                    .font(CubbyDesign.Typography.captionEmphasized)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
@@ -107,7 +107,7 @@ struct LocationSectionHeader: View {
     private var titleContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.custom("CircularStd-Medium", size: 20))
+                .font(CubbyDesign.Typography.sectionTitle)
                 .foregroundStyle(Color.primary.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -122,7 +122,7 @@ struct LocationSectionHeader: View {
                         .foregroundStyle(Color.primary.opacity(0.4))
                     ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
                         Text(segment)
-                            .font(.custom("CircularStd-MediumItalic", size: 14))
+                            .font(CubbyDesign.Typography.path)
                             .foregroundStyle(Color.primary.opacity(0.4))
                             .lineLimit(1)
                             .truncationMode(.tail)
