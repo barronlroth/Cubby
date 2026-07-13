@@ -1,4 +1,5 @@
 #if DEBUG
+import Foundation
 import Testing
 @testable import Cubby
 
@@ -62,6 +63,34 @@ struct DesignPreviewFixtureTests {
         #expect(loading.proAccessManager.isLoadingOfferings)
         #expect(error.proAccessManager.offeringsErrorMessage == "Fixture error")
         #expect(pro.proAccessManager.isRevenueCatConfigured == false)
+    }
+
+    @Test("Design Catalog app storage never mutates standard defaults")
+    func designCatalogDefaultsAreIsolated() {
+        let standard = UserDefaults.standard
+        let standardOnboardingValue = standard.object(
+            forKey: DesignCatalogDefaults.hasCompletedOnboardingKey
+        ) as? Bool
+        let standardHomeID = standard.string(
+            forKey: DesignCatalogDefaults.lastUsedHomeIDKey
+        )
+        let suiteName = "com.barronroth.Cubby.DesignCatalogTests.\(UUID().uuidString)"
+        let catalogDefaults = DesignCatalogDefaults.make(suiteName: suiteName, reset: true)
+        defer { catalogDefaults.removePersistentDomain(forName: suiteName) }
+
+        catalogDefaults.set(true, forKey: DesignCatalogDefaults.hasCompletedOnboardingKey)
+        catalogDefaults.set(UUID().uuidString, forKey: DesignCatalogDefaults.lastUsedHomeIDKey)
+
+        #expect(catalogDefaults.bool(forKey: DesignCatalogDefaults.hasCompletedOnboardingKey))
+        #expect(catalogDefaults.string(forKey: DesignCatalogDefaults.lastUsedHomeIDKey) != nil)
+        #expect(
+            standard.object(forKey: DesignCatalogDefaults.hasCompletedOnboardingKey) as? Bool
+                == standardOnboardingValue
+        )
+        #expect(
+            standard.string(forKey: DesignCatalogDefaults.lastUsedHomeIDKey)
+                == standardHomeID
+        )
     }
 }
 #endif

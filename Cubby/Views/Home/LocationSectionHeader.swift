@@ -109,8 +109,7 @@ struct LocationSectionHeader: View {
             Text(title)
                 .font(CubbyDesign.Typography.sectionTitle)
                 .foregroundStyle(Color.primary.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("location-section-title-\(locationPath)")
 
             if segments.count > 1 {

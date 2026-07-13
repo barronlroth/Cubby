@@ -54,6 +54,7 @@ final class DesignPreviewFixture {
     let primaryHomeID: UUID?
     let secondaryHomeID: UUID?
     let featuredItemID: UUID?
+    let userDefaults: UserDefaults
 
     init(
         scenario: DesignFixtureScenario = .standard,
@@ -80,9 +81,9 @@ final class DesignPreviewFixture {
             persistenceController: persistenceController,
             shareService: homeSharingService
         )
-        let defaults = UserDefaults(
+        let defaults = DesignCatalogDefaults.make(
             suiteName: "com.barronroth.Cubby.DesignPreview.\(UUID().uuidString)"
-        ) ?? .standard
+        )
         let appStore = AppStore(
             repository: repository,
             hiddenSharedHomeIDStore: HiddenSharedHomeIDStore(userDefaults: defaults)
@@ -97,6 +98,7 @@ final class DesignPreviewFixture {
         self.primaryHomeID = seedResult.primaryHomeID
         self.secondaryHomeID = seedResult.secondaryHomeID
         self.featuredItemID = seedResult.featuredItemID
+        self.userDefaults = defaults
 
         switch selection {
         case .primary:
@@ -153,6 +155,7 @@ struct DesignPreviewHarness<Content: View>: View {
 
     var body: some View {
         content(fixture)
+            .defaultAppStorage(fixture.userDefaults)
             .environmentObject(fixture.appStore)
             .environmentObject(fixture.proAccessManager)
             .environment(\.sharedHomesGateService, fixture.sharedHomesGateService)

@@ -149,13 +149,15 @@ xcrun simctl launch booted com.barronroth.Cubby DISABLE_CLOUDKIT
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution operations.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` contains App Store Connect export options for local `asc`/Xcode export flows.
-- Version/build numbers are release-sensitive. Before opening or updating any PR branch that can trigger Xcode Cloud/TestFlight/App Store distribution:
+- Version/build numbers are release-sensitive. Before direct local upload or App Store distribution:
   - Read the project values from `Cubby.xcodeproj/project.pbxproj`:
     `rg -n "MARKETING_VERSION|CURRENT_PROJECT_VERSION" Cubby.xcodeproj/project.pbxproj`
   - Check App Store Connect for already-uploaded builds:
     `asc builds list --app 6751732388 --sort -uploadedDate --limit 20 --output table`
-  - Ensure `CURRENT_PROJECT_VERSION` is greater than every uploaded/submitted build for the same `MARKETING_VERSION`; if not, bump all `CURRENT_PROJECT_VERSION` occurrences to the next unused integer before pushing.
+  - Ensure `CURRENT_PROJECT_VERSION` is greater than every uploaded/submitted build for the same `MARKETING_VERSION` before a direct upload; if not, bump all occurrences to the next unused integer.
+  - The configured Xcode Cloud PR/main workflow assigns the uploaded run number, so it does not require a checked-in `CURRENT_PROJECT_VERSION` bump solely to start that workflow.
   - Do not bump `MARKETING_VERSION` unless the user explicitly asks for a new App Store version or the release train requires it. For normal PR/TestFlight fixes, keep the current marketing version and only bump the build number.
+  - Current release preflight (2026-07-12): App Store version trains 1.0.10 and 1.0.11 are closed. A future App Store release requires a new `MARKETING_VERSION`; do not change it during ordinary review integration unless explicitly requested.
   - After pushing, monitor Xcode Cloud from GitHub with `gh pr checks --watch=false`; if it fails, inspect the Xcode Cloud details before bumping again.
 - Branches intended to launch the Codex Xcode Cloud/TestFlight workflow should keep the `codex/` prefix.
 - `fastlane/` is legacy. Historically it provided:

@@ -105,13 +105,11 @@ struct ItemEditView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
-                    .font(.body)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
                     Task { await saveEdits(for: item) }
                 }
-                .font(.body.weight(.semibold))
                 .disabled(!canSave || !canEditCurrentItem)
             }
         }

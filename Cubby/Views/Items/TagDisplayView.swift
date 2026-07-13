@@ -4,7 +4,7 @@ struct TagDisplayView: View {
     let tags: Set<String>
     let onDelete: ((String) -> Void)?
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 8) {
+        WrappingHStackLayout(spacing: CubbyDesign.Spacing.small) {
             ForEach(Array(tags).sorted(), id: \.self) { tag in
                 TagChip(
                     tag: tag,

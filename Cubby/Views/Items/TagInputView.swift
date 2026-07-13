@@ -8,7 +8,7 @@ struct TagInputView: View {
     
     @FocusState private var inputFocus: Bool
     @State private var showingSuggestions = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cubbyReduceMotion) private var reduceMotion
     
     var canAddMoreTags: Bool {
         tags.count < maxTags

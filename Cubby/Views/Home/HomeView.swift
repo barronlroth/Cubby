@@ -33,7 +33,7 @@ struct HomeView: View {
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
 
     @Environment(\.activePaywall) private var activePaywall
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cubbyReduceMotion) private var reduceMotion
     @EnvironmentObject private var appStore: AppStore
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService

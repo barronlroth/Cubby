@@ -26,7 +26,7 @@ struct DesignValidationEnvironmentModifier: ViewModifier {
         content
             .preferredColorScheme(traits.colorScheme)
             .modifier(DesignDynamicTypeModifier(size: traits.dynamicTypeSize))
-            .modifier(DesignReduceMotionModifier(value: traits.reduceMotion))
+            .environment(\.cubbyReduceMotionValidationOverride, traits.reduceMotion)
     }
 }
 
@@ -43,15 +43,4 @@ private struct DesignDynamicTypeModifier: ViewModifier {
     }
 }
 
-private struct DesignReduceMotionModifier: ViewModifier {
-    let value: Bool?
-
-    func body(content: Content) -> some View {
-        content.transaction { transaction in
-            if value == true {
-                transaction.disablesAnimations = true
-            }
-        }
-    }
-}
 #endif

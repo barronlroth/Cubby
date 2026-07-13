@@ -40,4 +40,37 @@ struct DesignSystemTests {
             CubbyDesign.Motion.resolution(for: token, reduceMotion: false) == .animated(token)
         )
     }
+
+    @Test func validationOverrideUsesProductionMotionBranching() {
+        let validationProfile = DesignValidationProfile.resolve(
+            arguments: [DesignValidationProfile.reduceMotionArgument]
+        )
+        let resolvedReduceMotion = CubbyDesign.Motion.resolvedReduceMotion(
+            systemValue: false,
+            validationOverride: validationProfile.traits.reduceMotion
+        )
+
+        #expect(validationProfile.traits.reduceMotion == true)
+        #expect(resolvedReduceMotion)
+        #expect(
+            CubbyDesign.Motion.resolution(
+                for: .standard,
+                reduceMotion: resolvedReduceMotion
+            ) == .immediate
+        )
+        #expect(
+            CubbyDesign.Motion.allowsContinuousMotion(
+                reduceMotion: resolvedReduceMotion
+            ) == false
+        )
+        #expect(
+            CubbyDesign.Motion.resolvedReduceMotion(
+                systemValue: true,
+                validationOverride: false
+            ) == false
+        )
+        #expect(
+            CubbyDesign.Motion.allowsContinuousMotion(reduceMotion: false)
+        )
+    }
 }

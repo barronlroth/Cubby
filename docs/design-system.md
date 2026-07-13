@@ -28,7 +28,7 @@ Prefer native `Form`, `List`, button, sheet, and material treatments when they a
 
 ### Motion
 
-Use `cubbyAnimation(_:value:)` for implicit animations. It reads `accessibilityReduceMotion` and disables interpolation automatically. For explicit state changes, read `@Environment(\.accessibilityReduceMotion)` and pass the value to `CubbyDesign.Motion.animation(for:reduceMotion:)` inside `withAnimation`.
+Use `cubbyAnimation(_:value:)` for implicit animations. It reads `cubbyReduceMotion`, which resolves the production accessibility setting plus the design-validation override. For explicit state changes and continuous motion, read `@Environment(\.cubbyReduceMotion)` and pass the value through `CubbyDesign.Motion` inside `withAnimation` or before starting repeated work.
 
 Choose the token by intent:
 
@@ -68,3 +68,7 @@ Interactive controls should use native `Button`, `Toggle`, and other controls wh
 - Media aspect ratios and image-dependent dimensions may use local geometry.
 - UIKit interop may use UIKit semantic colors at the boundary; SwiftUI feature code should consume `CubbyDesign.Palette`.
 - A one-off value may remain local when turning it into a token would imply reuse that does not exist. Document the reason if the exception is not obvious.
+
+## Design validation
+
+Run the shared `Cubby Design Validation` scheme with `CubbyDesignValidation.xctestplan`. Baseline and Accessibility Text are expected on the standard iPhone 17 Pro destination. Run Compact Device on iPhone 17e (or another simulator whose portrait window is 390 points wide or narrower); the tests intentionally fail when that configuration is sent to a wider destination. Reduce Motion injects the validation override into `cubbyReduceMotion`, so token animations and continuous-motion guards take the same branches used for the system accessibility setting.

@@ -62,7 +62,8 @@ struct OnboardingView: View {
                 .padding(.horizontal, CubbyDesign.Spacing.xLarge)
                 .padding(.vertical, CubbyDesign.Spacing.xxLarge)
             }
-            .defaultScrollAnchor(.center)
+            .defaultScrollAnchor(.top, for: .initialOffset)
+            .defaultScrollAnchor(.center, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .background(CubbyDesign.Palette.canvas)
         }

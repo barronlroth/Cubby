@@ -60,7 +60,7 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Edit Item"].waitForExistence(timeout: 5))
 
         try validateCompactDestinationIfNeeded(app)
-        try performCoreAccessibilityAudit(in: app, excluding: .dynamicType)
+        try performCoreAccessibilityAudit(in: app)
     }
 
     @MainActor
@@ -74,7 +74,7 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         XCTAssertTrue(app.searchFields["Search locations"].waitForExistence(timeout: 5))
 
         try validateCompactDestinationIfNeeded(app)
-        try performCoreAccessibilityAudit(in: app, excluding: .dynamicType)
+        try performCoreAccessibilityAudit(in: app)
     }
 
     @MainActor
@@ -87,7 +87,7 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Cubby Pro"].waitForExistence(timeout: 10))
 
         try validateCompactDestinationIfNeeded(app)
-        try performCoreAccessibilityAudit(in: app, excluding: .dynamicType)
+        try performCoreAccessibilityAudit(in: app)
     }
 
     @MainActor
@@ -133,7 +133,10 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         case "dark":
             ["DESIGN_COLOR_SCHEME_DARK"]
         case "accessibility-text":
-            ["DESIGN_DYNAMIC_TYPE_ACCESSIBILITY_3"]
+            // The accessibility audit owns the content-size sweep. Pre-forcing
+            // Accessibility 3 makes XCTest reject `.dynamicType` before it can
+            // report or filter individual issues.
+            []
         case "reduce-motion":
             ["DESIGN_REDUCE_MOTION"]
         default:
@@ -142,28 +145,16 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
     }
 
     @MainActor
-    private func performCoreAccessibilityAudit(
-        in app: XCUIApplication,
-        excluding excludedTypes: XCUIAccessibilityAuditType = []
-    ) throws {
-        var auditTypes: XCUIAccessibilityAuditType = [
+    private func performCoreAccessibilityAudit(in app: XCUIApplication) throws {
+        let auditTypes: XCUIAccessibilityAuditType = [
             .elementDetection,
             .hitRegion,
             .sufficientElementDescription,
             .dynamicType,
             .trait
         ]
-        auditTypes.subtract(excludedTypes)
-        if ProcessInfo.processInfo.environment["CUBBY_DESIGN_VALIDATION_PROFILE"] == "accessibility-text" {
-            // The app is already running at an accessibility content size. Asking the
-            // audit to apply another Dynamic Type sweep is unsupported on iOS 26.2.
-            auditTypes.remove(.dynamicType)
-        }
         try app.performAccessibilityAudit(for: auditTypes) { issue in
-            if issue.auditType == .dynamicType,
-               let label = issue.element?.label,
-               ["Cancel", "Done"].contains(label) {
-                // System toolbar labels use UIKit-managed sizing and are flagged on iOS 26.2.
+            if self.isSystemNavigationBarDynamicTypeFalsePositive(issue) {
                 return true
             }
 
@@ -183,6 +174,23 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         }
     }
 
+    private func isSystemNavigationBarDynamicTypeFalsePositive(
+        _ issue: XCUIAccessibilityAuditIssue
+    ) -> Bool {
+        guard issue.auditType == .dynamicType,
+              issue.element?.elementType == .button,
+              let label = issue.element?.label,
+              ["Cancel", "Close", "Done", "Save"].contains(label) else {
+            return false
+        }
+
+        // SwiftUI's system navigation-bar buttons report an AccessibilityNode
+        // that XCTest cannot resize even though UIKit scales the rendered item.
+        // Require the exact system-owned hierarchy so app content with the same
+        // label is never suppressed.
+        return String(describing: issue.element).contains("↳NavigationBar")
+    }
+
     @MainActor
     private func validateCompactDestinationIfNeeded(_ app: XCUIApplication) throws {
         guard ProcessInfo.processInfo.environment["CUBBY_DESIGN_VALIDATION_PROFILE"] == "compact" else {
@@ -190,10 +198,10 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         }
 
         let width = app.windows.firstMatch.frame.width
-        guard width <= 390 else {
-            throw XCTSkip(
-                "Compact Device configuration requires a compact iPhone run destination (width 390 points or less)."
-            )
-        }
+        XCTAssertLessThanOrEqual(
+            width,
+            390,
+            "Compact Device configuration requires iPhone 17e or another run destination 390 points wide or narrower; current width is \(width)."
+        )
     }
 }

@@ -17,6 +17,17 @@ extension CubbyDesign {
             reduceMotion ? .immediate : .animated(token)
         }
 
+        static func resolvedReduceMotion(
+            systemValue: Bool,
+            validationOverride: Bool?
+        ) -> Bool {
+            validationOverride ?? systemValue
+        }
+
+        static func allowsContinuousMotion(reduceMotion: Bool) -> Bool {
+            !reduceMotion
+        }
+
         static func animation(for token: Token, reduceMotion: Bool) -> Animation? {
             switch resolution(for: token, reduceMotion: reduceMotion) {
             case .immediate:
@@ -25,6 +36,17 @@ extension CubbyDesign {
                 resolvedToken.animation
             }
         }
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var cubbyReduceMotionValidationOverride: Bool?
+
+    var cubbyReduceMotion: Bool {
+        CubbyDesign.Motion.resolvedReduceMotion(
+            systemValue: accessibilityReduceMotion,
+            validationOverride: cubbyReduceMotionValidationOverride
+        )
     }
 }
 
@@ -56,7 +78,7 @@ private struct CubbyAnimationModifier<Value: Equatable>: ViewModifier {
     let token: CubbyDesign.Motion.Token
     let value: Value
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cubbyReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content.animation(

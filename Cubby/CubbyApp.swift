@@ -16,9 +16,8 @@ struct CubbyApp: App {
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 #endif
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    
     let modelContainer: ModelContainer
+    private let appStorageDefaults: UserDefaults
     private let isUITesting: Bool
     private let cloudKitSettings: CloudKitSyncSettings
     private let shouldSeedMockData: Bool
@@ -57,8 +56,12 @@ struct CubbyApp: App {
         let showsDesignCatalog = args.contains("DESIGN_CATALOG")
         self.showsDesignCatalog = showsDesignCatalog
         self.designValidationProfile = DesignValidationProfile.resolve(arguments: args)
+        self.appStorageDefaults = showsDesignCatalog
+            ? DesignCatalogDefaults.make(reset: true)
+            : .standard
         #else
         let showsDesignCatalog = false
+        self.appStorageDefaults = .standard
         #endif
         let isRunningTests = CloudKitSyncSettings.isRunningTests(
             environment: environment,
@@ -79,7 +82,7 @@ struct CubbyApp: App {
             isUITesting: isUITesting || showsDesignCatalog,
             isRunningTestsOverride: isRunningTests
         )
-        self.shouldSeedMockData = !skipSeeding && !forceOnboardingSnapshot && (
+        self.shouldSeedMockData = !showsDesignCatalog && !skipSeeding && !forceOnboardingSnapshot && (
             isUITesting
                 || args.contains("SEED_MOCK_DATA")
                 || shouldSeedItemLimitReachedData
@@ -88,12 +91,12 @@ struct CubbyApp: App {
                 || shouldSeedMissingLocalPhotoData
         )
 
-        if isUITesting, let bundleId = Bundle.main.bundleIdentifier {
+        if isUITesting, !showsDesignCatalog, let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
             UserDefaults.standard.synchronize()
         }
         if forceOnboardingSnapshot {
-            hasCompletedOnboarding = false
+            appStorageDefaults.set(false, forKey: "hasCompletedOnboarding")
         }
 
         let schema = Schema([
@@ -185,7 +188,7 @@ struct CubbyApp: App {
             } else {
                 MockDataGenerator.generateMockData(in: modelContainer.mainContext)
             }
-            UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            appStorageDefaults.set(true, forKey: "hasCompletedOnboarding")
         }
 
         let mockSharingMode = DebugMockSharingMode.resolve(
@@ -215,7 +218,8 @@ struct CubbyApp: App {
         var configuredRemoteChangeHandler: RemoteChangeHandler?
         var configuredHomeSharingService: (any HomeSharingServiceProtocol)?
         var configuredAppStore: AppStore?
-        if FeatureGate.shouldUseCoreDataSharingStack(arguments: args, environment: environment) {
+        if !showsDesignCatalog,
+           FeatureGate.shouldUseCoreDataSharingStack(arguments: args, environment: environment) {
             do {
                 let persistenceController = try PersistenceController(
                     inMemory: cloudKitSettings.isInMemory
@@ -320,6 +324,7 @@ struct CubbyApp: App {
             #if DEBUG
             .modifier(DesignValidationEnvironmentModifier(traits: designValidationProfile.traits))
             #endif
+            .defaultAppStorage(appStorageDefaults)
             .task {
                 #if DEBUG
                 guard showsDesignCatalog == false else { return }

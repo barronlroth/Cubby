@@ -53,14 +53,9 @@ struct StorageLocationPicker: View {
             .searchable(text: $searchText, prompt: "Search locations")
             .scrollContentBackground(.hidden)
             .background(CubbyDesign.Palette.canvas)
-            .navigationTitle("")
+            .navigationTitle("Select Location")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Select Location")
-                        .font(CubbyDesign.Typography.navigationTitle)
-                        .foregroundStyle(.primary)
-                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
@@ -72,7 +67,6 @@ struct StorageLocationPicker: View {
                         dismiss()
                         onDone?()
                     }
-                    .font(.body.weight(.semibold))
                     .disabled(selectedLocation == nil)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
