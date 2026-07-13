@@ -62,31 +62,38 @@ private struct DesignFoundationsCatalogView: View {
     var body: some View {
         List {
             Section("Color") {
-                colorRow("App Background", color: Color("AppBackground"))
-                colorRow("Home Background", color: Color("CubbyHomeBackground"))
-                colorRow("Item Icon", color: Color("ItemIconBackground"))
-                colorRow("Accent", color: .accentColor)
+                colorRow("Canvas", color: CubbyDesign.Palette.canvas)
+                colorRow("Home Canvas", color: CubbyDesign.Palette.homeCanvas)
+                colorRow("Item Icon Background", color: CubbyDesign.Palette.itemIconBackground)
+                colorRow("Surface", color: CubbyDesign.Palette.surface)
+                colorRow("Accent", color: CubbyDesign.Palette.accent)
             }
 
             Section("Typography") {
-                Text("Home title")
-                    .font(CubbyTypography.homeTitleSerif)
-                Text("Item title")
-                    .font(CubbyTypography.itemTitleSerif)
+                Text("Display")
+                    .font(CubbyDesign.Typography.display)
+                Text("Section title")
+                    .font(CubbyDesign.Typography.sectionTitle)
                 Text("Body and metadata scale with Dynamic Type")
-                    .font(.body)
+                    .font(CubbyDesign.Typography.body)
+                Text("Supporting caption")
+                    .font(CubbyDesign.Typography.caption)
             }
 
             Section("Shape & Spacing") {
-                HStack(spacing: 16) {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.tint.opacity(0.18))
+                HStack(spacing: CubbyDesign.Spacing.standard) {
+                    RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
+                        .fill(CubbyDesign.Palette.accent.opacity(0.18))
                         .frame(width: 64, height: 64)
                     Capsule()
                         .fill(.secondary.opacity(0.18))
-                        .frame(height: 32)
+                        .frame(height: CubbyDesign.Spacing.xxLarge)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, CubbyDesign.Spacing.small)
+
+                Text("4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 pt")
+                    .font(CubbyDesign.Typography.caption)
+                    .foregroundStyle(CubbyDesign.Palette.secondaryText)
             }
         }
         .navigationTitle("Foundations")
@@ -94,12 +101,15 @@ private struct DesignFoundationsCatalogView: View {
 
     private func colorRow(_ name: String, color: Color) -> some View {
         HStack {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
                 .fill(color)
                 .frame(width: 52, height: 52)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.secondary.opacity(0.35), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
+                        .stroke(
+                            CubbyDesign.Palette.separator.opacity(0.35),
+                            lineWidth: CubbyDesign.Stroke.hairline
+                        )
                 }
             Text(name)
         }

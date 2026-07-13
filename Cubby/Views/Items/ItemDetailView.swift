@@ -82,7 +82,10 @@ struct ItemDetailView: View {
                                 }
                             } label: {
                                 Image(systemName: "ellipsis")
-                                    .frame(minWidth: 44, minHeight: 44)
+                                    .frame(
+                                        minWidth: CubbyDesign.Layout.minimumTapTarget,
+                                        minHeight: CubbyDesign.Layout.minimumTapTarget
+                                    )
                                     .contentShape(.rect)
                                     .accessibilityLabel("More actions")
                                     .accessibilityHint("Move, edit, or delete this item.")

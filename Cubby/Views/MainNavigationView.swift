@@ -87,19 +87,25 @@ struct MainNavigationView: View {
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
                     .contentShape(.rect)
 
                     Button(action: { undoManager.dismissUndo() }) {
                         Image(systemName: "xmark")
                             .font(.caption)
-                            .frame(width: 24, height: 24)
+                            .frame(
+                                width: CubbyDesign.Layout.compactIcon,
+                                height: CubbyDesign.Layout.compactIcon
+                            )
                             .background(Color.gray.opacity(0.6))
                             .foregroundColor(.white)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(
+                        minWidth: CubbyDesign.Layout.minimumTapTarget,
+                        minHeight: CubbyDesign.Layout.minimumTapTarget
+                    )
                     .contentShape(.rect)
                     .accessibilityLabel("Dismiss undo")
                 }

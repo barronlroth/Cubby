@@ -78,13 +78,13 @@ struct TagInputView: View {
                                             .clipShape(Capsule())
                                         }
                                         .buttonStyle(.plain)
-                                        .frame(minHeight: 44)
+                                        .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
                                         .contentShape(.rect)
                                         .accessibilityIdentifier("tag-suggestion-\(suggestion)")
                                     }
                                 }
                             }
-                            .frame(minHeight: 44)
+                            .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
                         }
                     }
                 } else {

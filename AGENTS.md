@@ -2,6 +2,8 @@
 
 This file provides guidance for coding agents working in this repository.
 
+> Read `DESIGN.md` before changing UI: it is the concise visual contract; `docs/design-system.md` governs SwiftUI implementation, adoption, and exceptions.
+
 ## Project Overview
 
 Cubby is an iPhone home-inventory app that helps users track belongings across homes and storage locations. It emphasizes fast search, photos, tags, nested storage locations, and Pro features for larger or shared inventories.

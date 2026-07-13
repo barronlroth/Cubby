@@ -17,7 +17,10 @@ struct TagChip: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(
+                    minWidth: CubbyDesign.Layout.minimumTapTarget,
+                    minHeight: CubbyDesign.Layout.minimumTapTarget
+                )
                 .contentShape(.rect)
                 .accessibilityLabel("Remove \(tag)")
             }

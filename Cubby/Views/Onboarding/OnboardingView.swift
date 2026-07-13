@@ -11,13 +11,13 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 32) {
-                    VStack(spacing: 12) {
+                VStack(spacing: CubbyDesign.Spacing.xxLarge) {
+                    VStack(spacing: CubbyDesign.Spacing.medium) {
                         Image("OnboardingLogo")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 120, height: 120)
-                            .clipShape(.rect(cornerRadius: 24))
+                            .clipShape(.rect(cornerRadius: CubbyDesign.Radius.xLarge))
                             .shadow(radius: 10)
                             .accessibilityHidden(true)
 
@@ -34,7 +34,7 @@ struct OnboardingView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    VStack(spacing: 20) {
+                    VStack(spacing: CubbyDesign.Spacing.large) {
                         TextField("Home Name", text: $homeName)
                             .textFieldStyle(.roundedBorder)
                             .font(.title3)
@@ -52,7 +52,7 @@ struct OnboardingView: View {
                                 .padding()
                                 .background(homeName.isEmpty ? Color.gray : Color.accentColor)
                                 .foregroundStyle(.white)
-                                .clipShape(.rect(cornerRadius: 12))
+                                .clipShape(.rect(cornerRadius: CubbyDesign.Radius.medium))
                         }
                         .disabled(homeName.isEmpty || isCreatingHome)
                     }
