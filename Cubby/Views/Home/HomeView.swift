@@ -26,7 +26,8 @@ struct HomeView: View {
 
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
-    @State private var showingProStatus = false
+    @State private var showingSearch = false
+    @State private var showingOptions = false
     @State private var activeShareSheet: HomeShareSheetContext?
     @State private var shareErrorMessage: String?
     @State private var preparingShareHomeID: UUID?
@@ -124,6 +125,9 @@ struct HomeView: View {
             .background(CubbyDesign.Palette.canvas)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $selectedLocation) { location in
+                LocationDetailView(location: location)
+            }
             .sheet(isPresented: $showingAddLocation) {
                 if let homeId = selectedHome?.id {
                     AddLocationView(homeId: homeId, parentLocation: nil)
@@ -132,8 +136,11 @@ struct HomeView: View {
             .sheet(isPresented: $showingAddHome) {
                 AddHomeView(selectedHome: $selectedHome)
             }
-            .sheet(isPresented: $showingProStatus) {
-                ProStatusView()
+            .sheet(isPresented: $showingSearch) {
+                SearchView()
+            }
+            .sheet(isPresented: $showingOptions) {
+                OptionsView(selectedHomeID: selectedHome?.id)
             }
             .sheet(isPresented: $showingAddItem) {
                 if let homeId = selectedHome?.id {
@@ -191,7 +198,8 @@ struct HomeView: View {
                 HomePicker(
                     selectedHome: $selectedHome,
                     showingAddHome: $showingAddHome,
-                    showingProStatus: $showingProStatus
+                    showingSearch: $showingSearch,
+                    showingOptions: $showingOptions
                 )
                 .buttonStyle(.plain)
 
@@ -370,7 +378,8 @@ struct HomeView: View {
                             isCollapsed: isCollapsed,
                             allowsCollapse: !isSearching,
                             onCollapse: { collapseSection(section) },
-                            onExpand: { expandSection(section) }
+                            onExpand: { expandSection(section) },
+                            onSelect: { selectedLocation = section.location }
                         )
                     }
                 }
@@ -603,7 +612,8 @@ private struct ShareHomeButtonStyle: ViewModifier {
 struct HomePicker: View {
     @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
-    @Binding var showingProStatus: Bool
+    @Binding var showingSearch: Bool
+    @Binding var showingOptions: Bool
 
     @State private var isPickerPresented = false
     @State private var isEditingHomes = false
@@ -707,9 +717,14 @@ struct HomePicker: View {
                 .padding(.top, 8)
 
             VStack(alignment: .leading, spacing: 2) {
-                utilityRow(title: "Cubby Pro", systemImage: "crown") {
+                utilityRow(title: "Search All Items", systemImage: "magnifyingglass") {
                     isPickerPresented = false
-                    showingProStatus = true
+                    showingSearch = true
+                }
+
+                utilityRow(title: "Options", systemImage: "slider.horizontal.3") {
+                    isPickerPresented = false
+                    showingOptions = true
                 }
 
                 utilityRow(title: "Manage Homes", systemImage: "gearshape") {

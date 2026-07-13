@@ -273,7 +273,7 @@ private struct DesignCatalogScreenView: View {
         case .locationPicker:
             DesignLocationPickerPreview(fixture: fixture)
         case .proStatusFree, .proResolving:
-            ProStatusView()
+            OptionsView(selectedHomeID: fixture.selectedHomeID)
         case .paywallLoading, .paywallError:
             ProPaywallSheetView(context: PaywallContext(reason: .manualUpgrade))
         case .startupLoading:

@@ -1,6 +1,6 @@
 # Services Guide
 
-This folder contains the runtime services for Pro access, free-tier gating, Core Data persistence, CloudKit sync/sharing, migration, photos, cleanup, and shared-home feature flags.
+This folder contains the runtime services for Pro access, hard-paywall and legacy free-tier guardrails, Core Data persistence, CloudKit sync/sharing, migration, photos, cleanup, and shared-home feature flags.
 
 ## RevenueCat Pro Integration
 
@@ -30,21 +30,24 @@ File: `Cubby/Services/ProAccessManager.swift`
 - In DEBUG manual runs, `FORCE_FREE_TIER` and `FORCE_PRO_TIER` can bypass RevenueCat.
 
 ### Paywall surfaces
-- `PaywallContext` defines reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`, `manualUpgrade`.
-- `HomeSearchContainer` owns the global paywall sheet.
+- Cubby presents a hard paywall after onboarding when entitlement resolves to non-Pro.
+- `PaywallContext` reasons are `subscriptionRequired`, `homeLimitReached`, `itemLimitReached`, `overLimit`, and `manualUpgrade`; `subscriptionRequired` is the only blocking reason.
+- `HomeSearchContainer` owns the global paywall sheet and disables dismissal for blocking contexts.
 - `ProPaywallSheetView` renders the native paywall and purchases the selected RevenueCat package.
-- `ProStatusView` handles restore, legal links, status display, and manual upgrade.
+- `OptionsView` owns subscription status, restore/manage actions, legal links, manual upgrade, and power-user import/export navigation.
 - Paywall entry points include add-home, add-item, over-limit flows, manual upgrade, and shared-home Pro upsells.
+- `HARD_PAYWALL_PREVIEW` forces the blocking wall in DEBUG.
+- `FORCE_FREE_TRIAL_PREVIEW` forces trial copy with a seven-day fallback in DEBUG; it does not grant entitlement or StoreKit eligibility.
 
 ## Feature Gates
 
 ### `FeatureGate`
 File: `Cubby/Services/FeatureGate.swift`
 
-- Free limits:
+- The hard subscription paywall is the primary access model. These legacy limits remain as defense-in-depth creation/sharing checks and are normally unreachable for non-Pro users after onboarding:
   - max owned homes: `1`
   - max owned items per owned home: `10`
-- If a free user has more than 1 owned home, deny creation with `overLimit` but allow view/search/edit.
+- In direct `FeatureGate` evaluation, a non-Pro user with more than 1 owned home is denied creation with `overLimit`; this does not imply normal production access past the hard wall.
 - Core Data/AppStore paths should use `FeatureGateDataSource` so counts come from owner/private-store data and ignore collaborator shared homes.
 - SwiftData overloads remain for legacy tests and seed/migration support.
 - `USE_CORE_DATA_SHARING_STACK` controls the sharing stack and is default-on unless disabled through environment.
@@ -92,6 +95,7 @@ File: `Cubby/Services/DataMigrationService.swift`
 - Migrates legacy SwiftData data into the Core Data private store.
 - Records completion with `coreDataMigrationComplete`.
 - Startup uses the live SwiftData container when seeding or running in-memory UI/test flows.
+- Seed flags regenerate the SwiftData source, but Core Data imports it only while `coreDataMigrationComplete` is false. `SEED_MOCK_DATA` alone does not reset persistent Core Data stores or the migration marker.
 - Keep migration idempotent: retries should upsert existing objects and recover after copy failures.
 - When adding persistent fields, update both mapping and migration if legacy data should survive.
 
@@ -101,8 +105,8 @@ File: `Cubby/Services/DataMigrationService.swift`
 File: `Cubby/Services/CloudKitSyncSettings.swift`
 
 - Container identifier: `iCloud.com.barronroth.CubbyV2`.
-- CloudKit is enabled by default outside tests.
-- UI tests and XCTest use in-memory stores and disable CloudKit.
+- `CloudKitSyncSettings` enables CloudKit for the legacy SwiftData container by default outside tests; UI tests and XCTest use an in-memory SwiftData source with CloudKit disabled.
+- The primary `PersistenceController` separately attaches CloudKit options to both Core Data stores. `DISABLE_CLOUDKIT` does not remove those options, so it is not a fully local-only Core Data mode.
 - Launch flags:
   - `DISABLE_CLOUDKIT`
   - `INIT_CLOUDKIT_SCHEMA`
@@ -116,8 +120,17 @@ File: `Cubby/Services/CloudKitSyncSettings.swift`
 
 ### Startup policy
 - `CloudKitSchemaBootstrapper` initializes the development schema when requested.
-- `CloudKitStartupPolicy` allows DEBUG fallback after container creation errors unless `STRICT_CLOUDKIT_STARTUP` is present.
+- `CloudKitStartupPolicy` allows DEBUG fallback only for legacy SwiftData `ModelContainer` creation errors unless `STRICT_CLOUDKIT_STARTUP` is present.
 - Release fallback is local-only if SwiftData container creation fails; Core Data startup failures show `RuntimeInitializationFailureView`.
+
+## Inventory Import / Export
+
+- `InventoryImportExport.swift` owns schemas, parsing, selected-home export construction, validation, matching, and dry-run plans.
+- `InventoryImportExportOptionsModel` maps parser/planner output into review UI state.
+- `OptionsView` owns JSON/file input, export copy/share, review, and explicit confirmation.
+- `CoreDataAppRepository.commitInventoryImportPlan` revalidates permissions and plan freshness, performs one Core Data batch, and rolls back on failure.
+- `AppStore.commitInventoryImportPlan` refreshes observable state and starts post-save emoji enhancement.
+- Import schema `cubby-import-v1` matches items by normalized title plus normalized location path; photos are unsupported.
 
 ### `CloudSyncCoordinator` and `CloudSyncState`
 - Model user-facing sync state: checking, syncing, synced, offline, iCloud unavailable, disabled.

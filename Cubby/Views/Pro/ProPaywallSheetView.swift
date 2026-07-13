@@ -1,5 +1,10 @@
 import RevenueCat
+import StoreKit
 import SwiftUI
+
+#if os(iOS)
+import UIKit
+#endif
 
 struct ProPaywallSheetView: View {
     let context: PaywallContext
@@ -46,8 +51,10 @@ struct ProPaywallSheetView: View {
                 purchaseBar
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                if context.isBlocking == false {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
+                    }
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -80,7 +87,7 @@ struct ProPaywallSheetView: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 4) {
-                Text("Cubby Pro")
+                Text(title)
                     .font(CubbyDesign.Typography.displayLarge)
                     .foregroundStyle(PaywallPalette.ink)
                     .multilineTextAlignment(.center)
@@ -254,7 +261,8 @@ struct ProPaywallSheetView: View {
             }
 
             responsivePurchaseFooterLayout {
-                purchaseFooterLinks
+                purchaseManagementLinks
+                legalLinks
             }
             .foregroundStyle(PaywallPalette.softInk)
         }
@@ -304,7 +312,7 @@ struct ProPaywallSheetView: View {
     }
 
     private var freeLimitBadge: some View {
-        Text("Free: 1 home, 10 items")
+        Text(planBadgeTitle)
             .font(CubbyDesign.Typography.label)
             .foregroundStyle(PaywallPalette.copper)
             .padding(.horizontal, 10)
@@ -330,28 +338,43 @@ struct ProPaywallSheetView: View {
     }
 
     @ViewBuilder
-    private var purchaseFooterLinks: some View {
-        Button {
-            Task { await proAccessManager.restorePurchases() }
-        } label: {
-            Text("Restore Purchase")
-                .font(CubbyDesign.Typography.captionSmall)
-                .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
-                .contentShape(.rect)
-        }
-        .disabled(proAccessManager.isRestoringPurchases)
+    private var purchaseManagementLinks: some View {
+        HStack(spacing: CubbyDesign.Spacing.standard) {
+            Button {
+                Task { await proAccessManager.restorePurchases() }
+            } label: {
+                Text("Restore Purchase")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+            .disabled(proAccessManager.isRestoringPurchases)
 
-        Link(destination: termsURL) {
-            Text("Terms")
-                .font(CubbyDesign.Typography.captionSmall)
-                .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
-                .contentShape(.rect)
+            Button {
+                Task { await showManageSubscriptions() }
+            } label: {
+                Text("Manage Subscription")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
         }
-        Link(destination: privacyURL) {
-            Text("Privacy")
-                .font(CubbyDesign.Typography.captionSmall)
-                .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
-                .contentShape(.rect)
+    }
+
+    private var legalLinks: some View {
+        HStack(spacing: CubbyDesign.Spacing.standard) {
+            Link(destination: termsURL) {
+                Text("Terms")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+            Link(destination: privacyURL) {
+                Text("Privacy")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
         }
     }
 
@@ -385,11 +408,11 @@ struct ProPaywallSheetView: View {
     }
 
     private var ctaTitle: String {
-        if let selectedPackage, hasFreeTrial(selectedPackage) {
-            return "Try Cubby Pro Free"
+        if let trialCopy = selectedTrialCopy {
+            return trialCopy.ctaTitle
         }
 
-        return "Unlock Pro"
+        return context.isBlocking ? "Continue with Pro" : "Unlock Pro"
     }
 
     private var subscriptionDetails: [String] {
@@ -403,23 +426,54 @@ struct ProPaywallSheetView: View {
     }
 
     private var perks: [ProPerk] {
-        [
+        if context.isBlocking {
+            return [
+                ProPerk(emoji: "🏠", title: "Every home from day one", detail: "Set up your inventory with full access."),
+                ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory with photos, tags, and exact paths."),
+                ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Invite a partner or household when you are ready.")
+            ]
+        }
+
+        return [
             ProPerk(emoji: "🏠", title: "Unlimited homes", detail: "Track every place you store things."),
-            ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory, not just the first 10."),
+            ProPerk(emoji: "📦", title: "Unlimited items", detail: "Catalog the whole inventory with photos, tags, and exact paths."),
             ProPerk(emoji: "🤝", title: "Shared home inventories", detail: "Keep a household organized together.")
         ]
     }
 
+    private var title: String {
+        if context.isBlocking,
+           let trialCopy = selectedTrialCopy {
+            return trialCopy.title
+        }
+
+        return context.isBlocking ? "Start with Cubby Pro" : "Cubby Pro"
+    }
+
+    private var planBadgeTitle: String {
+        if selectedPackageHasFreeTrial {
+            return "Free trial included"
+        }
+
+        return context.isBlocking ? "Subscription required" : "Full access"
+    }
+
     private var subtitle: String {
         switch context.reason {
+        case .subscriptionRequired:
+            if let trialCopy = selectedTrialCopy {
+                return trialCopy.blockingSubtitle()
+            }
+
+            return "Cubby Pro is required to create and use your home inventory."
         case .homeLimitReached:
-            "Add every home without bumping into the free limit."
+            return "Add every home with Cubby Pro."
         case .itemLimitReached:
-            "Make room for the rest of your inventory."
+            return "Add every item with Cubby Pro."
         case .overLimit:
-            "Keep creating without deleting what you already organized."
+            return "Keep creating with Cubby Pro without deleting what you already organized."
         case .manualUpgrade:
-            "Room for every home, every item, every detail."
+            return "Room for every home, every item, every detail."
         }
     }
 
@@ -510,7 +564,7 @@ struct ProPaywallSheetView: View {
 
     private func priceText(for package: Package) -> String {
         if let trialText = trialDurationText(for: package) {
-            return "\(trialText) free"
+            return TrialOfferCopy(durationText: trialText)?.priceText ?? "\(trialText) free"
         }
 
         return package.storeProduct.localizedPriceString
@@ -539,14 +593,32 @@ struct ProPaywallSheetView: View {
     }
 
     private func hasFreeTrial(_ package: Package) -> Bool {
-        package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
-            && proAccessManager.introEligibilityStatus(for: package).isEligible
+        if isFreeTrialPreviewForced && package.storeProduct.productCategory == .subscription {
+            return true
+        }
+
+        guard package.storeProduct.introductoryDiscount?.paymentMode == .freeTrial else {
+            return false
+        }
+
+        switch proAccessManager.introEligibilityStatus(for: package) {
+        case .ineligible, .noIntroOfferExists:
+            return false
+        case .eligible, .unknown:
+            return true
+        @unknown default:
+            return false
+        }
     }
 
     private func trialDurationText(for package: Package) -> String? {
-        guard hasFreeTrial(package),
-              let discount = package.storeProduct.introductoryDiscount else {
+        guard hasFreeTrial(package) else {
             return nil
+        }
+
+        guard let discount = package.storeProduct.introductoryDiscount,
+              discount.paymentMode == .freeTrial else {
+            return isFreeTrialPreviewForced ? "7 days" : nil
         }
 
         return trialLengthDescription(discount.subscriptionPeriod)
@@ -558,12 +630,39 @@ struct ProPaywallSheetView: View {
             return nil
         }
 
-        return "\(trialText) free, then \(renewalText)."
+        return TrialOfferCopy(durationText: trialText)?.termsText(renewalText: renewalText)
+            ?? "\(trialText) free, then \(renewalText)."
     }
 
     private func renewalPriceText(for package: Package) -> String? {
         guard hasFreeTrial(package) else { return nil }
         return "\(package.storeProduct.localizedPriceString)\(shortCadenceSuffix(for: package))"
+    }
+
+    private var selectedPackageHasFreeTrial: Bool {
+        guard let selectedPackage else {
+            return isFreeTrialPreviewForced && context.isBlocking
+        }
+        return hasFreeTrial(selectedPackage)
+    }
+
+    private var selectedTrialDurationText: String? {
+        guard let selectedPackage else {
+            return isFreeTrialPreviewForced && context.isBlocking ? "7 days" : nil
+        }
+        return trialDurationText(for: selectedPackage)
+    }
+
+    private var selectedTrialCopy: TrialOfferCopy? {
+        TrialOfferCopy(durationText: selectedTrialDurationText)
+    }
+
+    private var isFreeTrialPreviewForced: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("FORCE_FREE_TRIAL_PREVIEW")
+        #else
+        false
+        #endif
     }
 
     private func monthlyEquivalentPrice(for package: Package) -> NSDecimalNumber? {
@@ -633,7 +732,7 @@ struct ProPaywallSheetView: View {
         return " every \(subscriptionLengthDescription(period))"
     }
 
-    private func trialLengthDescription(_ period: SubscriptionPeriod) -> String {
+    private func trialLengthDescription(_ period: RevenueCat.SubscriptionPeriod) -> String {
         switch period.unit {
         case .week where period.value == 1:
             return "7 days"
@@ -644,7 +743,7 @@ struct ProPaywallSheetView: View {
         }
     }
 
-    private func subscriptionLengthDescription(_ period: SubscriptionPeriod?) -> String {
+    private func subscriptionLengthDescription(_ period: RevenueCat.SubscriptionPeriod?) -> String {
         guard let period else { return "period" }
         let unit: String
         switch period.unit {
@@ -660,6 +759,22 @@ struct ProPaywallSheetView: View {
             unit = "period"
         }
         return "\(period.value) \(unit)"
+    }
+
+    @MainActor
+    private func showManageSubscriptions() async {
+        #if os(iOS)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            do {
+                try await StoreKit.AppStore.showManageSubscriptions(in: windowScene)
+                return
+            } catch { }
+        }
+        #endif
+
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            openURL(url)
+        }
     }
 }
 

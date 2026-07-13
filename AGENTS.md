@@ -30,10 +30,14 @@ Cubby is an iPhone home-inventory app that helps users track belongings across h
 ### Building and Running
 ```bash
 # Build the project
-xcodebuild -project Cubby.xcodeproj -scheme Cubby build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+xcodebuild -project Cubby.xcodeproj -scheme Cubby \
+  -destination 'generic/platform=iOS Simulator' \
+  build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
-# Run tests
-xcodebuild -project Cubby.xcodeproj -scheme Cubby test
+# Run tests on an installed current iPhone simulator
+xcodebuild -project Cubby.xcodeproj -scheme Cubby \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2' \
+  test
 
 # Clean build folder
 xcodebuild -project Cubby.xcodeproj -scheme Cubby clean
@@ -44,39 +48,38 @@ xcrun simctl install booted /path/to/Cubby.app
 # Launch on simulator
 xcrun simctl launch booted com.barronroth.Cubby
 
-# Launch with seeded mock data; persistent unless combined with UI-TESTING
-xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
 ```
 
 ### Development Workflow
 - Primary development is done through Xcode.
 - Current app target is iPhone, deployment target iOS 26.0.
 - SwiftUI previews remain useful, but the production runtime is `AppStore` + Core Data, not direct SwiftData queries.
-- Test on a current iPhone simulator. Legacy Fastlane snapshot config targets iPhone 17 Pro Max.
+- Test on a current iPhone simulator.
+- The shared `Cubby` scheme enables `SEED_MOCK_DATA` for Run actions, and Test inherits the scheme launch arguments. Build and Archive do not execute seeding. Add `SKIP_SEEDING` or `SEED_NONE` when an unseeded launch is required.
 
 ## Runtime States and Launch Arguments
 
-Cubby reads launch arguments in `Cubby/CubbyApp.swift`, `Cubby/Services/CloudKitSyncSettings.swift`, `Cubby/Services/FeatureGate.swift`, `Cubby/Services/SharedHomesGateService.swift`, `Cubby/Services/HomeSharingService.swift`, and `Cubby/Services/ProAccessManager.swift`.
+Cubby reads launch arguments in `Cubby/CubbyApp.swift`, `Cubby/Services/CloudKitSyncSettings.swift`, `Cubby/Services/FeatureGate.swift`, `Cubby/Services/SharedHomesGateService.swift`, `Cubby/Services/HomeSharingService.swift`, `Cubby/Services/ProAccessManager.swift`, `Cubby/Views/Home/HomeSearchContainer.swift`, and `Cubby/Views/Pro/ProPaywallSheetView.swift`.
 
 ### Data + Onboarding
 - `UI-TESTING` / `-ui_testing`: uses an in-memory SwiftData source, clears `UserDefaults`, and seeds data unless `SNAPSHOT_ONBOARDING` or `SKIP_SEEDING`/`SEED_NONE` is present.
-- `SEED_MOCK_DATA`: clears SwiftData source data, seeds the full mock dataset, and sets `hasCompletedOnboarding = true`; it is persistent unless `UI-TESTING`/XCTest is also active.
+- `SEED_MOCK_DATA`: clears and reseeds the legacy SwiftData source and sets `hasCompletedOnboarding = true`. Core Data imports that source only while `coreDataMigrationComplete` is false, so this flag alone may not replace the visible inventory on an existing persistent installation.
 - `SEED_ITEM_LIMIT_REACHED`: seeds 1 home + 10 items to hit the free item limit.
 - `SEED_FREE_TIER`: seeds 1 home named `Reach` with under-limit Halo-themed items.
 - `SEED_EMPTY_HOME`: seeds 1 empty home + `Unsorted`.
 - `SEED_MISSING_LOCAL_PHOTO`: seeds an item with photo metadata but no local image file for missing-photo UI tests.
 - `SKIP_SEEDING` / `SEED_NONE`: disables seeding even if `UI-TESTING` is present.
 - `SNAPSHOT_ONBOARDING`: forces onboarding (`hasCompletedOnboarding = false`) and disables seeding.
-- `hasCompletedOnboarding` gate: when false, `OnboardingView` is shown; when true, `HomeSearchContainer` is shown.
+- Launch routing is not a binary onboarding gate. When `hasCompletedOnboarding` is true, Cubby shows `HomeSearchContainer`. When false with existing homes, it temporarily shows `RestoringExistingHomeView`, selects a preferred home, and completes onboarding automatically. When false with no homes and recovery enabled, it shows `ExistingHomesRecoveryView` before allowing a fresh `OnboardingView` flow.
 - Onboarding creates the first home through `AppStore.createHome`; the Core Data repository creates the default `Unsorted` location.
 - `lastUsedHomeId` is set during seeding so the UI lands on the primary mock home.
 - Seeding priority: `SEED_ITEM_LIMIT_REACHED` -> `SEED_FREE_TIER` -> `SEED_EMPTY_HOME` -> `SEED_MISSING_LOCAL_PHOTO` -> `SEED_MOCK_DATA`.
 
 ### Core Data + CloudKit
 - `USE_CORE_DATA_SHARING_STACK`: enables the Core Data sharing stack; it is currently enabled by default unless explicitly disabled through the environment.
-- `DISABLE_CLOUDKIT`: uses a local non-CloudKit store.
+- `DISABLE_CLOUDKIT`: disables CloudKit for the legacy SwiftData container plus schema-bootstrap, availability-check, and startup-recovery behavior. It does not remove CloudKit options from the primary Core Data private/shared stores, so it is not a fully local-only Core Data mode.
 - `INIT_CLOUDKIT_SCHEMA`: initializes the development CloudKit schema for the active stack.
-- `STRICT_CLOUDKIT_STARTUP`: disables DEBUG fallback after CloudKit container creation errors.
+- `STRICT_CLOUDKIT_STARTUP`: in DEBUG, prevents only the legacy SwiftData `ModelContainer` from falling back to an in-memory container after creation fails. Core Data initialization failures still show `RuntimeInitializationFailureView`.
 - `FORCE_CLOUDKIT_AVAILABILITY_AVAILABLE`
 - `FORCE_CLOUDKIT_AVAILABILITY_NO_ACCOUNT`
 - `FORCE_CLOUDKIT_AVAILABILITY_RESTRICTED`
@@ -102,17 +105,20 @@ Cubby reads launch arguments in `Cubby/CubbyApp.swift`, `Cubby/Services/CloudKit
 - `RevenueCatPublicApiKey` comes from `$(REVENUECAT_PUBLIC_API_KEY)` in `Info.plist`; Debug uses a RevenueCat test public SDK key and Release/TestFlight/App Store must use the production public SDK key.
 - UI tests, SwiftUI previews, and XCTest skip RevenueCat network/configuration after a usable key is present and default to `isPro = true`; a missing/unexpanded key still fatal-errors in DEBUG.
 - `FORCE_FREE_TIER` / `FORCE_PRO_TIER` override `isPro` in UI tests, previews, XCTest, and DEBUG manual runs.
-- Free limits (`FeatureGate`): 1 owned home, 10 owned items per owned home. Shared/collaborator homes are excluded from owner counts.
-- If a free user has more than 1 owned home, creation is denied with `overLimit`; view/search/edit remains allowed.
-- Paywall reasons: `homeLimitReached`, `itemLimitReached`, `overLimit`, and `manualUpgrade`.
+- Cubby uses a hard subscription paywall after onboarding. Once entitlement resolution finishes, Pro users enter the inventory and non-Pro users receive a non-dismissible `subscriptionRequired` paywall.
+- Paywall reasons are `subscriptionRequired`, `homeLimitReached`, `itemLimitReached`, `overLimit`, and `manualUpgrade`; only `subscriptionRequired` is blocking.
+- `HARD_PAYWALL_PREVIEW` forces the blocking wall in DEBUG.
+- `FORCE_FREE_TRIAL_PREVIEW` forces trial presentation with a seven-day fallback in DEBUG; it does not grant entitlement or StoreKit eligibility.
+- Legacy `FeatureGate` limits remain at 1 owned home and 10 owned items per owned home. They remain defense-in-depth creation/sharing checks, but the hard paywall is the primary access model. Shared/collaborator homes are excluded from owner counts.
+
+### Recovery Debug Flags
+- `FORCE_EXISTING_HOMES_RECOVERY` (DEBUG): forces `ExistingHomesRecoveryView` when onboarding is incomplete and no homes are loaded.
+- `FORCE_MIGRATION_RECOVERY_MESSAGE` (DEBUG): preloads the migration recovery message so `HomeSearchContainer` presents the dismissible `Storage Recovered` alert.
 
 ### Example Launch Commands
 ```bash
 # Normal run: persistent store, CloudKit enabled by default
 xcrun simctl launch booted com.barronroth.Cubby
-
-# Seed mock data in the normal persistent flow
-xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA
 
 # UI testing defaults: in-memory source, seeded, onboarding skipped
 xcrun simctl launch booted com.barronroth.Cubby UI-TESTING
@@ -120,61 +126,61 @@ xcrun simctl launch booted com.barronroth.Cubby UI-TESTING
 # Force onboarding snapshot state
 xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SNAPSHOT_ONBOARDING
 
-# Force paywall at the item limit
-xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_ITEM_LIMIT_REACHED FORCE_FREE_TIER
+# Preview the blocking subscription wall and forced trial copy
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING FORCE_FREE_TIER FORCE_FREE_TRIAL_PREVIEW
 
 # Preview missing local photo state
 xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_MISSING_LOCAL_PHOTO
 
-# Preview shared-home UX without iCloud
-xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA MOCK_SHARED_HOMES_MIXED
+# Preview shared-home UX with the mock sharing service
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_MOCK_DATA MOCK_SHARED_HOMES_MIXED
 
 # Preview read-only collaborator experience
-xcrun simctl launch booted com.barronroth.Cubby SEED_MOCK_DATA MOCK_SHARED_HOMES_READ_ONLY
+xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_MOCK_DATA MOCK_SHARED_HOMES_READ_ONLY
 
-# Run local-only without CloudKit
-xcrun simctl launch booted com.barronroth.Cubby DISABLE_CLOUDKIT
 ```
 
 ### Gotchas
 - Changing seed behavior requires rebuilding and reinstalling the app on the simulator.
-- Seeding clears SwiftData source data, then the Core Data migration path copies seeded data into the runtime repository when the sharing stack is active.
+- Seeding clears the SwiftData source. Core Data copies it only when migration has not already completed; `UI-TESTING` clears `UserDefaults`, while `SEED_MOCK_DATA` alone does not reset the migration marker or Core Data stores.
 - `SEED_MOCK_DATA` alone does not imply in-memory storage.
+- `simctl ... booted` commands require an already booted simulator.
 - Debug RevenueCat test keys are not valid for TestFlight/App Store builds.
 
 ## Release & Distribution
 
-- Current release tooling is ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud, not Fastlane.
+- Current release tooling is ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud.
 - Use XcodeBuildMCP or Xcode/xcodebuild for simulator build/run/test validation.
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution operations.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` contains App Store Connect export options for local `asc`/Xcode export flows.
-- Version/build numbers are release-sensitive. Before direct local upload or App Store distribution:
+- Version/build numbers are release-sensitive. Run this flow before pushing any branch that can trigger Xcode Cloud, before opening/updating a release PR, and before every push or merge to `main`.
+  - Any push to `main`, including documentation or tooling changes, can trigger the release-sensitive `Cubby | Default` archive.
+  - Use the repo-local `cubby-xcloud-pr-preflight` skill and run:
+    `python3 .agents/skills/cubby-xcloud-pr-preflight/scripts/preflight.py`
+    Add `--direct-upload` when a local ASC/TestFlight upload will run.
   - Read the project values from `Cubby.xcodeproj/project.pbxproj`:
     `rg -n "MARKETING_VERSION|CURRENT_PROJECT_VERSION" Cubby.xcodeproj/project.pbxproj`
-  - Check App Store Connect for already-uploaded builds:
-    `asc builds list --app 6751732388 --sort -uploadedDate --limit 20 --output table`
-  - Ensure `CURRENT_PROJECT_VERSION` is greater than every uploaded/submitted build for the same `MARKETING_VERSION` before a direct upload; if not, bump all occurrences to the next unused integer.
-  - The configured Xcode Cloud PR/main workflow assigns the uploaded run number, so it does not require a checked-in `CURRENT_PROJECT_VERSION` bump solely to start that workflow.
-  - Do not bump `MARKETING_VERSION` unless the user explicitly asks for a new App Store version or the release train requires it. For normal PR/TestFlight fixes, keep the current marketing version and only bump the build number.
-  - Current release preflight (2026-07-12): App Store version trains 1.0.10 and 1.0.11 are closed. A future App Store release requires a new `MARKETING_VERSION`; do not change it during ordinary review integration unless explicitly requested.
-  - After pushing, monitor Xcode Cloud from GitHub with `gh pr checks --watch=false`; if it fails, inspect the Xcode Cloud details before bumping again.
+  - Check whether the current `MARKETING_VERSION` points at a closed App Store version train:
+    `ASC_BYPASS_KEYCHAIN=1 asc versions list --app 6751732388 --platform IOS --output table`
+  - Treat `READY_FOR_DISTRIBUTION`, `READY_FOR_SALE`, `DEVELOPER_REMOVED_FROM_SALE`, and `REMOVED_FROM_SALE` as closed version-train states. Select the next intended release version before uploading to a closed train.
+  - To inspect all uploaded builds, use pagination:
+    `ASC_BYPASS_KEYCHAIN=1 asc builds list --app 6751732388 --sort -uploadedDate --limit 200 --paginate --output table`
+  - For direct local TestFlight uploads, run the preflight with `--direct-upload`. It paginates all build pages and blocks a project build number that is not greater than the maximum uploaded build for the current marketing version.
+  - Do not assume every Xcode Cloud failure is a build-number collision. Closed version trains caused prior failures, while Xcode Cloud may assign a build number that differs from `CURRENT_PROJECT_VERSION`.
+  - Do not bump `MARKETING_VERSION` unless the user explicitly asks for a new App Store version or the release train requires it. For normal PR/TestFlight fixes on an open train, keep the current marketing version and only bump the build number when direct upload needs it.
+  - For a PR, run `gh pr checks <pr-number> --watch=false` and inspect `Cubby | Codex TestFlight`.
+  - For `main`, run `gh api repos/barronlroth/Cubby/commits/main/check-runs` and inspect `Cubby | Default`.
+  - If Xcode Cloud fails, inspect its details before changing version/build settings.
 - Branches intended to launch the Codex Xcode Cloud/TestFlight workflow should keep the `codex/` prefix.
-- `fastlane/` is legacy. Historically it provided:
-  - `fastlane beta`: increment build number, build an App Store export, upload to TestFlight, wait for processing, distribute externally.
-  - `fastlane beta_internal`: same upload path without external distribution.
-  - `fastlane snapshot`: App Store screenshot capture using the Fastlane snapshot helper.
-- Do not assume Fastlane is the active shipping path unless the user explicitly asks to use it.
 
-### Snapshots
-- Legacy `fastlane/Snapfile` targets iPhone 17 Pro Max, iOS 26.0, language `en-US`, and writes to `fastlane/screenshots`.
-- Snapshots use `CubbyUITests`.
+### UI Screenshots
+- Screenshot coverage uses `CubbyUITests`.
 - `CubbySnapshotTests` captures:
   - `00-Onboarding` with `UI-TESTING SNAPSHOT_ONBOARDING`
   - `01-Home` with `UI-TESTING SEED_MOCK_DATA`
   - `02-ItemDetail` with `UI-TESTING SEED_MOCK_DATA`
   - `03-AddItem` with `UI-TESTING SEED_MOCK_DATA`
-- When run through Fastlane snapshot, the helper injects `-FASTLANE_SNAPSHOT YES -ui_testing`.
 
 ## Architecture
 
@@ -274,9 +280,17 @@ Cubby/
 
 ### Pro and Paywall
 - The global paywall sheet is driven by `PaywallContext` from `HomeSearchContainer`.
+- `HardPaywallPolicy` allows onboarding, waits while entitlement resolves, admits Pro users, and blocks resolved non-Pro users with `subscriptionRequired`.
 - `ProPaywallSheetView` renders the custom paywall and only shows RevenueCat subscription packages.
 - Annual packages are ranked before monthly packages and show monthly equivalent detail when possible.
-- `ProStatusView` handles status, restore, legal links, and upgrade entry.
+- `OptionsView` handles subscription status, restore/manage actions, legal links, upgrade entry, and inventory import/export navigation.
+
+### Inventory Import / Export
+- Import/export operates on the currently selected home.
+- `OptionsView` owns JSON/file input, export copy/share, review, and explicit confirmation.
+- `InventoryImportExport.swift` owns schemas, parsing, selected-home export generation, validation, matching, and dry-run planning.
+- `CoreDataAppRepository` commits reviewed plans transactionally and rolls back failed batches; `AppStore` refreshes state and schedules pending emoji enhancement.
+- Import v1 supports location and item creation/update but not photos.
 
 ### Shared Homes
 - `SharedHomesGateService` gates shared-home UI.
@@ -294,7 +308,7 @@ Cubby/
 - Current app target is iOS 26.0.
 - Core Data runtime uses `NSPersistentCloudKitContainer` with private and shared stores.
 - SwiftData still exists; do not remove or change it without considering migration, previews, and seeded UI tests.
-- CloudKit is enabled by default outside tests unless `DISABLE_CLOUDKIT` is present.
+- The primary Core Data runtime attaches CloudKit options to its private/shared stores by default. `DISABLE_CLOUDKIT` does not currently disable that Core Data configuration.
 
 ### Known Issues / Limits
 - Photos are local-only; issue #53 tracks syncing compressed photo assets.
@@ -343,7 +357,7 @@ Cubby/
 ### Debug Infrastructure
 - `DebugLogger` provides consistent logging helpers.
 - Use direct repository/app-store assertions in tests before relying on UI state.
-- For CloudKit startup issues, try `DISABLE_CLOUDKIT` or `STRICT_CLOUDKIT_STARTUP` depending on whether you want fallback or hard failure.
+- For CloudKit startup issues, distinguish the legacy SwiftData container from the primary Core Data stack. `DISABLE_CLOUDKIT` and `STRICT_CLOUDKIT_STARTUP` affect the SwiftData/recovery path, not Core Data CloudKit store configuration.
 
 ## Code Style Guidelines
 - Use descriptive variable names.

@@ -10,7 +10,10 @@ enum EmojiPicker {
     ]
 
     static func emoji(for id: UUID) -> String {
-        let idx = abs(id.uuidString.hashValue) % emojis.count
+        let hash = id.uuidString.unicodeScalars.reduce(UInt64(14_695_981_039_346_656_037)) { partial, scalar in
+            (partial ^ UInt64(scalar.value)) &* 1_099_511_628_211
+        }
+        let idx = Int(hash % UInt64(emojis.count))
         return emojis[idx]
     }
 

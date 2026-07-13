@@ -107,7 +107,8 @@ struct MainNavigationView: View {
                         minHeight: CubbyDesign.Layout.minimumTapTarget
                     )
                     .contentShape(.rect)
-                    .accessibilityLabel("Dismiss undo")
+                    .accessibilityLabel("Dismiss Undo")
+                    .accessibilityHint("Hides the undo prompt.")
                 }
                 .transition(.scale.combined(with: .opacity))
                 .padding(.top, 8)

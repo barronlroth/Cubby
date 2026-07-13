@@ -109,12 +109,14 @@ final class AppStore: ObservableObject {
 
     func searchItems(query: String, homeID: UUID?) -> [AppInventoryItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let searchableItems = homeID.map { items(in: $0) } ?? items.sorted(by: itemSort)
+
         guard trimmed.isEmpty == false else {
-            return items(in: homeID)
+            return searchableItems
         }
 
         let terms = trimmed.split(separator: " ").map(String.init)
-        return items(in: homeID)
+        return searchableItems
             .filter { item in
                 terms.allSatisfy { term in
                     item.title.localizedCaseInsensitiveContains(term)
@@ -301,6 +303,24 @@ final class AppStore: ObservableObject {
     func restoreDeletedItem(_ snapshot: AppDeletedItemSnapshot) throws {
         _ = try repository.restoreDeletedItem(snapshot)
         refresh()
+    }
+
+    func commitInventoryImportPlan(_ plan: InventoryImportPlan) throws -> InventoryImportCommitResult {
+        let result = try repository.commitInventoryImportPlan(plan)
+        refresh()
+
+        for itemID in result.pendingEmojiItemIDs {
+            guard let item = item(id: itemID) else { continue }
+            Task {
+                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: item.id,
+                    title: item.title,
+                    persistenceController: repository.persistenceController
+                )
+            }
+        }
+
+        return result
     }
 
     func deleteSnapshot(for itemID: UUID) -> AppDeletedItemSnapshot? {

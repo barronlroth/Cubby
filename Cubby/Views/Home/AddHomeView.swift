@@ -65,14 +65,16 @@ struct AddHomeView: View {
 
     private var gateAlertMessage: String {
         switch gatePaywallReason {
+        case .subscriptionRequired:
+            "Cubby Pro is required to create and use your home inventory."
         case .homeLimitReached:
-            "Free includes 1 home. Upgrade to Cubby Pro to add more."
+            "Cubby Pro is required to add another home."
         case .overLimit:
-            "You’re over the Free limit. Upgrade to Pro or delete down to continue creating."
+            "Cubby Pro is required to keep adding homes and items."
         case .itemLimitReached:
-            "Upgrade to Cubby Pro to add more."
+            "Cubby Pro is required to add more items."
         case .manualUpgrade:
-            "Upgrade to Cubby Pro to unlock unlimited homes and items."
+            "Cubby Pro unlocks every home and item."
         }
     }
 

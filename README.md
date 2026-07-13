@@ -136,7 +136,7 @@ Current release work uses ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` supports local App Store Connect export flows.
 
-`fastlane/` remains in the repo as legacy tooling. It historically handled TestFlight beta uploads and screenshot capture, but it is not the current shipping path unless explicitly requested.
+Feature plans and technical notes live under [`docs/`](docs/README.md). New plans should use a descriptive feature name under `docs/plans/` rather than a generic root-level filename.
 
 ## Known Limits
 

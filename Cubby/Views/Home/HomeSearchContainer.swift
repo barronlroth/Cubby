@@ -10,6 +10,7 @@ struct HomeSearchContainer: View {
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
     @StateObject private var proAccessManager: ProAccessManager
+    @EnvironmentObject private var appStore: AppStore
     private let initialSelectedHomeID: UUID?
 
     init(
@@ -25,6 +26,11 @@ struct HomeSearchContainer: View {
         self.initialSelectedHomeID = initialSelectedHomeID
         _proAccessManager = StateObject(
             wrappedValue: proAccessManager ?? ProAccessManager()
+        )
+        _activePaywall = State(
+            initialValue: ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+                ? PaywallContext(reason: .subscriptionRequired)
+                : nil
         )
 
 #if canImport(UIKit)
@@ -49,6 +55,63 @@ struct HomeSearchContainer: View {
         .sheet(item: $activePaywall) { context in
             ProPaywallSheetView(context: context)
                 .environmentObject(proAccessManager)
+                .interactiveDismissDisabled(context.isBlocking)
         }
+        .onAppear(perform: reconcileHardPaywall)
+        .onChange(of: proAccessManager.entitlementState) { _, _ in
+            reconcileHardPaywall()
+        }
+        .alert(
+            "Storage Recovered",
+            isPresented: Binding(
+                get: { appStore.recoveryMessage != nil },
+                set: { isPresented in
+                    if isPresented == false {
+                        appStore.recoveryMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                appStore.recoveryMessage = nil
+            }
+        } message: {
+            Text(appStore.recoveryMessage ?? "")
+        }
+    }
+
+    private func reconcileHardPaywall() {
+        if isHardPaywallPreviewForced {
+            activePaywall = PaywallContext(reason: .subscriptionRequired)
+            return
+        }
+
+        let access = HardPaywallPolicy.access(
+            hasCompletedOnboarding: true,
+            entitlementState: proAccessManager.entitlementState
+        )
+
+        switch access {
+        case .allowed:
+            if activePaywall?.isBlocking == true {
+                activePaywall = nil
+            }
+        case .waitingForEntitlement:
+            if activePaywall?.isBlocking == true {
+                activePaywall = nil
+            }
+        case let .blocked(reason):
+            if activePaywall?.reason != reason {
+                activePaywall = PaywallContext(reason: reason)
+            }
+        }
+    }
+
+    private var isHardPaywallPreviewForced: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+        #else
+        false
+        #endif
     }
 }

@@ -12,7 +12,11 @@ struct SearchView: View {
     }
 
     private var searchResults: [AppInventoryItem] {
-        appStore.searchItems(query: searchText, homeID: selectedHomeID)
+        guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return []
+        }
+
+        return appStore.searchItems(query: searchText, homeID: selectedHomeID)
     }
 
     var body: some View {
