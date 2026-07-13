@@ -4,6 +4,7 @@ struct MainNavigationView: View {
     @Binding var searchText: String
     @Binding var showingAddItem: Bool
     @Binding var canAddItem: Bool
+    let initialSelectedHomeID: UUID?
 
     @State private var selectedHome: AppHome?
     @State private var selectedLocation: AppStorageLocation?
@@ -16,6 +17,18 @@ struct MainNavigationView: View {
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @EnvironmentObject private var appStore: AppStore
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
+
+    init(
+        searchText: Binding<String>,
+        showingAddItem: Binding<Bool>,
+        canAddItem: Binding<Bool>,
+        initialSelectedHomeID: UUID? = nil
+    ) {
+        _searchText = searchText
+        _showingAddItem = showingAddItem
+        _canAddItem = canAddItem
+        self.initialSelectedHomeID = initialSelectedHomeID
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -73,15 +86,27 @@ struct MainNavigationView: View {
                         .foregroundColor(.white)
                         .clipShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
 
                     Button(action: { undoManager.dismissUndo() }) {
                         Image(systemName: "xmark")
                             .font(.caption)
-                            .frame(width: 24, height: 24)
+                            .frame(
+                                width: CubbyDesign.Layout.compactIcon,
+                                height: CubbyDesign.Layout.compactIcon
+                            )
                             .background(Color.gray.opacity(0.6))
                             .foregroundColor(.white)
                             .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .frame(
+                        minWidth: CubbyDesign.Layout.minimumTapTarget,
+                        minHeight: CubbyDesign.Layout.minimumTapTarget
+                    )
+                    .contentShape(.rect)
                     .accessibilityLabel("Dismiss Undo")
                     .accessibilityHint("Hides the undo prompt.")
                 }
@@ -89,8 +114,8 @@ struct MainNavigationView: View {
                 .padding(.top, 8)
             }
         }
-        .animation(.spring(response: 0.3), value: undoManager.canUndo)
-        .animation(.easeInOut(duration: 0.2), value: undoManager.timeRemaining)
+        .cubbyAnimation(.emphasized, value: undoManager.canUndo)
+        .cubbyAnimation(.standard, value: undoManager.timeRemaining)
         .onAppear(perform: restoreSelectedHomeIfNeeded)
         .onChange(of: appStore.homes) { _, newHomes in
             synchronizeSelectedHome(with: newHomes)
@@ -104,7 +129,7 @@ struct MainNavigationView: View {
             }
             canAddItem = newHome != nil
         }
-        .animation(.spring(response: 0.3), value: selectedHome?.id)
+        .cubbyAnimation(.emphasized, value: selectedHome?.id)
     }
 
     static func selectionAfterRemovingHome(
@@ -196,7 +221,10 @@ struct MainNavigationView: View {
     private func restoreSelectedHomeIfNeeded() {
         guard selectedHome == nil else { return }
 
-        if let lastIdString = lastUsedHomeId,
+        if let initialSelectedHomeID,
+           let initialHome = appStore.home(id: initialSelectedHomeID) {
+            selectedHome = initialHome
+        } else if let lastIdString = lastUsedHomeId,
            let lastId = UUID(uuidString: lastIdString),
            let restoredHome = appStore.home(id: lastId) {
             selectedHome = restoredHome
@@ -265,6 +293,6 @@ private struct ContentTopMarginZero: ViewModifier {
 private struct ApplyHomeDesign: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color("CubbyHomeBackground"))
+            .background(CubbyDesign.Palette.homeCanvas)
     }
 }
