@@ -10,6 +10,7 @@ struct ProPaywallSheetView: View {
     let context: PaywallContext
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var proAccessManager: ProAccessManager
 
@@ -34,7 +35,7 @@ struct ProPaywallSheetView: View {
 
                         if let message = proAccessManager.restoreMessage {
                             Text(message)
-                                .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
+                                .font(CubbyDesign.Typography.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
@@ -43,8 +44,7 @@ struct ProPaywallSheetView: View {
                         complianceSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, -36)
-                    .padding(.bottom, 140)
+                    .padding(.top, 12)
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -83,20 +83,18 @@ struct ProPaywallSheetView: View {
             Image("ProPaywallHero")
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 136)
-                .padding(.horizontal, -14)
+                .frame(maxWidth: 360, maxHeight: 136)
                 .accessibilityHidden(true)
 
             VStack(spacing: 4) {
                 Text(title)
-                    .font(.custom("AwesomeSerif-ExtraTall", size: 50, relativeTo: .largeTitle))
+                    .font(CubbyDesign.Typography.displayLarge)
                     .foregroundStyle(PaywallPalette.ink)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.72)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(subtitle)
-                    .font(.custom("CircularStd-Book", size: 17, relativeTo: .body))
+                    .font(CubbyDesign.Typography.body)
                     .foregroundStyle(PaywallPalette.softInk)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -116,11 +114,11 @@ struct ProPaywallSheetView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(perk.title)
-                            .font(.custom("CircularStd-Medium", size: 16, relativeTo: .body))
+                            .font(CubbyDesign.Typography.bodyCompactEmphasized)
                             .foregroundStyle(PaywallPalette.ink)
 
                         Text(perk.detail)
-                            .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
+                            .font(CubbyDesign.Typography.caption)
                             .foregroundStyle(PaywallPalette.softInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -141,20 +139,11 @@ struct ProPaywallSheetView: View {
     @ViewBuilder
     private var plansSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Choose your plan")
-                    .font(.custom("CircularStd-Medium", size: 15, relativeTo: .body))
-                    .foregroundStyle(PaywallPalette.ink)
-
-                Spacer()
-
-                Text(planBadgeTitle)
-                    .font(.custom("CircularStd-Medium", size: 12, relativeTo: .caption))
-                    .foregroundStyle(PaywallPalette.copper)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(PaywallPalette.copper.opacity(0.12), in: Capsule())
+            responsivePlanHeaderLayout {
+                planSectionTitle
+                freeLimitBadge
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let error = proAccessManager.offeringsErrorMessage {
                 errorRetryView(message: error)
@@ -187,7 +176,7 @@ struct ProPaywallSheetView: View {
         HStack(spacing: 12) {
             ProgressView()
             Text(proAccessManager.isRevenueCatConfigured ? "Loading purchase options..." : "Purchase options are not available in this build.")
-                .font(.custom("CircularStd-Book", size: 14, relativeTo: .body))
+                .font(CubbyDesign.Typography.bodySmall)
                 .foregroundStyle(PaywallPalette.softInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -202,7 +191,7 @@ struct ProPaywallSheetView: View {
     private func errorRetryView(message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(message)
-                .font(.custom("CircularStd-Book", size: 14, relativeTo: .body))
+                .font(CubbyDesign.Typography.bodySmall)
                 .foregroundStyle(PaywallPalette.softInk)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -233,7 +222,7 @@ struct ProPaywallSheetView: View {
         VStack(spacing: 9) {
             if let purchaseErrorMessage {
                 Text(purchaseErrorMessage)
-                    .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                    .font(CubbyDesign.Typography.captionSmall)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -249,10 +238,13 @@ struct ProPaywallSheetView: View {
                     }
 
                     Text(isPurchasing ? "Starting..." : ctaTitle)
-                        .font(.custom("CircularStd-Medium", size: 17, relativeTo: .headline))
+                        .font(CubbyDesign.Typography.callToAction)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
+                .padding(.vertical, CubbyDesign.Spacing.standard)
+                .frame(minHeight: 54)
             }
             .buttonStyle(.plain)
             .background(ctaBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -262,30 +254,16 @@ struct ProPaywallSheetView: View {
 
             if let selectedPackage, let termsText = selectedPlanTermsText(for: selectedPackage) {
                 Text(termsText)
-                    .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                    .font(CubbyDesign.Typography.finePrint)
                     .foregroundStyle(PaywallPalette.softInk)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 16) {
-                Button("Restore Purchase") {
-                    Task { await proAccessManager.restorePurchases() }
-                }
-                .disabled(proAccessManager.isRestoringPurchases)
-
-                Button("Manage Subscription") {
-                    Task { await showManageSubscriptions() }
-                }
+            responsivePurchaseFooterLayout {
+                purchaseManagementLinks
+                legalLinks
             }
-            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
-            .foregroundStyle(PaywallPalette.softInk)
-
-            HStack(spacing: 16) {
-                Link("Terms", destination: termsURL)
-                Link("Privacy", destination: privacyURL)
-            }
-            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
             .foregroundStyle(PaywallPalette.softInk)
         }
         .padding(.horizontal, 20)
@@ -295,35 +273,109 @@ struct ProPaywallSheetView: View {
             PaywallPalette.background
                 .opacity(0.96)
                 .shadow(color: .black.opacity(0.08), radius: 18, x: 0, y: -8)
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: .bottom)
         }
     }
 
     private var complianceSection: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Subscription Information")
-                .font(.custom("CircularStd-Medium", size: 13, relativeTo: .footnote))
+                .font(CubbyDesign.Typography.captionEmphasized)
                 .foregroundStyle(PaywallPalette.ink)
 
             if subscriptionDetails.isEmpty {
                 Text("Subscription title, length, and price are shown in the purchase options above.")
-                    .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                    .font(CubbyDesign.Typography.finePrint)
                     .foregroundStyle(PaywallPalette.softInk)
             } else {
                 ForEach(subscriptionDetails, id: \.self) { detail in
                     Text(detail)
-                        .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                        .font(CubbyDesign.Typography.finePrint)
                         .foregroundStyle(PaywallPalette.softInk)
                 }
             }
 
             Text("Subscriptions automatically renew unless canceled at least 24 hours before the end of the current period. Manage or cancel in your App Store account settings.")
-                .font(.custom("CircularStd-Book", size: 11, relativeTo: .caption2))
+                .font(CubbyDesign.Typography.finePrint)
                 .foregroundStyle(PaywallPalette.softInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 2)
+    }
+
+    private var planSectionTitle: some View {
+        Text("Choose your plan")
+            .font(CubbyDesign.Typography.bodySmallEmphasized)
+            .foregroundStyle(PaywallPalette.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var freeLimitBadge: some View {
+        Text(planBadgeTitle)
+            .font(CubbyDesign.Typography.label)
+            .foregroundStyle(PaywallPalette.copper)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(PaywallPalette.copper.opacity(0.12), in: Capsule())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var responsivePlanHeaderLayout: AnyLayout {
+        if dynamicTypeSize.isAccessibilitySize {
+            AnyLayout(VStackLayout(alignment: .leading, spacing: CubbyDesign.Spacing.small))
+        } else {
+            AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: CubbyDesign.Spacing.standard))
+        }
+    }
+
+    private var responsivePurchaseFooterLayout: AnyLayout {
+        if dynamicTypeSize.isAccessibilitySize {
+            AnyLayout(VStackLayout(spacing: 0))
+        } else {
+            AnyLayout(HStackLayout(spacing: CubbyDesign.Spacing.standard))
+        }
+    }
+
+    @ViewBuilder
+    private var purchaseManagementLinks: some View {
+        HStack(spacing: CubbyDesign.Spacing.standard) {
+            Button {
+                Task { await proAccessManager.restorePurchases() }
+            } label: {
+                Text("Restore Purchase")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+            .disabled(proAccessManager.isRestoringPurchases)
+
+            Button {
+                Task { await showManageSubscriptions() }
+            } label: {
+                Text("Manage Subscription")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+        }
+    }
+
+    private var legalLinks: some View {
+        HStack(spacing: CubbyDesign.Spacing.standard) {
+            Link(destination: termsURL) {
+                Text("Terms")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+            Link(destination: privacyURL) {
+                Text("Privacy")
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .contentShape(.rect)
+            }
+        }
     }
 
     private var purchasePackages: [Package] {
@@ -741,50 +793,21 @@ private struct ProPlanRow: View {
     let badge: String?
     let isSelected: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(.custom("CircularStd-Medium", size: 17, relativeTo: .body))
-                        .foregroundStyle(PaywallPalette.ink)
-
-                    if let badge {
-                        Text(badge)
-                            .font(.custom("CircularStd-Medium", size: 11, relativeTo: .caption2))
-                            .foregroundStyle(PaywallPalette.copper)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(PaywallPalette.copper.opacity(0.13), in: Capsule())
-                    }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: CubbyDesign.Spacing.medium) {
+                    planDescription
+                    priceBlock(alignment: .leading)
                 }
-
-                Text(subtitle)
-                    .font(.custom("CircularStd-Book", size: 13, relativeTo: .footnote))
-                    .foregroundStyle(PaywallPalette.softInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 10)
-
-            VStack(alignment: .trailing, spacing: 6) {
-                Text(price)
-                    .font(.custom("CircularStd-Medium", size: 17, relativeTo: .body))
-                    .foregroundStyle(PaywallPalette.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-
-                if let priceDetail {
-                    Text(priceDetail)
-                        .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
-                        .foregroundStyle(PaywallPalette.softInk)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+            } else {
+                HStack(alignment: .center, spacing: CubbyDesign.Spacing.medium) {
+                    planDescription
+                    Spacer(minLength: 10)
+                    priceBlock(alignment: .trailing)
                 }
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(isSelected ? PaywallPalette.copper : PaywallPalette.softInk.opacity(0.42))
             }
         }
         .padding(14)
@@ -794,6 +817,65 @@ private struct ProPlanRow: View {
                 .stroke(isSelected ? PaywallPalette.copper.opacity(0.72) : PaywallPalette.hairline, lineWidth: isSelected ? 1.5 : 1)
         }
         .shadow(color: .black.opacity(isSelected ? 0.08 : 0.035), radius: isSelected ? 16 : 8, x: 0, y: isSelected ? 9 : 5)
+    }
+
+    private var planDescription: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: CubbyDesign.Spacing.small) {
+                    planTitle
+                    planBadge
+                }
+                VStack(alignment: .leading, spacing: CubbyDesign.Spacing.xSmall) {
+                    planTitle
+                    planBadge
+                }
+            }
+
+            Text(subtitle)
+                .font(CubbyDesign.Typography.caption)
+                .foregroundStyle(PaywallPalette.softInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var planTitle: some View {
+        Text(title)
+            .font(CubbyDesign.Typography.bodyEmphasized)
+            .foregroundStyle(PaywallPalette.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var planBadge: some View {
+        if let badge {
+            Text(badge)
+                .font(CubbyDesign.Typography.finePrintEmphasized)
+                .foregroundStyle(PaywallPalette.copper)
+                .padding(.horizontal, CubbyDesign.Spacing.small)
+                .padding(.vertical, CubbyDesign.Spacing.xSmall)
+                .background(PaywallPalette.copper.opacity(0.13), in: Capsule())
+        }
+    }
+
+    private func priceBlock(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 6) {
+            Text(price)
+                .font(CubbyDesign.Typography.bodyEmphasized)
+                .foregroundStyle(PaywallPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let priceDetail {
+                Text(priceDetail)
+                    .font(CubbyDesign.Typography.captionSmall)
+                    .foregroundStyle(PaywallPalette.softInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(isSelected ? PaywallPalette.copper : PaywallPalette.softInk.opacity(0.42))
+        }
     }
 }
 

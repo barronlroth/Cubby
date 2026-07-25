@@ -1,0 +1,100 @@
+{
+  "configurations" : [
+    {
+      "id" : "10000000-0000-0000-0000-000000000001",
+      "name" : "Baseline",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "enabled" : true,
+            "key" : "CUBBY_DESIGN_VALIDATION_PROFILE",
+            "value" : "baseline"
+          }
+        ]
+      }
+    },
+    {
+      "id" : "10000000-0000-0000-0000-000000000002",
+      "name" : "Dark",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "enabled" : true,
+            "key" : "CUBBY_DESIGN_VALIDATION_PROFILE",
+            "value" : "dark"
+          }
+        ]
+      }
+    },
+    {
+      "id" : "10000000-0000-0000-0000-000000000003",
+      "name" : "Accessibility Text",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "enabled" : true,
+            "key" : "CUBBY_DESIGN_VALIDATION_PROFILE",
+            "value" : "accessibility-text"
+          }
+        ]
+      }
+    },
+    {
+      "id" : "10000000-0000-0000-0000-000000000004",
+      "name" : "Reduce Motion",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "enabled" : true,
+            "key" : "CUBBY_DESIGN_VALIDATION_PROFILE",
+            "value" : "reduce-motion"
+          }
+        ]
+      }
+    },
+    {
+      "id" : "10000000-0000-0000-0000-000000000005",
+      "name" : "Compact Device",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "enabled" : true,
+            "key" : "CUBBY_DESIGN_VALIDATION_PROFILE",
+            "value" : "compact"
+          }
+        ]
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "maximumTestExecutionTimeAllowance" : 300,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Cubby.xcodeproj",
+      "identifier" : "370E5BA82E5127EC003BFDC4",
+      "name" : "Cubby"
+    },
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "selectedTests" : [
+        "CubbyAccessibilityAuditTests\/testHomeAccessibility()",
+        "CubbyAccessibilityAuditTests\/testItemDetailAccessibility()",
+        "CubbyAccessibilityAuditTests\/testItemEditorAccessibility()",
+        "CubbyAccessibilityAuditTests\/testLocationPickerAccessibility()",
+        "CubbyAccessibilityAuditTests\/testOnboardingAccessibility()",
+        "CubbyAccessibilityAuditTests\/testOptionsAccessibility()",
+        "CubbyAccessibilityAuditTests\/testPaywallAccessibility()",
+        "CubbyAccessibilityAuditTests\/testSearchAccessibility()"
+      ],
+      "target" : {
+        "containerPath" : "container:Cubby.xcodeproj",
+        "identifier" : "370E5BC32E5127EF003BFDC4",
+        "name" : "CubbyUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

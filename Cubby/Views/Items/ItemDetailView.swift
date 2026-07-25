@@ -19,7 +19,6 @@ struct ItemDetailView: View {
 
     @ScaledMetric(relativeTo: .largeTitle) private var headerBadgeSize: CGFloat = 92
     @ScaledMetric(relativeTo: .largeTitle) private var headerEmojiSize: CGFloat = 44
-    @ScaledMetric(relativeTo: .title) private var photoCardHeight: CGFloat = 320
 
     var body: some View {
         Group {
@@ -36,8 +35,7 @@ struct ItemDetailView: View {
                             ItemDetailPhotoCard(
                                 item: item,
                                 photo: photo,
-                                photoState: photoState(for: item),
-                                height: photoCardHeight
+                                photoState: photoState(for: item)
                             )
                         }
 
@@ -56,7 +54,7 @@ struct ItemDetailView: View {
                     .padding(.bottom, 32)
                 }
                 .scrollIndicators(.hidden)
-                .background(appBackground)
+                .background(CubbyDesign.Palette.canvas)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -84,7 +82,10 @@ struct ItemDetailView: View {
                                 }
                             } label: {
                                 Image(systemName: "ellipsis")
-                                    .frame(minWidth: 44, minHeight: 44)
+                                    .frame(
+                                        minWidth: CubbyDesign.Layout.minimumTapTarget,
+                                        minHeight: CubbyDesign.Layout.minimumTapTarget
+                                    )
                                     .contentShape(.rect)
                                     .accessibilityLabel("More actions")
                                     .accessibilityHint("Move, edit, or delete this item.")
@@ -137,7 +138,7 @@ struct ItemDetailView: View {
                     description: Text("This item may have been deleted.")
                 )
                 .padding()
-                .background(appBackground)
+                .background(CubbyDesign.Palette.canvas)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
@@ -235,14 +236,6 @@ struct ItemDetailView: View {
         }
     }
 
-    @Environment(\.colorScheme) private var colorScheme
-    private var appBackground: Color {
-        if colorScheme == .light, UIColor(named: "AppBackground") != nil {
-            return Color("AppBackground")
-        } else {
-            return Color(.systemBackground)
-        }
-    }
 }
 
 private enum PresentedSheet: Identifiable {
@@ -266,7 +259,7 @@ private struct ItemDetailHeader: View {
         VStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(iconBackground)
+                    .fill(CubbyDesign.Palette.itemIconBackground)
                     .frame(width: badgeSize, height: badgeSize)
                 SlotMachineEmojiView(
                     emoji: item.emoji,
@@ -277,7 +270,7 @@ private struct ItemDetailHeader: View {
             }
 
             Text(item.title)
-                .font(CubbyTypography.itemTitleSerif)
+                .font(CubbyDesign.Typography.title)
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -287,48 +280,45 @@ private struct ItemDetailHeader: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var iconBackground: Color {
-        if UIColor(named: "ItemIconBackground") != nil {
-            return Color("ItemIconBackground")
-        } else {
-            return Color(.secondarySystemBackground)
-        }
-    }
 }
 
 private struct ItemDetailPhotoCard: View {
     let item: AppInventoryItem
     let photo: UIImage?
     let photoState: SyncedPhotoPresenceState
-    let height: CGFloat
 
     @ScaledMetric(relativeTo: .title) private var placeholderEmojiSize: CGFloat = 84
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.secondary.opacity(0.08))
+        Color.clear
+            .aspectRatio(4 / 3, contentMode: .fit)
+            .overlay {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.secondary.opacity(0.08))
 
-            switch photoState {
-            case .available:
-                if let photo {
-                    Image(uiImage: photo)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    placeholder
+                    switch photoState {
+                    case .available:
+                        if let photo {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            placeholder
+                        }
+                    case .loading:
+                        ProgressView()
+                    case .missingOnDevice:
+                        missingLocalPlaceholder
+                    case .noPhoto:
+                        placeholder
+                    }
                 }
-            case .loading:
-                ProgressView()
-            case .missingOnDevice:
-                missingLocalPlaceholder
-            case .noPhoto:
-                placeholder
             }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: height)
-        .clipShape(.rect(cornerRadius: 24))
+            .frame(maxWidth: .infinity)
+            .clipShape(.rect(cornerRadius: 24))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("item-detail-photo-card")
     }
 
     private var placeholder: some View {
@@ -436,6 +426,7 @@ private struct ItemDetailMetadata: View {
             Image(systemName: systemImage)
                 .frame(width: 20)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -473,7 +464,7 @@ private struct FlexibleTagFlow: View {
     let tags: [String]
 
     var body: some View {
-        FlowLayout(spacing: 8) {
+        WrappingHStackLayout(spacing: 8) {
             ForEach(tags, id: \.self) { tag in
                 Text(tag)
                     .font(.callout.weight(.medium))
@@ -484,14 +475,6 @@ private struct FlexibleTagFlow: View {
                     .clipShape(Capsule())
             }
         }
-    }
-}
-
-private struct FlowLayout<Content: View>: View {
-    let spacing: CGFloat
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

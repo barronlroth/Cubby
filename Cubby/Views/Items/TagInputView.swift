@@ -8,6 +8,7 @@ struct TagInputView: View {
     
     @FocusState private var inputFocus: Bool
     @State private var showingSuggestions = false
+    @Environment(\.cubbyReduceMotion) private var reduceMotion
     
     var canAddMoreTags: Bool {
         tags.count < maxTags
@@ -35,7 +36,7 @@ struct TagInputView: View {
                 
                 if !tags.isEmpty {
                     TagDisplayView(tags: tags) { tag in
-                        _ = withAnimation(.spring(duration: 0.3)) {
+                        _ = withAnimation(CubbyDesign.Motion.animation(for: .emphasized, reduceMotion: reduceMotion)) {
                             tags.remove(tag)
                         }
                         #if os(iOS)
@@ -94,10 +95,13 @@ struct TagInputView: View {
                                             .clipShape(Capsule())
                                         }
                                         .buttonStyle(.plain)
+                                        .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                                        .contentShape(.rect)
+                                        .accessibilityIdentifier("tag-suggestion-\(suggestion)")
                                     }
                                 }
                             }
-                            .frame(height: 28)
+                            .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
                         }
                     }
                 } else {
@@ -119,7 +123,7 @@ struct TagInputView: View {
         }
         guard canAddMoreTags else { return }
         
-        _ = withAnimation(.spring(duration: 0.3)) {
+        _ = withAnimation(CubbyDesign.Motion.animation(for: .emphasized, reduceMotion: reduceMotion)) {
             tags.insert(formatted)
         }
         

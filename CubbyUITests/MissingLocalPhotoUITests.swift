@@ -18,5 +18,9 @@ final class MissingLocalPhotoUITests: XCTestCase {
         app.staticTexts["Missing Photo Item"].tap()
 
         XCTAssertTrue(app.staticTexts["Photo not on this device yet"].waitForExistence(timeout: 10))
+
+        let photoCard = app.descendants(matching: .any)["item-detail-photo-card"].firstMatch
+        XCTAssertTrue(photoCard.waitForExistence(timeout: 5))
+        XCTAssertEqual(photoCard.frame.width / photoCard.frame.height, 4.0 / 3.0, accuracy: 0.05)
     }
 }

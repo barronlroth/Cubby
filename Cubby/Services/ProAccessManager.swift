@@ -1,6 +1,16 @@
 import Foundation
 import RevenueCat
 
+#if DEBUG
+enum DesignProAccessState: Equatable {
+    case pro
+    case free
+    case resolving
+    case loadingOfferings
+    case offeringsError(String)
+}
+#endif
+
 @MainActor
 final class ProAccessManager: NSObject, ObservableObject {
     static let proEntitlementId = "pro"
@@ -118,6 +128,27 @@ final class ProAccessManager: NSObject, ObservableObject {
             await loadOfferings()
         }
     }
+
+    #if DEBUG
+    init(designState: DesignProAccessState) {
+        self.isUITestingOverride = true
+        self.isConfigured = false
+        super.init()
+
+        switch designState {
+        case .pro:
+            isPro = true
+        case .free:
+            isPro = false
+        case .resolving:
+            isRefreshingCustomerInfo = true
+        case .loadingOfferings:
+            isLoadingOfferings = true
+        case .offeringsError(let message):
+            offeringsErrorMessage = message
+        }
+    }
+    #endif
 
     var hasActiveAnnualSubscription: Bool {
         guard isPro else { return false }

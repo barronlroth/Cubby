@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct ItemRow: View {
     let item: AppInventoryItem
@@ -16,7 +15,7 @@ struct ItemRow: View {
                 // Emoji icon in 48x48 circle
                 ZStack {
                     Circle()
-                        .fill(iconBackground)
+                        .fill(CubbyDesign.Palette.itemIconBackground)
                         .frame(width: 48, height: 48)
                     SlotMachineEmojiView(
                         emoji: item.emoji,
@@ -28,13 +27,13 @@ struct ItemRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
-                        .font(.custom("CircularStd-Medium", size: 16, relativeTo: .body))
+                        .font(CubbyDesign.Typography.bodyCompactEmphasized)
                         .foregroundStyle(Color.primary.opacity(0.9))
                         .lineLimit(1)
 
                     if let description = item.itemDescription, !description.isEmpty {
                         Text(description)
-                            .font(.custom("CircularStd-Book", size: 12, relativeTo: .caption))
+                            .font(CubbyDesign.Typography.captionSmall)
                             .foregroundStyle(Color.primary.opacity(0.4))
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -58,13 +57,5 @@ struct ItemRow: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
-    }
-
-    private var iconBackground: Color {
-        if UIColor(named: "ItemIconBackground") != nil {
-            return Color("ItemIconBackground")
-        } else {
-            return Color(.secondarySystemBackground)
-        }
     }
 }

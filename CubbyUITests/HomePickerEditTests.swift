@@ -39,6 +39,8 @@ final class HomePickerEditTests: XCTestCase {
 
         let deleteButton = app.buttons["Delete Main Home"]
         XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(deleteButton.frame.width, 44, accuracy: 0.01)
+        XCTAssertEqual(deleteButton.frame.height, 44, accuracy: 0.01)
         deleteButton.tap()
 
         XCTAssertTrue(app.alerts["Delete Home?"].waitForExistence(timeout: 5))

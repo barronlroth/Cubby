@@ -110,7 +110,6 @@ struct ItemEditView: View {
                 Button("Save") {
                     Task { await saveEdits(for: item) }
                 }
-                .fontWeight(.semibold)
                 .disabled(!canSave || !canEditCurrentItem)
             }
         }
