@@ -1,8 +1,8 @@
 # Cubby First-Value Onboarding and Example Home Plan
 
 Status: Phase 1 implemented and validated locally
-Owners: Product + iOS  
-Related: [#98](https://github.com/barronlroth/Cubby/issues/98), [#99](https://github.com/barronlroth/Cubby/issues/99), [#95](https://github.com/barronlroth/Cubby/issues/95)  
+Owners: Product + iOS
+Related: [#98](https://github.com/barronlroth/Cubby/issues/98), [#99](https://github.com/barronlroth/Cubby/issues/99), [#95](https://github.com/barronlroth/Cubby/issues/95)
 Research date: 2026-07-24
 
 ## Executive decision
@@ -180,10 +180,10 @@ Preserve current launch ordering.
 
 Progress: no numbered progress yet.
 
-**Title:** Know where your things are.  
-**Body:** Save an item with its exact spot, then find it in seconds when you need it.  
-**Primary CTA:** Set Up My Home  
-**Secondary CTA:** See How Cubby Works  
+**Title:** Know where your things are.
+**Body:** Save an item with its exact spot, then find it in seconds when you need it.
+**Primary CTA:** Set Up My Home
+**Secondary CTA:** See How Cubby Works
 **Supporting copy:** Your inventory stays private in your iCloud account.
 
 Visual hierarchy:
@@ -203,13 +203,13 @@ Behavior:
 
 Label: **Example**
 
-**Title:** Find the thing, not just the room.  
-**Prompt:** Search for “passport.”  
+**Title:** Find the thing, not just the room.
+**Prompt:** Search for “passport.”
 **Interaction:** A local search field filters three bundled items and reveals:
 
 `Juniper House > Bedroom > Closet > Top Shelf > Passport`
 
-**Primary CTA after reveal:** Set Up My Home  
+**Primary CTA after reveal:** Set Up My Home
 **Secondary:** Back
 
 Constraints:
@@ -224,11 +224,11 @@ Constraints:
 
 Progress: **Step 1 of 3 — Home**
 
-**Title:** What should we call your home?  
-**Body:** Use the name you naturally search or say.  
-**Field label:** Home name  
-**Placeholder:** Home  
-**Suggestions:** Home, Apartment, Cabin, Beach House  
+**Title:** What should we call your home?
+**Body:** Use the name you naturally search or say.
+**Field label:** Home name
+**Placeholder:** Home
+**Suggestions:** Home, Apartment, Cabin, Beach House
 **Primary CTA:** Continue
 
 Rules:
@@ -243,11 +243,11 @@ Rules:
 
 Progress: **Step 2 of 3 — First Item**
 
-**Title:** Add something you often need to find.  
-**Body:** Try a passport, spare batteries, gift wrap, or a cable.  
-**Field label:** Item name  
-**Placeholder:** Passport  
-**Primary CTA:** Choose Its Spot  
+**Title:** Add something you often need to find.
+**Body:** Try a passport, spare batteries, gift wrap, or a cable.
+**Field label:** Item name
+**Placeholder:** Passport
+**Primary CTA:** Choose Its Spot
 **Secondary copy:** You can add a photo, tags, and notes later.
 
 Rules:
@@ -261,11 +261,11 @@ Rules:
 
 Progress: **Step 3 of 3 — Location**
 
-**Title:** Where does it live?  
-**Body:** A specific spot makes Cubby useful later.  
-**Suggestions:** Closet, Kitchen Drawer, Garage Shelf, Nightstand  
-**Custom field:** Create a location  
-**Secondary action:** Use Unsorted for Now  
+**Title:** Where does it live?
+**Body:** A specific spot makes Cubby useful later.
+**Suggestions:** Closet, Kitchen Drawer, Garage Shelf, Nightstand
+**Custom field:** Create a location
+**Secondary action:** Use Unsorted for Now
 **Primary CTA:** Review
 
 V1 scope:
@@ -277,10 +277,10 @@ V1 scope:
 
 ### 6. Review and atomic commit
 
-**Title:** Ready to store it?  
-**Path card:** `{Home} > {Location} > {Item}`  
-**Body:** This is the path Cubby will show when you search.  
-**Primary CTA:** Store My First Item  
+**Title:** Ready to store it?
+**Path card:** `{Home} > {Location} > {Item}`
+**Body:** This is the path Cubby will show when you search.
+**Primary CTA:** Store My First Item
 **Secondary:** Back
 
 On tap:
@@ -309,9 +309,9 @@ Failure:
 
 Recommended implementation detail: confirmation may be a short state within the review screen before the root switches, not a separately persisted onboarding phase.
 
-**Title:** Stored.  
-**Path:** `{Home} > {Location} > {Item}`  
-**Body:** Search for it anytime.  
+**Title:** Stored.
+**Path:** `{Home} > {Location} > {Item}`
+**Body:** Search for it anytime.
 
 - Use one restrained success haptic and emphasized transition.
 - Reduce Motion resolves immediately.
