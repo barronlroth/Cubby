@@ -42,4 +42,32 @@ struct HardPaywallPolicyTests {
 
         #expect(access == .allowed)
     }
+
+    @Test("Purchase or restore clears the blocking subscription wall")
+    func proTransitionClearsBlockingPresentation() {
+        let blockedReason = HardPaywallPresentationPolicy.nextReason(
+            currentReason: nil,
+            entitlementState: .notPro,
+            isForced: false
+        )
+        let restoredReason = HardPaywallPresentationPolicy.nextReason(
+            currentReason: blockedReason,
+            entitlementState: .pro,
+            isForced: false
+        )
+
+        #expect(blockedReason == .subscriptionRequired)
+        #expect(restoredReason == nil)
+    }
+
+    @Test("A purchase does not dismiss a nonblocking manual paywall")
+    func proTransitionPreservesManualPresentation() {
+        let reason = HardPaywallPresentationPolicy.nextReason(
+            currentReason: .manualUpgrade,
+            entitlementState: .pro,
+            isForced: false
+        )
+
+        #expect(reason == .manualUpgrade)
+    }
 }

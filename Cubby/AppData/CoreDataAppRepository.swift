@@ -34,8 +34,32 @@ enum AppRepositoryError: LocalizedError, Equatable {
     }
 }
 
+enum FirstRunInventoryCommitError: LocalizedError, Equatable {
+    case invalidHomeName(String)
+    case invalidItemTitle(String)
+    case invalidLocationName(String)
+    case simulatedFailure
+    case simulatedSaveFailure
+    case resultMappingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidHomeName(let message),
+             .invalidItemTitle(let message),
+             .invalidLocationName(let message):
+            message
+        case .simulatedFailure:
+            "The first-run inventory save was intentionally interrupted."
+        case .simulatedSaveFailure:
+            "The first-run inventory save was intentionally failed."
+        case .resultMappingFailed:
+            "Cubby couldn’t finish creating your first inventory."
+        }
+    }
+}
+
 @MainActor
-final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepository, ShareRepository, FeatureGateDataSource {
+final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepository, FirstRunInventoryRepository, ShareRepository, FeatureGateDataSource {
     let persistenceController: PersistenceController
     private let shareService: (any HomeSharingServiceProtocol)?
 
@@ -97,6 +121,174 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.homeNotFound
         }
         return created
+    }
+
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft,
+        testFailureAfterMutationCount: Int? = nil,
+        testShouldFailSave: Bool = false
+    ) throws -> FirstRunInventoryResult {
+        let homeName = draft.homeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itemTitle = draft.itemTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if case .failure(let message) = ValidationHelpers.validateHomeName(homeName) {
+            throw FirstRunInventoryCommitError.invalidHomeName(message)
+        }
+        if case .failure(let message) = ValidationHelpers.validateItemTitle(itemTitle) {
+            throw FirstRunInventoryCommitError.invalidItemTitle(message)
+        }
+
+        let locationName: String?
+        switch draft.locationChoice {
+        case .unsorted:
+            locationName = nil
+        case .named(let rawName):
+            let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedName.isEmpty == false else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Location name cannot be empty"
+                )
+            }
+            guard trimmedName.count <= 100 else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Location name must be less than 100 characters"
+                )
+            }
+            guard trimmedName.caseInsensitiveCompare("Unsorted") != .orderedSame else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Use the Unsorted option instead of creating another Unsorted location."
+                )
+            }
+            locationName = trimmedName
+        }
+
+        guard let privateStore = persistenceController.privatePersistentStore() else {
+            throw AppRepositoryError.homeNotFound
+        }
+
+        var mutationCount = 0
+
+        func recordMutation() throws {
+            mutationCount += 1
+            if testFailureAfterMutationCount == mutationCount {
+                throw FirstRunInventoryCommitError.simulatedFailure
+            }
+        }
+
+        let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+        context.persistentStoreCoordinator = persistenceController.persistentContainer.persistentStoreCoordinator
+        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        context.undoManager = nil
+
+        do {
+            let now = Date()
+
+            let homeID = UUID()
+            let home = NSEntityDescription.insertNewObject(forEntityName: "CDHome", into: context)
+            context.assign(home, to: privateStore)
+            home.setValue(homeID, forKey: "id")
+            home.setValue(homeName, forKey: "name")
+            home.setValue(now, forKey: "createdAt")
+            home.setValue(now, forKey: "modifiedAt")
+            try recordMutation()
+
+            let unsortedLocationID = UUID()
+            let unsorted = NSEntityDescription.insertNewObject(
+                forEntityName: "CDStorageLocation",
+                into: context
+            )
+            context.assign(unsorted, to: privateStore)
+            unsorted.setValue(unsortedLocationID, forKey: "id")
+            unsorted.setValue("Unsorted", forKey: "name")
+            unsorted.setValue(Int16(0), forKey: "depth")
+            unsorted.setValue(now, forKey: "createdAt")
+            unsorted.setValue(now, forKey: "modifiedAt")
+            unsorted.setValue(home, forKey: "home")
+            unsorted.setValue(nil, forKey: "parentLocation")
+            try recordMutation()
+
+            let selectedLocation: NSManagedObject
+            let selectedLocationID: UUID
+            if let locationName {
+                selectedLocationID = UUID()
+                let location = NSEntityDescription.insertNewObject(
+                    forEntityName: "CDStorageLocation",
+                    into: context
+                )
+                context.assign(location, to: privateStore)
+                location.setValue(selectedLocationID, forKey: "id")
+                location.setValue(locationName, forKey: "name")
+                location.setValue(Int16(0), forKey: "depth")
+                location.setValue(now, forKey: "createdAt")
+                location.setValue(now, forKey: "modifiedAt")
+                location.setValue(home, forKey: "home")
+                location.setValue(nil, forKey: "parentLocation")
+                selectedLocation = location
+                try recordMutation()
+            } else {
+                selectedLocationID = unsortedLocationID
+                selectedLocation = unsorted
+            }
+
+            let itemID = UUID()
+            let isPendingAiEmoji = FoundationModelEmojiService.isSupported
+            let item = NSEntityDescription.insertNewObject(
+                forEntityName: "CDInventoryItem",
+                into: context
+            )
+            context.assign(item, to: privateStore)
+            item.setValue(itemID, forKey: "id")
+            item.setValue(itemTitle, forKey: "title")
+            item.setValue(nil, forKey: "itemDescription")
+            item.setValue(nil, forKey: "photoFileName")
+            item.setValue(EmojiPicker.emoji(for: itemID), forKey: "emoji")
+            item.setValue(isPendingAiEmoji, forKey: "isPendingAiEmoji")
+            item.setValue(now, forKey: "createdAt")
+            item.setValue(now, forKey: "modifiedAt")
+            item.setValue([], forKey: "tags")
+            item.setValue(selectedLocation, forKey: "storageLocation")
+            try recordMutation()
+
+            let allLocations = locationName == nil ? [unsorted] : [unsorted, selectedLocation]
+            let homesByID = [homeID: home]
+            let locationsByID = [UUID: NSManagedObject](
+                uniqueKeysWithValues: allLocations.compactMap { location -> (UUID, NSManagedObject)? in
+                    guard let locationID = location.uuidValue(forKey: "id") else {
+                        return nil
+                    }
+                    return (locationID, location)
+                }
+            )
+            guard let mappedLocation = makeLocation(
+                selectedLocation,
+                homesByID: homesByID,
+                allLocations: allLocations
+            ), let mappedItem = makeItem(
+                item,
+                homesByID: homesByID,
+                locationsByID: locationsByID
+            ) else {
+                throw FirstRunInventoryCommitError.resultMappingFailed
+            }
+            let mappedHome = makeHome(home)
+
+            if testShouldFailSave {
+                throw FirstRunInventoryCommitError.simulatedSaveFailure
+            }
+            try context.save()
+
+            return FirstRunInventoryResult(
+                home: mappedHome,
+                defaultUnsortedLocationID: unsortedLocationID,
+                selectedLocation: mappedLocation,
+                item: mappedItem
+            )
+        } catch {
+            if context.hasChanges {
+                context.rollback()
+            }
+            throw error
+        }
     }
 
     @discardableResult

@@ -138,14 +138,19 @@ final class ProAccessManager: NSObject, ObservableObject {
         switch designState {
         case .pro:
             isPro = true
+            entitlementState = .pro
         case .free:
             isPro = false
+            entitlementState = .notPro
         case .resolving:
             isRefreshingCustomerInfo = true
+            entitlementState = .resolving
         case .loadingOfferings:
             isLoadingOfferings = true
+            entitlementState = .notPro
         case .offeringsError(let message):
             offeringsErrorMessage = message
+            entitlementState = .notPro
         }
     }
     #endif

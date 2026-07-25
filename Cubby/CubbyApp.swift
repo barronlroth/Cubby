@@ -371,7 +371,10 @@ private struct LaunchContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
     @EnvironmentObject private var appStore: AppStore
+    @StateObject private var onboardingCoordinator = OnboardingCoordinator()
+    @StateObject private var proAccessManager = ProAccessManager()
     @State private var shouldShowNewHomeSetup = false
+    @State private var newlyCreatedHomeID: UUID?
 
     var body: some View {
         Group {
@@ -383,7 +386,10 @@ private struct LaunchContentView: View {
                         shouldShowNewHomeSetup = true
                     }
                 } else {
-                    OnboardingView()
+                    OnboardingView(
+                        coordinator: onboardingCoordinator,
+                        onComplete: completeFirstRunSetup
+                    )
                 }
             } else {
                 RestoringExistingHomeView()
@@ -405,7 +411,9 @@ private struct LaunchContentView: View {
         HomeSearchContainer(
             cloudKitSettings: cloudKitSettings,
             sharedHomesGateService: sharedHomesGateService,
-            homeSharingService: homeSharingService
+            homeSharingService: homeSharingService,
+            proAccessManager: proAccessManager,
+            initialSelectedHomeID: newlyCreatedHomeID
         )
     }
 
@@ -415,6 +423,7 @@ private struct LaunchContentView: View {
 
     private func completeOnboardingIfExistingHomesAreAvailable() {
         guard hasCompletedOnboarding == false else { return }
+        guard onboardingCoordinator.isSubmitting == false else { return }
         guard let homeID = HomeLaunchSelectionService.preferredHomeID(
             lastUsedHomeId: lastUsedHomeId,
             homes: appStore.homes,
@@ -425,6 +434,12 @@ private struct LaunchContentView: View {
         }
 
         lastUsedHomeId = homeID.uuidString
+        hasCompletedOnboarding = true
+    }
+
+    private func completeFirstRunSetup(_ result: FirstRunInventoryResult) {
+        newlyCreatedHomeID = result.home.id
+        lastUsedHomeId = result.home.id.uuidString
         hasCompletedOnboarding = true
     }
 }

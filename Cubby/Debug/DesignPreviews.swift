@@ -71,7 +71,10 @@ private struct LocationPickerPreviewScreen: View {
 #Preview("Onboarding") {
     let fixture = DesignPreviewFixture.preview(scenario: .onboarding)
     DesignPreviewHarness(fixture: fixture) { _ in
-        OnboardingView()
+        OnboardingView(
+            coordinator: OnboardingCoordinator(),
+            onComplete: { _ in }
+        )
     }
 }
 

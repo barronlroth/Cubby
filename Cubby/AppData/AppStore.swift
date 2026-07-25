@@ -159,6 +159,26 @@ final class AppStore: ObservableObject {
         return home
     }
 
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft
+    ) throws -> FirstRunInventoryResult {
+        let result = try repository.createFirstRunInventory(draft)
+        refresh()
+        LastUsedLocationService.remember(location: result.selectedLocation)
+
+        if result.item.isPendingAiEmoji {
+            Task {
+                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: result.item.id,
+                    title: result.item.title,
+                    persistenceController: repository.persistenceController
+                )
+            }
+        }
+
+        return result
+    }
+
     func deleteHome(id: UUID) async throws {
         let photoFileNames = try repository.deleteHome(id: id)
         hiddenSharedHomeIDs.remove(id)

@@ -1,6 +1,6 @@
 # Cubby First-Value Onboarding and Example Home Plan
 
-Status: decision-ready  
+Status: Phase 1 implemented and validated locally
 Owners: Product + iOS  
 Related: [#98](https://github.com/barronlroth/Cubby/issues/98), [#99](https://github.com/barronlroth/Cubby/issues/99), [#95](https://github.com/barronlroth/Cubby/issues/95)  
 Research date: 2026-07-24
@@ -637,11 +637,39 @@ Only after evidence:
 - Product analytics needs a vendor/sink, privacy disclosure, and App Store metadata review under #95.
 - The current #98 acceptance criteria explicitly request two peer buttons and four media-inspired homes. This plan intentionally supersedes that implementation detail while preserving the underlying goal.
 
-## Exact next decision
+## Phase 1 implementation notes
 
-**TL: approve or reject moving Cubby's hard subscription wall from “after home name” to “after one real home + location + item are atomically saved,” with `Set Up My Home` as the primary path and one original read-only example as secondary education.**
+TL approval was granted on 2026-07-24. Phase 1 now implements the real-home activation path; Juniper House remains intentionally deferred to Phase 2.
 
-Approval unlocks the Phase 1 implementation. Rejection requires choosing which current constraint wins:
+- `LaunchContentView` owns one onboarding coordinator and one `ProAccessManager`, so entitlement resolution begins during onboarding and the same manager drives the post-commit hard wall.
+- The user completes Welcome → Home → First Item → Location → Review in a root-owned in-memory draft. Native navigation Back preserves entered values.
+- Home name and item name are the only required text fields. Photo, tags, and notes are explicitly deferred. Location can be a suggested spot, a custom spot, or an intentional `Unsorted` fallback.
+- Review confirms the full `Home > Location > Item` path before any persistence.
+- `CoreDataAppRepository.createFirstRunInventory` validates defensively, creates the home, required default `Unsorted`, chosen location, and first item in the private store, then performs one context save. Any insertion, mapping, or save failure rolls back the whole unsaved graph.
+- `hasCompletedOnboarding` and `lastUsedHomeId` update only after the repository returns a committed result. Existing-home recovery remains earlier in launch routing and cannot mistake the coordinator's in-flight graph for restored inventory.
+- Pro users enter the newly created home. Resolved non-Pro users receive the existing blocking `subscriptionRequired` paywall only after the first item is committed; unresolved entitlement uses a neutral progress surface.
+- Focused repository tests cover custom and `Unsorted` graphs, private-store placement, validation, rollback boundaries, and preservation of existing data. Coordinator tests cover validation, sequencing, Back preservation, retry, and single-flight submission. Existing hard-paywall policy tests remain the policy contract.
 
-- keep the wall after home naming and accept that users pay before experiencing first value; or
-- allow a first-item setup flow before purchase.
+The following Mobbin observations materially shaped the implementation without changing Cubby's visual language:
+
+- Numo, Asana, and Evernote informed using a real setup action—not a product tour—as the onboarding spine.
+- Udemy informed explicit progress, one required input per step, and deferring optional attachment-like metadata.
+- Whatnot informed one focused choice with short helper copy and an unambiguous forward action.
+- Tiimo and Origin informed visible progress plus native Back rather than trapping users in a modal wizard.
+- eBay and Artsy informed separating required setup from optional enrichment.
+- Perplexity and informed News informed resolving entitlement early but presenting the purchase decision only after demonstrated value.
+
+Runtime evidence from the validated iPhone 17 Pro flow is checked in under `docs/assets/onboarding-phase1-runtime/`:
+
+- [Welcome](../assets/onboarding-phase1-runtime/01-welcome.png)
+- [Home](../assets/onboarding-phase1-runtime/02-home.png)
+- [First Item](../assets/onboarding-phase1-runtime/03-first-item.png)
+- [Location](../assets/onboarding-phase1-runtime/04-location.png)
+- [Review](../assets/onboarding-phase1-runtime/05-review.png)
+- [Post-commit paywall handoff](../assets/onboarding-phase1-runtime/06-paywall-handoff.png)
+
+## Remaining product decision
+
+Phase 1 no longer needs a product decision. Before Phase 2, TL should confirm whether the original read-only **Juniper House** example is still worth shipping after observing the real-home flow, or whether it should remain a Help/empty-state concept rather than first-run content.
+
+No Juniper House code or sample inventory is included in Phase 1.
