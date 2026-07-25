@@ -154,6 +154,54 @@ xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_MOCK_DATA MOCK_S
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution operations.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` contains App Store Connect export options for local `asc`/Xcode export flows.
+
+### Versioning Policy
+
+Cubby uses SemVer-inspired product versioning for `MARKETING_VERSION`:
+`MAJOR.MINOR.PATCH`. Strict SemVer is defined around a public API; for Cubby,
+the versioned public contract is the user-facing product behavior and the
+compatibility of users' stored inventory.
+
+- **MAJOR** (`X.0.0`): a deliberate new product generation or an incompatible
+  change to a core user contract. Examples include replacing a core inventory
+  model or removing a major workflow in a way that requires user migration.
+  Major releases require explicit product-owner approval. A major bump never
+  permits data loss or abandoning migration compatibility.
+- **MINOR** (`x.Y.0`): a backward-compatible user-facing feature or substantial
+  workflow improvement. Examples include a new onboarding journey, a major new
+  inventory workflow, or a new sharing capability.
+- **PATCH** (`x.y.Z`): backward-compatible bug fixes, accessibility fixes,
+  visual polish, performance improvements, metadata/docs/tooling changes, and
+  internal refactors that do not add a meaningful user capability.
+
+Apply the highest applicable change level across everything shipped since the
+current App Store release, not the size of one PR:
+
+- `1.0.12` + bug fix -> `1.0.13`
+- `1.0.12` + the new first-value onboarding -> `1.1.0`
+- `1.1.0` + bug fix -> `1.1.1`
+- A deliberately approved next-generation Cubby release -> `2.0.0`
+
+Additional rules:
+
+- Reset lower components when a higher component changes: `1.4.7` -> `1.5.0`
+  or `2.0.0`.
+- App Store marketing versions must remain three numeric components. Do not use
+  SemVer suffixes such as `-beta` or build metadata such as `+123`; TestFlight
+  and `CFBundleVersion` represent prerelease/build identity.
+- `CURRENT_PROJECT_VERSION` / `CFBundleVersion` is the build number, not the
+  product version. Every uploaded binary needs a unique valid build number;
+  prefer a monotonically increasing value and do not reset it for a new
+  marketing version.
+- Multiple TestFlight builds may share one marketing version. Do not bump
+  `MARKETING_VERSION` merely because another build is uploaded.
+- Select the intended version before creating or uploading to an App Store
+  version train. Check the cumulative release scope and App Store Connect train
+  state first.
+- Do not bump `MARKETING_VERSION` without explicit user approval or a confirmed
+  closed-train requirement. When asking, recommend the exact next version and
+  justify its MAJOR, MINOR, or PATCH classification.
+
 - Version/build numbers are release-sensitive. Run this flow before pushing any branch that can trigger Xcode Cloud, before opening/updating a release PR, and before every push or merge to `main`.
   - Any push to `main`, including documentation or tooling changes, can trigger the release-sensitive `Cubby | Default` archive.
   - Use the repo-local `cubby-xcloud-pr-preflight` skill and run:
