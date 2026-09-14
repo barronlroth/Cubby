@@ -10,6 +10,9 @@ struct MainNavigationView: View {
     @State private var selectedLocation: AppStorageLocation?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
+    @ObservedObject private var siriService = SiriInventoryService.shared
+    @State private var presentedSiriRequest: SiriNavigationRequest?
+    @State private var presentedSiriRequestID: UUID?
 
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
@@ -116,7 +119,30 @@ struct MainNavigationView: View {
         }
         .cubbyAnimation(.emphasized, value: undoManager.canUndo)
         .cubbyAnimation(.standard, value: undoManager.timeRemaining)
-        .onAppear(perform: restoreSelectedHomeIfNeeded)
+        .onAppear {
+            restoreSelectedHomeIfNeeded()
+            presentPendingSiriNavigation()
+        }
+        .onChange(of: siriService.navigationRequest?.id) { _, _ in
+            presentPendingSiriNavigation()
+        }
+        .onChange(of: showingAddItem) { _, isPresented in
+            if !isPresented { presentPendingSiriNavigation() }
+        }
+        .onChange(of: siriService.hasPresentationBlockers) { _, isBlocked in
+            if !isBlocked { presentPendingSiriNavigation() }
+        }
+        .onChange(of: proAccessManager.entitlementState) { _, state in
+            if state == .pro {
+                presentPendingSiriNavigation()
+            } else {
+                presentedSiriRequest = nil
+            }
+        }
+        .sheet(item: $presentedSiriRequest, onDismiss: siriPresentationDidDismiss) { request in
+            siriDestination(for: request)
+                .id(request.id)
+        }
         .onChange(of: appStore.homes) { _, newHomes in
             synchronizeSelectedHome(with: newHomes)
         }
@@ -144,6 +170,54 @@ struct MainNavigationView: View {
         }
 
         return remainingHomes.first
+    }
+
+    @ViewBuilder
+    private func siriDestination(for request: SiriNavigationRequest) -> some View {
+        switch request.destination {
+        case .item(let itemID):
+            NavigationStack {
+                ItemDetailView(
+                    itemId: itemID,
+                    requiresSiriAccessValidation: true,
+                    onSiriNavigationHandled: {
+                        siriService.acknowledgeNavigation(id: request.id)
+                    }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close") { presentedSiriRequest = nil }
+                    }
+                }
+            }
+        case .search(let query):
+            SiriSearchResultsView(initialQuery: query) {
+                siriService.acknowledgeNavigation(id: request.id)
+            }
+        }
+    }
+
+    private func presentPendingSiriNavigation() {
+        guard proAccessManager.entitlementState == .pro,
+              !showingAddItem,
+              !siriService.hasPresentationBlockers,
+              presentedSiriRequest == nil,
+              let request = siriService.navigationRequest else { return }
+
+        dismissSearch()
+        // Keep an in-progress add or Siri detail/editor intact. A pending request is
+        // retried when that presentation closes, then acknowledged by its destination.
+        presentedSiriRequestID = request.id
+        presentedSiriRequest = request
+    }
+
+    private func siriPresentationDidDismiss() {
+        if let presentedSiriRequestID {
+            // Dismissing a loading destination cancels that request. Do not reopen it.
+            siriService.acknowledgeNavigation(id: presentedSiriRequestID)
+        }
+        presentedSiriRequestID = nil
+        presentPendingSiriNavigation()
     }
 
     private var trimmedSearchText: String {

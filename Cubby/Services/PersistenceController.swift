@@ -25,7 +25,8 @@ final class PersistenceController {
     init(
         inMemory: Bool = false,
         storeDirectory: URL? = nil,
-        containerIdentifier: String = CloudKitSyncSettings.containerIdentifier
+        containerIdentifier: String = CloudKitSyncSettings.containerIdentifier,
+        cloudKitEnabled: Bool = true
     ) throws {
         let managedObjectModel = try Self.loadManagedObjectModel()
         persistentContainer = NSPersistentCloudKitContainer(
@@ -48,12 +49,14 @@ final class PersistenceController {
         let privateStoreDescription = makeStoreDescription(
             url: privateStoreURL,
             containerIdentifier: containerIdentifier,
-            databaseScope: .private
+            databaseScope: .private,
+            cloudKitEnabled: cloudKitEnabled
         )
         let sharedStoreDescription = makeStoreDescription(
             url: sharedStoreURL,
             containerIdentifier: containerIdentifier,
-            databaseScope: .shared
+            databaseScope: .shared,
+            cloudKitEnabled: cloudKitEnabled
         )
         persistentContainer.persistentStoreDescriptions = [privateStoreDescription, sharedStoreDescription]
 
@@ -177,15 +180,18 @@ private extension PersistenceController {
     func makeStoreDescription(
         url: URL,
         containerIdentifier: String,
-        databaseScope: CKDatabase.Scope
+        databaseScope: CKDatabase.Scope,
+        cloudKitEnabled: Bool
     ) -> NSPersistentStoreDescription {
         let description = NSPersistentStoreDescription(url: url)
         description.type = NSSQLiteStoreType
         description.shouldAddStoreAsynchronously = false
 
-        let cloudKitOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerIdentifier)
-        cloudKitOptions.databaseScope = databaseScope
-        description.cloudKitContainerOptions = cloudKitOptions
+        if cloudKitEnabled {
+            let cloudKitOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerIdentifier)
+            cloudKitOptions.databaseScope = databaseScope
+            description.cloudKitContainerOptions = cloudKitOptions
+        }
 
         description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)

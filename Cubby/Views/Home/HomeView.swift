@@ -102,6 +102,12 @@ struct HomeView: View {
         shareManagementAccess.showsAffordance
     }
 
+    private var hasBlockingPresentation: Bool {
+        showingAddItem || showingAddLocation || showingAddHome || showingSearch
+            || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
+            || preparingShareHomeID != nil
+    }
+
     static func sharedStatusPresentation(
         isOwnedByCurrentUser: Bool,
         hasExistingShare: Bool,
@@ -190,6 +196,7 @@ struct HomeView: View {
                 searchText = ""
                 collapsedLocationSectionIDs.removeAll()
             }
+            .siriPresentationBlocker(isPresented: hasBlockingPresentation)
     }
 
     private var header: some View {
@@ -625,6 +632,11 @@ struct HomePicker: View {
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @EnvironmentObject private var appStore: AppStore
 
+    private var hasBlockingPresentation: Bool {
+        isPickerPresented || pendingHomeAction != nil || homeActionErrorMessage != nil
+            || isPerformingHomeAction
+    }
+
     var body: some View {
         Button {
             isPickerPresented.toggle()
@@ -679,6 +691,7 @@ struct HomePicker: View {
         } message: {
             Text(homeActionErrorMessage ?? "Unable to update homes.")
         }
+        .siriPresentationBlocker(isPresented: hasBlockingPresentation)
     }
 
     private var pickerPanel: some View {

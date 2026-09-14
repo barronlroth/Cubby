@@ -1,12 +1,17 @@
 import SwiftUI
 import UIKit
+import AppIntents
 
 struct ItemDetailView: View {
     let itemId: UUID
+    let requiresSiriAccessValidation: Bool
+    private let onSiriNavigationHandled: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
     @EnvironmentObject private var appStore: AppStore
+    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var undoManager = UndoManager.shared
 
     @State private var presentedSheet: PresentedSheet?
@@ -16,13 +21,42 @@ struct ItemDetailView: View {
     @State private var photo: UIImage?
     @State private var isPhotoLoading = false
     @State private var userFacingError: UserFacingError?
+    @State private var siriRecord: SiriInventoryRecord?
+    @State private var siriAccessError: String?
+    @State private var siriValidationID = UUID()
 
     @ScaledMetric(relativeTo: .largeTitle) private var headerBadgeSize: CGFloat = 92
     @ScaledMetric(relativeTo: .largeTitle) private var headerEmojiSize: CGFloat = 44
 
+    init(
+        itemId: UUID,
+        requiresSiriAccessValidation: Bool = false,
+        onSiriNavigationHandled: (() -> Void)? = nil
+    ) {
+        self.itemId = itemId
+        self.requiresSiriAccessValidation = requiresSiriAccessValidation
+        self.onSiriNavigationHandled = onSiriNavigationHandled
+    }
+
     var body: some View {
         Group {
-            if let item {
+            if requiresSiriAccessValidation && proAccessManager.entitlementState != .pro {
+                ContentUnavailableView(
+                    "Inventory Access Required",
+                    systemImage: "lock",
+                    description: Text("Return to Cubby to resolve your subscription access.")
+                )
+            } else if requiresSiriAccessValidation && siriRecord == nil {
+                if let siriAccessError {
+                    ContentUnavailableView(
+                        "Item Unavailable",
+                        systemImage: "questionmark.folder",
+                        description: Text(siriAccessError)
+                    )
+                } else {
+                    ProgressView("Opening item…")
+                }
+            } else if let item {
                 ScrollView {
                     VStack(spacing: 24) {
                         ItemDetailHeader(
@@ -140,12 +174,56 @@ struct ItemDetailView: View {
                 .padding()
                 .background(CubbyDesign.Palette.canvas)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
+                    if !requiresSiriAccessValidation {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { dismiss() }
+                        }
                     }
                 }
             }
         }
+        .appEntityIdentifier(siriEntityIdentifier)
+        .task(id: siriValidationID) {
+            await validateSiriAccess()
+        }
+        .onChange(of: itemId) { _, _ in invalidateSiriAccess() }
+        .onChange(of: appStore.inventoryRevision) { _, _ in invalidateSiriAccess() }
+        .onChange(of: proAccessManager.entitlementState) { _, _ in invalidateSiriAccess() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { invalidateSiriAccess() }
+        }
+        .siriPresentationBlocker(
+            isPresented: presentedSheet != nil || showingDeleteConfirmation || userFacingError != nil
+        )
+    }
+
+    private var siriEntityIdentifier: EntityIdentifier? {
+        guard proAccessManager.entitlementState == .pro,
+              let siriRecord,
+              siriRecord.id == itemId else { return nil }
+        return EntityIdentifier(for: InventoryItemEntity.self, identifier: siriRecord.id)
+    }
+
+    private func invalidateSiriAccess() {
+        siriRecord = nil
+        siriAccessError = nil
+        siriValidationID = UUID()
+    }
+
+    @MainActor
+    private func validateSiriAccess() async {
+        do {
+            let record = try await SiriInventoryService.shared.locateItem(id: itemId)
+            guard !Task.isCancelled else { return }
+            siriRecord = record
+            siriAccessError = nil
+        } catch {
+            guard !Task.isCancelled else { return }
+            siriRecord = nil
+            siriAccessError = error.localizedDescription
+        }
+        // Both the item and a displayed access error constitute a handled destination.
+        onSiriNavigationHandled?()
     }
 
     private var item: AppInventoryItem? {
