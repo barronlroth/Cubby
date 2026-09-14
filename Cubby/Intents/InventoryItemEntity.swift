@@ -76,3 +76,24 @@ struct InventoryItemQuery: EntityStringQuery {
             .map { InventoryItemEntity(record: $0) }
     }
 }
+
+#if compiler(>=6.4)
+@available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
+extension InventoryItemQuery: IndexedEntityQuery {
+    func reindexEntities(
+        for identifiers: [UUID],
+        indexDescription: CSSearchableIndexDescription
+    ) async throws {
+        try await reindexAllEntities(indexDescription: indexDescription)
+    }
+
+    func reindexAllEntities(indexDescription: CSSearchableIndexDescription) async throws {
+        // The shipping SDK exposes protectionClass, not the index name. Cubby has
+        // one entity index; never recreate its contents in a less protected index.
+        guard indexDescription.protectionClass == .complete else {
+            throw SiriInventoryIndexError.unsupportedProtectionClass
+        }
+        try await SiriInventoryService.shared.reindexForSystemRequest()
+    }
+}
+#endif

@@ -57,5 +57,6 @@ struct ItemRow: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
+        .siriInventoryItem(item.id)
     }
 }

@@ -613,7 +613,7 @@
 			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 5.0.0;
+				minimumVersion = 5.78.0;
 			};
 		};
 		F6E851580DBA413886332B51 /* XCRemoteSwiftPackageReference "MCEmojiPicker" */ = {

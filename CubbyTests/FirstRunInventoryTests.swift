@@ -11,7 +11,7 @@ struct FirstRunInventoryRepositoryTests {
             .appendingPathComponent("FirstRunInventoryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return CoreDataAppRepository(
-            persistenceController: try PersistenceController(storeDirectory: directory),
+            persistenceController: try PersistenceController(storeDirectory: directory, cloudKitEnabled: false),
             shareService: nil
         )
     }

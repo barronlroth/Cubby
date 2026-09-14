@@ -25,6 +25,11 @@ with iOS 27. Test intent execution and queries separately from Siri's routing.
 App startup must initialize the service before resolving queries, register
 `CubbyAppShortcuts.updateAppShortcutParameters()`, and keep Spotlight records
 current after mutations, entitlement changes, or shared-home access changes.
+On iOS 27, `InventoryItemQuery` handles system reindex requests through the same
+serialized, access-checked writer. Completion awaits the write and reports failures.
+Ordinary home, location, and search rows receive entity annotations from one
+fresh eligibility snapshot for the navigation tree. Locking, access changes, and
+inventory revisions clear those annotations before revalidation.
 Entity export is a plain-text summary only; receiving text never creates items.
 
 References:

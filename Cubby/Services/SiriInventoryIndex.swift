@@ -2,6 +2,11 @@ import AppIntents
 import CoreSpotlight
 import Foundation
 
+enum SiriInventoryIndexError: Error, Equatable {
+    case indexingDisabled
+    case unsupportedProtectionClass
+}
+
 @MainActor
 protocol SiriInventoryIndexWriting {
     func removeAll() async throws

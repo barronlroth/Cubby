@@ -254,7 +254,8 @@ struct CubbyApp: App {
                 let resolvedHomeSharingService: (any HomeSharingServiceProtocol)?
                 if mockSharingMode.isEnabled {
                     resolvedHomeSharingService = DebugMockHomeSharingService(mode: mockSharingMode)
-                } else if resolvedSharedHomesGateService.isEnabled(),
+                } else if !cloudKitSettings.isInMemory,
+                          resolvedSharedHomesGateService.isEnabled(),
                           PersistenceController.isCoreDataSharingStackEnabled {
                     resolvedHomeSharingService = HomeSharingService(persistenceController: persistenceController)
                 } else {

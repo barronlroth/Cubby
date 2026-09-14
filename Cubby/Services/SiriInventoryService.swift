@@ -21,19 +21,21 @@ final class SiriInventoryService: ObservableObject {
     private var observations = Set<AnyCancellable>()
     private var indexUpdatesEnabled = true
     private var indexGeneration: UInt64 = 0
-    private var indexTask: Task<Void, Never>?
+    private var indexTask: Task<Void, Error>?
 
     init(
         recordLoader: @escaping () throws -> [SiriInventoryRecord] = { throw SiriInventoryError.storageUnavailable },
         accessProvider: @escaping () async -> ProEntitlementState = { .resolving },
         prepareNavigation: @escaping () -> Void = {},
         protectedDataAvailable: @escaping () -> Bool = { true },
+        indexingEnabled: Bool = true,
         indexWriter: any SiriInventoryIndexWriting
     ) {
         self.recordLoader = recordLoader
         self.accessProvider = accessProvider
         self.prepareNavigation = prepareNavigation
         self.protectedDataAvailable = protectedDataAvailable
+        self.indexUpdatesEnabled = indexingEnabled
         self.indexWriter = indexWriter
     }
 
@@ -109,16 +111,22 @@ final class SiriInventoryService: ObservableObject {
 
     func openItem(id: UUID) async throws {
         _ = try await locateItem(id: id)
-        prepareNavigation()
         navigationRequest = SiriNavigationRequest(destination: .item(id))
     }
 
     func search(query: String) async throws {
         _ = try await recordsForRequest()
-        prepareNavigation()
         navigationRequest = SiriNavigationRequest(
             destination: .search(query.trimmingCharacters(in: .whitespacesAndNewlines))
         )
+    }
+
+    /// Refresh the UI snapshot only when its presenter can actually navigate.
+    /// Doing this underneath an active editor can invalidate its interaction host.
+    func prepareQueuedNavigation(id: UUID) -> Bool {
+        guard navigationRequest?.id == id, !hasPresentationBlockers else { return false }
+        prepareNavigation()
+        return true
     }
 
     /// Presentation owners register separately so closing one form cannot unblock another.
@@ -142,13 +150,24 @@ final class SiriInventoryService: ObservableObject {
         indexGeneration &+= 1
         guard indexTask == nil else { return }
         indexTask = Task { [weak self] in
-            await self?.reconcileIndex()
+            guard let self else { return }
+            try await self.reconcileIndex()
         }
+    }
+
+    /// Spotlight callbacks share the normal writer, including any newer access-loss purge.
+    /// Rebuild the complete snapshot even for a subset request so deleted IDs are removed.
+    func reindexForSystemRequest() async throws {
+        try Task.checkCancellation()
+        guard indexUpdatesEnabled else { throw SiriInventoryIndexError.indexingDisabled }
+        scheduleIndexRefresh()
+        try await indexTask?.value
+        try Task.checkCancellation()
     }
 
     /// Used by tests and lifecycle handoffs that need the current index work to finish.
     func waitForIndexRefresh() async {
-        await indexTask?.value
+        try? await indexTask?.value
     }
 
     private func recordsForRequest() async throws -> [SiriInventoryRecord] {
@@ -180,10 +199,13 @@ final class SiriInventoryService: ObservableObject {
         }
     }
 
-    private func reconcileIndex() async {
+    private func reconcileIndex() async throws {
+        defer { indexTask = nil }
         while true {
             let generation = indexGeneration
+            var failure: Error?
             do {
+                guard indexUpdatesEnabled else { throw SiriInventoryIndexError.indexingDisabled }
                 // Deleting first removes stale paths, deleted records, and revoked access.
                 // A failed snapshot must leave the index empty, never republish old values.
                 try await indexWriter.removeAll()
@@ -193,8 +215,10 @@ final class SiriInventoryService: ObservableObject {
                     records = try await authorizedRecords()
                 } catch {
                     records = []
+                    failure = error
                 }
                 guard generation == indexGeneration else { continue }
+                guard indexUpdatesEnabled else { throw SiriInventoryIndexError.indexingDisabled }
                 if !records.isEmpty {
                     try await indexWriter.index(records)
                 }
@@ -202,9 +226,12 @@ final class SiriInventoryService: ObservableObject {
                 // Retry on the next inventory/entitlement/foreground event. Never spin on a
                 // locked device or a temporarily unavailable Spotlight service.
                 DebugLogger.error("Siri inventory index update failed: \(error)")
+                failure = error
             }
-            if generation == indexGeneration { break }
+            if generation == indexGeneration {
+                if let failure { throw failure }
+                return
+            }
         }
-        indexTask = nil
     }
 }

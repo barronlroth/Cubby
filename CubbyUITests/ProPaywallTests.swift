@@ -37,8 +37,14 @@ final class ProPaywallTests: XCTestCase {
         XCTAssertTrue(app.buttons["Restore Purchase"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Manage Subscription"].waitForExistence(timeout: 10))
 
-        let termsLink = app.buttons["Terms"]
-        let privacyLink = app.buttons["Privacy"]
+        // SwiftUI Link is exposed as a link on iOS 27 and a button on older runtimes.
+        let legalLinks = app.descendants(matching: .any).matching(NSPredicate(
+            format: "elementType == %d OR elementType == %d",
+            XCUIElement.ElementType.link.rawValue,
+            XCUIElement.ElementType.button.rawValue
+        ))
+        let termsLink = legalLinks["Terms"]
+        let privacyLink = legalLinks["Privacy"]
         if !termsLink.exists || !privacyLink.exists {
             app.swipeUp()
         }

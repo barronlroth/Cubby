@@ -156,6 +156,7 @@ struct MainNavigationView: View {
             canAddItem = newHome != nil
         }
         .cubbyAnimation(.emphasized, value: selectedHome?.id)
+        .siriInventoryAnnotationScope()
     }
 
     static func selectionAfterRemovingHome(
@@ -204,6 +205,7 @@ struct MainNavigationView: View {
               presentedSiriRequest == nil,
               let request = siriService.navigationRequest else { return }
 
+        guard siriService.prepareQueuedNavigation(id: request.id) else { return }
         dismissSearch()
         // Keep an in-progress add or Siri detail/editor intact. A pending request is
         // retried when that presentation closes, then acknowledged by its destination.

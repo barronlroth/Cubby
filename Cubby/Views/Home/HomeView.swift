@@ -32,6 +32,11 @@ struct HomeView: View {
     @State private var shareErrorMessage: String?
     @State private var preparingShareHomeID: UUID?
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
+    @State private var presentedSheets: Set<BlockingSheet> = []
+
+    private enum BlockingSheet {
+        case addItem, addLocation, addHome, search, options, sharing
+    }
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.cubbyReduceMotion) private var reduceMotion
@@ -106,6 +111,7 @@ struct HomeView: View {
         showingAddItem || showingAddLocation || showingAddHome || showingSearch
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
             || preparingShareHomeID != nil
+            || !presentedSheets.isEmpty
     }
 
     static func sharedStatusPresentation(
@@ -134,26 +140,46 @@ struct HomeView: View {
             .navigationDestination(item: $selectedLocation) { location in
                 LocationDetailView(location: location)
             }
-            .sheet(isPresented: $showingAddLocation) {
+            .sheet(isPresented: $showingAddLocation, onDismiss: {
+                presentedSheets.remove(.addLocation)
+            }) {
                 if let homeId = selectedHome?.id {
                     AddLocationView(homeId: homeId, parentLocation: nil)
+                        .onAppear { presentedSheets.insert(.addLocation) }
                 }
             }
-            .sheet(isPresented: $showingAddHome) {
+            .sheet(isPresented: $showingAddHome, onDismiss: {
+                presentedSheets.remove(.addHome)
+            }) {
                 AddHomeView(selectedHome: $selectedHome)
+                    .onAppear { presentedSheets.insert(.addHome) }
             }
-            .sheet(isPresented: $showingSearch) {
+            .sheet(isPresented: $showingSearch, onDismiss: {
+                presentedSheets.remove(.search)
+            }) {
                 SearchView()
+                    .onAppear { presentedSheets.insert(.search) }
             }
-            .sheet(isPresented: $showingOptions) {
+            .sheet(isPresented: $showingOptions, onDismiss: {
+                presentedSheets.remove(.options)
+            }) {
                 OptionsView(selectedHomeID: selectedHome?.id)
+                    .onAppear { presentedSheets.insert(.options) }
             }
-            .sheet(isPresented: $showingAddItem) {
+            .sheet(isPresented: $showingAddItem, onDismiss: {
+                // The binding becomes false before the dismissal animation finishes.
+                // Keep Siri deferred until SwiftUI releases the presentation host.
+                presentedSheets.remove(.addItem)
+            }) {
                 if let homeId = selectedHome?.id {
                     AddItemView(selectedHomeId: homeId, preselectedLocation: nil)
+                        .onAppear { presentedSheets.insert(.addItem) }
                 }
             }
-            .sheet(item: $activeShareSheet) { context in
+            .sheet(item: $activeShareSheet, onDismiss: {
+                presentedSheets.remove(.sharing)
+            }) { context in
+                Group {
 #if canImport(UIKit)
                 switch context.mode {
                 case .mockPreview:
@@ -176,6 +202,8 @@ struct HomeView: View {
 #else
                 Text("Sharing is unavailable on this platform.")
 #endif
+                }
+                .onAppear { presentedSheets.insert(.sharing) }
             }
             .alert(
                 "Share Home Error",

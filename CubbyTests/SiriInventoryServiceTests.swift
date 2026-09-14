@@ -175,10 +175,14 @@ struct SiriInventoryServiceTests {
         try await service.openItem(id: item.id)
         let first = try #require(service.navigationRequest)
         #expect(first.destination == .item(item.id))
+        #expect(preparationCount == 0)
+        #expect(service.prepareQueuedNavigation(id: first.id))
         try await service.search(query: "  travel keys \n")
         let second = try #require(service.navigationRequest)
         #expect(second.destination == .search("travel keys"))
         #expect(first.id != second.id)
+        #expect(!service.prepareQueuedNavigation(id: first.id))
+        #expect(service.prepareQueuedNavigation(id: second.id))
         service.acknowledgeNavigation(id: first.id)
         #expect(service.navigationRequest == second)
         service.acknowledgeNavigation(id: second.id)
@@ -201,9 +205,11 @@ struct SiriInventoryServiceTests {
 
     @Test("Independent presentation blockers preserve each other and pending navigation")
     func independentPresentationBlockers() async throws {
+        var preparationCount = 0
         let service = SiriInventoryService(
             recordLoader: { [] },
             accessProvider: { .pro },
+            prepareNavigation: { preparationCount += 1 },
             indexWriter: RecordingSiriIndex()
         )
         try await service.search(query: "Passport")
@@ -215,6 +221,8 @@ struct SiriInventoryServiceTests {
         service.setPresentationBlocker(id: secondOwner, isBlocked: true)
         #expect(service.hasPresentationBlockers)
         #expect(service.navigationRequest == pending)
+        #expect(!service.prepareQueuedNavigation(id: pending.id))
+        #expect(preparationCount == 0)
         service.setPresentationBlocker(id: firstOwner, isBlocked: false)
         #expect(service.hasPresentationBlockers)
         // Repeated cleanup from the first owner cannot remove the second owner's blocker.
@@ -224,6 +232,8 @@ struct SiriInventoryServiceTests {
         service.setPresentationBlocker(id: secondOwner, isBlocked: false)
         #expect(!service.hasPresentationBlockers)
         #expect(service.navigationRequest == pending)
+        #expect(service.prepareQueuedNavigation(id: pending.id))
+        #expect(preparationCount == 1)
     }
 
     @Test("Reconciliation replaces changed records and purges them after access loss")
@@ -276,6 +286,123 @@ struct SiriInventoryServiceTests {
         #expect(index.records.isEmpty)
         #expect(index.events == [.removed, .insertionStarted, .inserted, .removed])
     }
+
+    @Test("System reindex waits for insertion and a newer access-loss purge")
+    func systemReindexWaitsForRevocation() async throws {
+        var entitlement = ProEntitlementState.pro
+        let item = record()
+        let index = RecordingSiriIndex()
+        index.suspendNextInsertion = true
+        let service = SiriInventoryService(
+            recordLoader: { [item] },
+            accessProvider: { entitlement },
+            indexWriter: index
+        )
+        var requestFinished = false
+        let request = Task {
+            defer { requestFinished = true }
+            try await service.reindexForSystemRequest()
+        }
+        await index.waitForSuspendedInsertion()
+        #expect(!requestFinished)
+        entitlement = .notPro
+        service.scheduleIndexRefresh()
+        index.resumeInsertion()
+        await #expect(throws: SiriInventoryError.subscriptionRequired) {
+            try await request.value
+        }
+        #expect(requestFinished)
+        #expect(index.records.isEmpty)
+        #expect(index.events == [.removed, .insertionStarted, .inserted, .removed])
+    }
+
+    @Test("System reindex replaces removed or moved records before returning success")
+    func systemReindexReplacesSnapshot() async throws {
+        let removed = record(title: "Keys")
+        let original = record()
+        var records = [removed, original]
+        let index = RecordingSiriIndex()
+        let service = SiriInventoryService(
+            recordLoader: { records },
+            accessProvider: { .pro },
+            indexWriter: index
+        )
+        try await service.reindexForSystemRequest()
+        #expect(Set(index.records.map(\.id)) == Set([removed.id, original.id]))
+        let moved = record(id: original.id, path: "Office > Desk")
+        records = [moved]
+        try await service.reindexForSystemRequest()
+        #expect(index.records == [moved])
+    }
+
+    @Test("System reindex reports writer failures and a later request can retry")
+    func systemReindexReportsWriterFailures() async throws {
+        enum IndexFailure: Error, Equatable { case writeFailed }
+        for failDuringRemoval in [true, false] {
+            let item = record()
+            let index = RecordingSiriIndex()
+            if failDuringRemoval {
+                index.removalError = IndexFailure.writeFailed
+            } else {
+                index.insertionError = IndexFailure.writeFailed
+            }
+            let service = SiriInventoryService(
+                recordLoader: { [item] },
+                accessProvider: { .pro },
+                indexWriter: index
+            )
+            await #expect(throws: IndexFailure.writeFailed) {
+                try await service.reindexForSystemRequest()
+            }
+            index.removalError = nil
+            index.insertionError = nil
+            try await service.reindexForSystemRequest()
+            #expect(index.records == [item])
+        }
+    }
+
+    @Test("System reindex purges stale records but reports unreadable storage")
+    func systemReindexReportsStorageFailure() async throws {
+        enum StorageFailure: Error { case unreadable }
+        let item = record()
+        var storageFailed = false
+        let index = RecordingSiriIndex()
+        let service = SiriInventoryService(
+            recordLoader: {
+                if storageFailed { throw StorageFailure.unreadable }
+                return [item]
+            },
+            accessProvider: { .pro },
+            indexWriter: index
+        )
+        try await service.reindexForSystemRequest()
+        storageFailed = true
+        await #expect(throws: SiriInventoryError.storageUnavailable) {
+            try await service.reindexForSystemRequest()
+        }
+        #expect(index.records.isEmpty)
+    }
+
+    @Test("System reindex cannot override test or seeded-run index suppression")
+    func systemReindexHonorsSuppression() async throws {
+        var readCount = 0
+        var accessCount = 0
+        let index = RecordingSiriIndex()
+        let service = SiriInventoryService(
+            recordLoader: { readCount += 1; return [] },
+            accessProvider: { accessCount += 1; return .pro },
+            indexingEnabled: false,
+            indexWriter: index
+        )
+        await #expect(throws: SiriInventoryIndexError.indexingDisabled) {
+            try await service.reindexForSystemRequest()
+        }
+        service.scheduleIndexRefresh()
+        await service.waitForIndexRefresh()
+        #expect(readCount == 0)
+        #expect(accessCount == 0)
+        #expect(index.events.isEmpty)
+    }
 }
 
 @MainActor
@@ -285,15 +412,19 @@ private final class RecordingSiriIndex: SiriInventoryIndexWriting {
     private(set) var records: [SiriInventoryRecord] = []
     private(set) var events: [Event] = []
     var suspendNextInsertion = false
+    var removalError: Error?
+    var insertionError: Error?
     private var insertionContinuation: CheckedContinuation<Void, Never>?
     private var insertionWaiters: [CheckedContinuation<Void, Never>] = []
 
     func removeAll() async throws {
+        if let removalError { throw removalError }
         events.append(.removed)
         records = []
     }
 
     func index(_ records: [SiriInventoryRecord]) async throws {
+        if let insertionError { throw insertionError }
         events.append(.insertionStarted)
         if suspendNextInsertion {
             suspendNextInsertion = false
