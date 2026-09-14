@@ -91,6 +91,9 @@ struct ProPaywallSheetView: View {
                     .font(CubbyDesign.Typography.displayLarge)
                     .foregroundStyle(PaywallPalette.ink)
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.82)
+                    .allowsTightening(true)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(subtitle)

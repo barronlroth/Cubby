@@ -9,7 +9,7 @@ struct HomeSearchContainer: View {
     @State private var showingAddItem = false
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
-    @StateObject private var proAccessManager: ProAccessManager
+    @ObservedObject private var proAccessManager: ProAccessManager
     @EnvironmentObject private var appStore: AppStore
     private let initialSelectedHomeID: UUID?
 
@@ -17,18 +17,18 @@ struct HomeSearchContainer: View {
         cloudKitSettings: CloudKitSyncSettings,
         sharedHomesGateService: any SharedHomesGateServiceProtocol,
         homeSharingService: (any HomeSharingServiceProtocol)?,
-        proAccessManager: ProAccessManager? = nil,
+        proAccessManager: ProAccessManager,
         initialSelectedHomeID: UUID? = nil
     ) {
         self.cloudKitSettings = cloudKitSettings
         self.sharedHomesGateService = sharedHomesGateService
         self.homeSharingService = homeSharingService
+        self.proAccessManager = proAccessManager
         self.initialSelectedHomeID = initialSelectedHomeID
-        _proAccessManager = StateObject(
-            wrappedValue: proAccessManager ?? ProAccessManager()
-        )
+        let shouldStartBlocking = ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+            || proAccessManager.entitlementState == .notPro
         _activePaywall = State(
-            initialValue: ProcessInfo.processInfo.arguments.contains("HARD_PAYWALL_PREVIEW")
+            initialValue: shouldStartBlocking
                 ? PaywallContext(reason: .subscriptionRequired)
                 : nil
         )
@@ -42,12 +42,18 @@ struct HomeSearchContainer: View {
     }
 
     var body: some View {
-        MainNavigationView(
-            searchText: $searchText,
-            showingAddItem: $showingAddItem,
-            canAddItem: $canAddItem,
-            initialSelectedHomeID: initialSelectedHomeID
-        )
+        Group {
+            if proAccessManager.entitlementState == .resolving {
+                EntitlementResolutionView()
+            } else {
+                MainNavigationView(
+                    searchText: $searchText,
+                    showingAddItem: $showingAddItem,
+                    canAddItem: $canAddItem,
+                    initialSelectedHomeID: initialSelectedHomeID
+                )
+            }
+        }
         .environmentObject(proAccessManager)
         .environment(\.activePaywall, $activePaywall)
         .environment(\.sharedHomesGateService, sharedHomesGateService)
@@ -81,29 +87,14 @@ struct HomeSearchContainer: View {
     }
 
     private func reconcileHardPaywall() {
-        if isHardPaywallPreviewForced {
-            activePaywall = PaywallContext(reason: .subscriptionRequired)
-            return
-        }
-
-        let access = HardPaywallPolicy.access(
-            hasCompletedOnboarding: true,
-            entitlementState: proAccessManager.entitlementState
+        let nextReason = HardPaywallPresentationPolicy.nextReason(
+            currentReason: activePaywall?.reason,
+            entitlementState: proAccessManager.entitlementState,
+            isForced: isHardPaywallPreviewForced
         )
 
-        switch access {
-        case .allowed:
-            if activePaywall?.isBlocking == true {
-                activePaywall = nil
-            }
-        case .waitingForEntitlement:
-            if activePaywall?.isBlocking == true {
-                activePaywall = nil
-            }
-        case let .blocked(reason):
-            if activePaywall?.reason != reason {
-                activePaywall = PaywallContext(reason: reason)
-            }
+        if activePaywall?.reason != nextReason {
+            activePaywall = nextReason.map { PaywallContext(reason: $0) }
         }
     }
 
@@ -113,5 +104,27 @@ struct HomeSearchContainer: View {
         #else
         false
         #endif
+    }
+}
+
+private struct EntitlementResolutionView: View {
+    var body: some View {
+        VStack(spacing: CubbyDesign.Spacing.standard) {
+            ProgressView()
+                .controlSize(.large)
+
+            Text("Checking Cubby Pro")
+                .font(CubbyDesign.Typography.sectionTitle)
+
+            Text("Your first item is safe. Cubby is checking your subscription before opening your inventory.")
+                .font(CubbyDesign.Typography.bodySmall)
+                .foregroundStyle(CubbyDesign.Palette.secondaryText)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(CubbyDesign.Spacing.xLarge)
+        .background(CubbyDesign.Palette.canvas)
+        .accessibilityElement(children: .combine)
     }
 }
