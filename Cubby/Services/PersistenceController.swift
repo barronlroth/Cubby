@@ -28,6 +28,8 @@ final class PersistenceController {
         containerIdentifier: String = CloudKitSyncSettings.containerIdentifier,
         cloudKitEnabled: Bool = true
     ) throws {
+        CubbyBuildProfile.validateInstallation()
+        let cloudKitEnabled = cloudKitEnabled && !CubbyBuildProfile.isDev
         let managedObjectModel = try Self.loadManagedObjectModel()
         persistentContainer = NSPersistentCloudKitContainer(
             name: Self.modelName,

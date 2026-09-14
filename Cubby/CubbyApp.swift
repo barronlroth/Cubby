@@ -53,6 +53,7 @@ struct CubbyApp: App {
     
     @MainActor
     init() {
+        CubbyBuildProfile.validateInstallation()
         let args = ProcessInfo.processInfo.arguments
         let environment = ProcessInfo.processInfo.environment
         let bundlePath = Bundle.main.bundlePath
@@ -73,14 +74,18 @@ struct CubbyApp: App {
         ) || NSClassFromString("XCTestCase") != nil
         // Existing screenshot tests may pass the legacy "-ui_testing" spelling.
         self.isUITesting = args.contains("UI-TESTING") || args.contains("-ui_testing")
-        self.forceOnboardingSnapshot = args.contains("SNAPSHOT_ONBOARDING")
+        precondition(
+            !CubbyBuildProfile.isDev || !isUITesting || isRunningTests,
+            "Use the ordinary Debug configuration for UI tests; Cubby Dev preserves its inventory."
+        )
+        self.forceOnboardingSnapshot = !CubbyBuildProfile.isDev && args.contains("SNAPSHOT_ONBOARDING")
         self.shouldSeedItemLimitReachedData = args.contains("SEED_ITEM_LIMIT_REACHED")
         self.shouldSeedFreeTierData = args.contains("SEED_FREE_TIER")
         self.shouldSeedEmptyHomeData = args.contains("SEED_EMPTY_HOME")
         self.shouldSeedMissingLocalPhotoData = args.contains("SEED_MISSING_LOCAL_PHOTO")
-        self.skipSeeding = args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
+        self.skipSeeding = CubbyBuildProfile.isDev || args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
         #if DEBUG
-        self.forceExistingHomesRecoveryView = args.contains("FORCE_EXISTING_HOMES_RECOVERY")
+        self.forceExistingHomesRecoveryView = !CubbyBuildProfile.isDev && args.contains("FORCE_EXISTING_HOMES_RECOVERY")
         #else
         self.forceExistingHomesRecoveryView = false
         #endif
@@ -232,7 +237,7 @@ struct CubbyApp: App {
             do {
                 let persistenceController = try PersistenceController(
                     inMemory: cloudKitSettings.isInMemory,
-                    cloudKitEnabled: !cloudKitSettings.isInMemory
+                    cloudKitEnabled: !cloudKitSettings.isInMemory && !CubbyBuildProfile.isDev
                 )
                 let migrationService: DataMigrationService
                 if cloudKitSettings.isInMemory || shouldSeedMockData {
@@ -252,9 +257,10 @@ struct CubbyApp: App {
                     persistenceController: persistenceController
                 )
                 let resolvedHomeSharingService: (any HomeSharingServiceProtocol)?
-                if mockSharingMode.isEnabled {
+                if mockSharingMode.isEnabled && !CubbyBuildProfile.isDev {
                     resolvedHomeSharingService = DebugMockHomeSharingService(mode: mockSharingMode)
-                } else if !cloudKitSettings.isInMemory,
+                } else if !CubbyBuildProfile.isDev,
+                          !cloudKitSettings.isInMemory,
                           resolvedSharedHomesGateService.isEnabled(),
                           PersistenceController.isCoreDataSharingStackEnabled {
                     resolvedHomeSharingService = HomeSharingService(persistenceController: persistenceController)
