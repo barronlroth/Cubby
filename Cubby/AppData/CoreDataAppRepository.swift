@@ -577,6 +577,19 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         return created
     }
 
+    /// Apply only to the still-pending, unchanged item that requested the suggestion.
+    /// A nil result clears loading while preserving the already assigned fallback.
+    func completeEmojiSuggestion(id: UUID, expectedTitle: String, expectedEmoji: String?, emoji: String?) throws {
+        guard let value = try item(id: id), value.isPendingAiEmoji,
+              let homeID = value.homeID, permission(for: homeID).canMutate,
+              let object = try fetchItemObject(id: id) else { return }
+        if value.title == expectedTitle, value.emoji == expectedEmoji, let emoji {
+            object.setValue(emoji, forKey: "emoji")
+        }
+        object.setValue(false, forKey: "isPendingAiEmoji")
+        try saveContext()
+    }
+
     func updateItem(id: UUID, draft: AppItemUpdateDraft) throws -> AppInventoryItem {
         guard let item = try fetchItemObject(id: id) else {
             throw AppRepositoryError.itemNotFound

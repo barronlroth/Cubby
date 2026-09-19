@@ -174,13 +174,11 @@ final class AppStore: ObservableObject {
         LastUsedLocationService.remember(location: result.selectedLocation)
 
         if result.item.isPendingAiEmoji {
-            Task {
-                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: result.item.id,
-                    title: result.item.title,
-                    persistenceController: repository.persistenceController
-                )
-            }
+            EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                for: result.item.id,
+                title: result.item.title,
+                repository: repository
+            )
         }
 
         return result
@@ -246,13 +244,11 @@ final class AppStore: ObservableObject {
             refresh()
             LastUsedLocationService.remember(location: location(id: storageLocationID))
             if shouldEnhanceEmoji {
-                Task {
-                    await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                        for: item.id,
-                        title: item.title,
-                        persistenceController: repository.persistenceController
-                    )
-                }
+                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: item.id,
+                    title: item.title,
+                    repository: repository
+                )
             }
             return item
         } catch {
@@ -338,13 +334,11 @@ final class AppStore: ObservableObject {
 
         for itemID in result.pendingEmojiItemIDs {
             guard let item = item(id: itemID) else { continue }
-            Task {
-                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: item.id,
-                    title: item.title,
-                    persistenceController: repository.persistenceController
-                )
-            }
+            EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                for: item.id,
+                title: item.title,
+                repository: repository
+            )
         }
 
         return result

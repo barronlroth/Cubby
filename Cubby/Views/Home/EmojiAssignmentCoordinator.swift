@@ -1,123 +1,95 @@
 import Foundation
-import CoreData
 
-actor EmojiAssignmentCoordinator {
+/// Owns queued work and its visible deadline. At most one model task is active,
+/// including a cancelled task whose model has not acknowledged cancellation yet.
+@MainActor
+final class EmojiAssignmentCoordinator {
     static let shared = EmojiAssignmentCoordinator(suggester: FoundationModelEmojiService())
 
+    private struct Request {
+        let token: UUID
+        let title: String
+        let initialEmoji: String?
+        let repository: CoreDataAppRepository
+        let timeout: Task<Void, Never>
+    }
+
     private let suggester: EmojiSuggesting
-    private var inflight: Set<UUID> = []
+    private let deadline: Duration
+    private var requests: [UUID: Request] = [:]
+    private var queue: [UUID] = []
+    private var active: (id: UUID, token: UUID, task: Task<Void, Never>)?
+    var isIdle: Bool { active == nil && requests.isEmpty }
 
-    init(suggester: EmojiSuggesting) {
+    init(suggester: EmojiSuggesting, deadline: Duration = .seconds(15)) {
         self.suggester = suggester
+        self.deadline = deadline
     }
 
-    func postSaveEmojiEnhancement(
-        for itemID: UUID,
-        title: String,
-        persistenceController: PersistenceController
-    ) {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            DebugLogger.info("[EmojiAI] Skipping AI suggestion for empty title itemID=\(itemID)")
-            return
+    func postSaveEmojiEnhancement(for itemID: UUID, title: String, repository: CoreDataAppRepository) {
+        guard requests[itemID] == nil,
+              let item = try? repository.item(id: itemID), item.isPendingAiEmoji else { return }
+        let token = UUID()
+        let timeout = Task { [weak self, deadline] in
+            do { try await Task.sleep(for: deadline) } catch { return }
+            guard let self, self.requests[itemID]?.token == token else { return }
+            self.finish(itemID, token: token, emoji: nil)
+            if self.active?.token == token { self.active?.task.cancel() }
+            DebugLogger.warning("[EmojiAI] Request deadline reached; kept fallback")
         }
-        guard inflight.insert(itemID).inserted else { return }
-
-        Task(priority: .background) { [weak self] in
-            guard let self else { return }
-            await self.runEnhancement(
-                for: itemID,
-                title: trimmed,
-                persistenceController: persistenceController
-            )
-            await self.finish(itemID)
-        }
+        requests[itemID] = Request(token: token, title: title, initialEmoji: item.emoji,
+                                   repository: repository, timeout: timeout)
+        queue.append(itemID)
+        startNext()
     }
 
-    private func finish(_ id: UUID) {
-        inflight.remove(id)
-    }
-
-    private func runEnhancement(
-        for itemID: UUID,
-        title: String,
-        persistenceController: PersistenceController
-    ) async {
+    /// Clear pending rows left by an earlier process, but never clear live requests.
+    func recoverAbandonedRequests(in repository: CoreDataAppRepository) {
         do {
-            // Prepare suggester and check availability
-            try await Task.sleep(nanoseconds: 0) // yield
-            // FoundationModelEmojiService handles its own availability logging on first use
-            let deadline: Duration = .seconds(15)
-            let emoji = try await suggester.suggestEmoji(for: title, deadline: deadline)
-            await applyEmoji(emoji, to: itemID, in: persistenceController)
-        } catch SuggestionError.unavailable {
-            DebugLogger.warning("[EmojiAI] Foundation model unavailable")
-            await clearPendingFlag(for: itemID, in: persistenceController)
-        } catch SuggestionError.timeout {
-            DebugLogger.warning("[EmojiAI] Suggestion timeout itemID=\(itemID)")
-            await clearPendingFlag(for: itemID, in: persistenceController)
-        } catch {
-            DebugLogger.error("[EmojiAI] Suggestion failed itemID=\(itemID) error=\(error)")
-            await clearPendingFlag(for: itemID, in: persistenceController)
-        }
-    }
-    
-    @MainActor
-    private func clearPendingFlag(for itemID: UUID, in persistenceController: PersistenceController) {
-        guard let item = fetchItem(id: itemID, in: persistenceController.persistentContainer.viewContext) else {
-            return
-        }
-
-        if managedObjectBoolValue(item, forKey: "isPendingAiEmoji") {
-            item.setValue(false, forKey: "isPendingAiEmoji")
-            try? persistenceController.persistentContainer.viewContext.save()
-        }
-    }
-
-    @MainActor
-    private func applyEmoji(_ emoji: String, to itemID: UUID, in persistenceController: PersistenceController) {
-        guard let item = fetchItem(id: itemID, in: persistenceController.persistentContainer.viewContext) else {
-            DebugLogger.warning("[EmojiAI] Item not found for emoji update itemID=\(itemID)")
-            return
-        }
-
-        var shouldSave = false
-
-        if item.value(forKey: "emoji") as? String != emoji {
-            item.setValue(emoji, forKey: "emoji")
-            shouldSave = true
-        }
-
-        if managedObjectBoolValue(item, forKey: "isPendingAiEmoji") {
-            item.setValue(false, forKey: "isPendingAiEmoji")
-            shouldSave = true
-        }
-
-        if shouldSave {
-            do {
-                try persistenceController.persistentContainer.viewContext.save()
-                DebugLogger.info("[EmojiAI] Updated item emoji itemID=\(itemID) source=foundationModel")
-            } catch {
-                DebugLogger.error("[EmojiAI] Failed to persist emoji update itemID=\(itemID) error=\(error)")
+            for item in try repository.listItems() where item.isPendingAiEmoji && requests[item.id] == nil {
+                try repository.completeEmojiSuggestion(id: item.id, expectedTitle: item.title,
+                                                       expectedEmoji: item.emoji, emoji: nil)
             }
+        } catch {
+            DebugLogger.error("[EmojiAI] Could not recover pending state")
         }
     }
 
-    @MainActor
-    private func fetchItem(id: UUID, in context: NSManagedObjectContext) -> NSManagedObject? {
-        let request = NSFetchRequest<NSManagedObject>(entityName: "CDInventoryItem")
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        request.fetchLimit = 1
-        return try? context.fetch(request).first
+    private func startNext() {
+        guard active == nil else { return }
+        while !queue.isEmpty {
+            let id = queue.removeFirst()
+            guard let request = requests[id] else { continue }
+            let task = Task { [suggester] in
+                var emoji: String?
+                do {
+                    try Task.checkCancellation()
+                    let result = try await suggester.suggestEmoji(for: request.title)
+                    try Task.checkCancellation()
+                    emoji = FoundationModelEmojiService.validatedEmoji(result)
+                } catch {
+                    // Do not log raw model errors: they may contain private prompt text.
+                    DebugLogger.warning("[EmojiAI] Request failed or cancelled; kept fallback")
+                }
+                self.finish(id, token: request.token, emoji: emoji)
+                self.active = nil
+                self.startNext()
+            }
+            active = (id, request.token, task)
+            return
+        }
     }
-}
 
-private func managedObjectBoolValue(_ object: NSManagedObject, forKey key: String) -> Bool {
-    if let bool = object.value(forKey: key) as? Bool {
-        return bool
+    private func finish(_ id: UUID, token: UUID, emoji: String?) {
+        guard let request = requests[id], request.token == token else { return }
+        requests.removeValue(forKey: id)
+        queue.removeAll { $0 == id }
+        request.timeout.cancel()
+        do {
+            try request.repository.completeEmojiSuggestion(id: id, expectedTitle: request.title,
+                                                           expectedEmoji: request.initialEmoji, emoji: emoji)
+        } catch {
+            DebugLogger.error("[EmojiAI] Could not save emoji completion")
+        }
     }
-    if let number = object.value(forKey: key) as? NSNumber {
-        return number.boolValue
-    }
-    return false
 }

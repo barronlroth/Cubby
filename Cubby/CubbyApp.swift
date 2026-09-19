@@ -272,6 +272,7 @@ struct CubbyApp: App {
                     persistenceController: persistenceController,
                     shareService: resolvedHomeSharingService
                 )
+                EmojiAssignmentCoordinator.shared.recoverAbandonedRequests(in: repository)
                 configuredAppStore = AppStore(repository: repository)
                 #if DEBUG
                 if args.contains("FORCE_MIGRATION_RECOVERY_MESSAGE") {
