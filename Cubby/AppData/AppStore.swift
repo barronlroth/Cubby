@@ -10,6 +10,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var locations: [AppStorageLocation] = []
     @Published private(set) var items: [AppInventoryItem] = []
     @Published var recoveryMessage: String?
+    @Published private(set) var inventoryRevision: UInt64 = 0
 
     let repository: CoreDataAppRepository
 
@@ -36,6 +37,7 @@ final class AppStore: ObservableObject {
     }
 
     func refresh() {
+        defer { inventoryRevision &+= 1 }
         do {
             let allHomes = try repository.listHomes()
             let availableHomeIDs = Set(allHomes.map(\.id))
@@ -54,6 +56,11 @@ final class AppStore: ObservableObject {
         } catch {
             DebugLogger.error("AppStore refresh failed: \(error)")
         }
+    }
+
+    /// Siri uses a throwing read instead of the UI's last successful published snapshot.
+    func siriInventoryRecords() throws -> [SiriInventoryRecord] {
+        try repository.siriInventoryRecords(excludingHomeIDs: hiddenSharedHomeIDStore.load())
     }
 
     func home(id: UUID?) -> AppHome? {

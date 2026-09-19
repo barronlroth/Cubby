@@ -5,6 +5,8 @@ struct LocationDetailView: View {
 
     @State private var showingAddItem = false
     @State private var showingAddLocation = false
+    @State private var addItemSheetActive = false
+    @State private var addLocationSheetActive = false
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
@@ -128,12 +130,20 @@ struct LocationDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingAddItem) {
-            AddItemView(selectedHomeId: home?.id, preselectedLocation: resolvedLocation ?? location)
+        .sheet(isPresented: $showingAddItem, onDismiss: { addItemSheetActive = false }) {
+            AddItemView(
+                selectedHomeId: home?.id,
+                preselectedLocation: resolvedLocation ?? location
+            )
+            .onAppear { addItemSheetActive = true }
         }
-        .sheet(isPresented: $showingAddLocation) {
+        .sheet(isPresented: $showingAddLocation, onDismiss: { addLocationSheetActive = false }) {
             AddLocationView(homeId: home?.id, parentLocation: resolvedLocation ?? location)
+                .onAppear { addLocationSheetActive = true }
         }
+        .siriPresentationBlocker(
+            isPresented: showingAddItem || showingAddLocation || addItemSheetActive || addLocationSheetActive
+        )
         .safeAreaInset(edge: .top) {
             HStack {
                 Image(systemName: "location.fill")

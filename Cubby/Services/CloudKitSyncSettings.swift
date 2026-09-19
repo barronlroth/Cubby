@@ -23,6 +23,7 @@ struct CloudKitSyncSettings: Equatable {
         case uiTesting
         case disabledByLaunchArgument
         case xctest
+        case localDevelopment
     }
 
     enum ForcedAvailability: String {
@@ -51,7 +52,8 @@ struct CloudKitSyncSettings: Equatable {
         environment: [String: String],
         bundlePath: String,
         isUITesting: Bool,
-        isRunningTestsOverride: Bool? = nil
+        isRunningTestsOverride: Bool? = nil,
+        isDevBuild: Bool = CubbyBuildProfile.isDev
     ) -> CloudKitSyncSettings {
         let strictStartup = arguments.contains(strictStartupLaunchArgument)
         let shouldInitializeCloudKitSchema = arguments.contains(initializeSchemaLaunchArgument)
@@ -78,6 +80,17 @@ struct CloudKitSyncSettings: Equatable {
                 strictStartup: strictStartup,
                 shouldInitializeCloudKitSchema: shouldInitializeCloudKitSchema,
                 forcedAvailability: forcedAvailability
+            )
+        }
+
+        if isDevBuild {
+            return CloudKitSyncSettings(
+                usesCloudKit: false,
+                isInMemory: false,
+                reason: .localDevelopment,
+                strictStartup: true,
+                shouldInitializeCloudKitSchema: false,
+                forcedAvailability: nil
             )
         }
 

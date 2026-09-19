@@ -49,14 +49,18 @@ final class ProAccessManager: NSObject, ObservableObject {
     }
 
     override init() {
+        CubbyBuildProfile.validateInstallation()
         let args = ProcessInfo.processInfo.arguments
         let isUITestingOverride = args.contains("UI-TESTING") || args.contains("-ui_testing")
         let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
-        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let isRunningTests = CloudKitSyncSettings.isRunningTests(
+            environment: ProcessInfo.processInfo.environment,
+            bundlePath: Bundle.main.bundlePath
+        ) || NSClassFromString("XCTestCase") != nil
         let forcedProAccess = Self.forcedProAccess(arguments: args)
 
         let shouldBypassRevenueCat: Bool
-        if isUITestingOverride || isPreview || isRunningTests {
+        if CubbyBuildProfile.isDev || isUITestingOverride || isPreview || isRunningTests {
             shouldBypassRevenueCat = true
         } else {
             #if DEBUG
