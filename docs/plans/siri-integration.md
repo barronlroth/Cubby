@@ -51,3 +51,7 @@ Pending device verification:
 - Move/delete an indexed item, leave/revoke a shared home, and remove subscription access. Confirm fresh answers and search-index cleanup on the device, including after foregrounding from a locked state.
 
 Sources: [Xcode requirements](https://developer.apple.com/xcode/system-requirements), [system schemas](https://developer.apple.com/documentation/appintents/app-schema-domain-system-and-in-app-search), [App Intents testing](https://developer.apple.com/documentation/appintentstesting/testing-your-app-intents-code).
+
+## Physical-device report
+
+September 18, 2026: the owner confirmed spoken item lookup worked in Cubby Dev on an iPhone 15 Pro running iOS 27.0. This confirms the tested lookup, not all unqualified requests or conversational follow-ups. Siri is prepared for release 1.2.0 after onboarding version 1.1.0 shipped. App Store submission is held while investigating the separately reported slow, incorrect AI emoji selection and blurry spinner.
