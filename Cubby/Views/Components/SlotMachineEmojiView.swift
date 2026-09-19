@@ -4,157 +4,118 @@ struct SlotMachineEmojiView: View {
     let emoji: String?
     let isPendingAiEmoji: Bool
     let fallbackSeed: UUID
-    let fontSize: CGFloat
-    
-    @State private var currentEmoji: String
-    @State private var scale: CGFloat = 1.0
-    @State private var wasSpinning = false
+    var fontSize: CGFloat = 24
+
     @Environment(\.cubbyReduceMotion) private var reduceMotion
-    
-    // Animation Constants
-    private let initialSpinDelay: UInt64 = 160_000_000 // 0.16s
-    private let minimumSpinDelay: UInt64 = 40_000_000 // 0.04s
-    private let accelerationFactor: Double = 0.85
-    private let decelerationFactor: Double = 1.25
-    private let decelerationSteps = 6
-    private let scaleUp: CGFloat = 1.4
-    private let scaleNormal: CGFloat = 1.0
-    private let springResponse: Double = 0.3
-    private let springDamping: Double = 0.6
-    @State private var spinFeedbackGenerator: UIImpactFeedbackGenerator?
-    @State private var lockFeedbackGenerator: UIImpactFeedbackGenerator?
-    
-    // A curated list of emojis for the slot machine effect
+    @State private var startedAt: Date?
+    @State private var stoppedAt: Date?
+    @State private var stopPosition: Double = 0
+
+    // Reel geometry and timing are local to this continuous-motion effect.
+    private let settlingDuration = 0.42
+    private let spinSpeed = 22.0 // Cells per second, independent of display refresh rate.
+    private let accelerationDuration = 0.12
     private let slotEmojis = ["🍎", "🚀", "🎸", "📚", "⚽️", "🍕", "🎨", "🎮", "✈️", "💡", "📷", "🧸", "🔑", "📦", "💎"]
-    
-    init(
-        emoji: String?,
-        isPendingAiEmoji: Bool,
-        fallbackSeed: UUID,
-        fontSize: CGFloat = 24
-    ) {
-        self.emoji = emoji
-        self.isPendingAiEmoji = isPendingAiEmoji
-        self.fallbackSeed = fallbackSeed
-        self.fontSize = fontSize
-        _currentEmoji = State(initialValue: emoji ?? EmojiPicker.emoji(for: fallbackSeed))
-    }
-    
+    private var cellHeight: CGFloat { fontSize * 1.5 }
+    private var viewportSize: CGFloat { fontSize * 2 }
+    private var finalEmoji: String { emoji ?? EmojiPicker.emoji(for: fallbackSeed) }
+    // Cubic deceleration starts close to the running speed and lands on a whole cell.
+    private var destination: Double { ceil(stopPosition + spinSpeed * settlingDuration / 3) }
+
     var body: some View {
-        Text(currentEmoji)
-            .font(.system(size: fontSize))
-            .scaleEffect(scale)
-            .blur(radius: isPendingAiEmoji ? 0.5 : 0)
-            .task(id: SlotMachineTaskState(isPendingAiEmoji: isPendingAiEmoji, reduceMotion: reduceMotion)) {
-                if !CubbyDesign.Motion.allowsContinuousMotion(reduceMotion: reduceMotion) {
-                    wasSpinning = false
-                    scale = scaleNormal
-                    currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
-                    return
-                }
-
-                if isPendingAiEmoji {
-                    wasSpinning = true
-                    await spinWithAcceleration()
-                } else {
-                    if wasSpinning {
-                        wasSpinning = false
-                        await stopSpinningWithDeceleration()
-                    } else {
-                        currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
+        TimelineView(.animation(paused: startedAt == nil || reduceMotion)) { timeline in
+            ZStack {
+                if startedAt != nil && !reduceMotion {
+                    let position = reelPosition(at: timeline.date)
+                    let center = Int(floor(position))
+                    ForEach((center - 1)...(center + 1), id: \.self) { index in
+                        let distance = position - Double(index)
+                        Text(stoppedAt != nil && index == Int(destination)
+                             ? finalEmoji
+                             : slotEmojis[((index % slotEmojis.count) + slotEmojis.count) % slotEmojis.count])
+                            // Compress the top/bottom of the drum without blurring glyphs.
+                            .scaleEffect(x: 1, y: max(0.55, 1 - abs(distance) * 0.35))
+                            .offset(y: CGFloat(distance) * cellHeight)
                     }
+                } else {
+                    Text(finalEmoji)
                 }
             }
-            .onChange(of: emoji) { _, newEmoji in
-                if !isPendingAiEmoji {
-                    currentEmoji = newEmoji ?? EmojiPicker.emoji(for: fallbackSeed)
-                }
+            .font(.system(size: fontSize))
+            .frame(width: viewportSize, height: viewportSize)
+            .mask {
+                // Fade alpha rather than cutting glyphs against an inner square.
+                // White supplies mask opacity only; this adds no visible surface color.
+                Circle().fill(
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .white, location: 0.24),
+                        .init(color: .white, location: 0.76),
+                        .init(color: .clear, location: 1)
+                    ], startPoint: .top, endPoint: .bottom)
+                )
             }
-    }
-    
-    private func spinWithAcceleration() async {
-        await MainActor.run {
-            spinHaptics().prepare()
         }
-        
-        var currentDelay = initialSpinDelay
-        while !Task.isCancelled {
-            await MainActor.run {
-                currentEmoji = slotEmojis.randomElement() ?? "📦"
-                spinHaptics().impactOccurred(intensity: 0.25)
-            }
-
-            do {
-                try await Task.sleep(nanoseconds: currentDelay)
-            } catch {
-                break
-            }
-            currentDelay = max(minimumSpinDelay, UInt64(Double(currentDelay) * accelerationFactor))
-        }
-    }
-    
-    private func stopSpinningWithDeceleration() async {
-        await MainActor.run {
-            spinHaptics().prepare()
-        }
-        
-        var currentDelay = minimumSpinDelay
-        for _ in 0..<decelerationSteps {
-            if Task.isCancelled { return }
-            await MainActor.run {
-                currentEmoji = slotEmojis.randomElement() ?? "📦"
-                spinHaptics().impactOccurred(intensity: 0.35)
-            }
-            
-            do {
-                try await Task.sleep(nanoseconds: currentDelay)
-            } catch {
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isPendingAiEmoji ? "Choosing emoji" : finalEmoji)
+        .task(id: SlotMachineTaskState(isPendingAiEmoji: isPendingAiEmoji, reduceMotion: reduceMotion)) {
+            guard CubbyDesign.Motion.allowsContinuousMotion(reduceMotion: reduceMotion) else {
+                startedAt = nil
+                stoppedAt = nil
                 return
             }
-            currentDelay = min(initialSpinDelay, UInt64(Double(currentDelay) * decelerationFactor))
-        }
-
-        if Task.isCancelled { return }
-        
-        await MainActor.run {
-            // Set final emoji
-            currentEmoji = emoji ?? EmojiPicker.emoji(for: fallbackSeed)
-            
-            // Lock-in haptic feedback
-            lockHaptics().impactOccurred()
-            
-            // Lock-in animation
-            withAnimation(.spring(response: springResponse, dampingFraction: springDamping)) {
-                scale = scaleUp
-            }
-            withAnimation(.spring(response: springResponse, dampingFraction: springDamping).delay(0.1)) {
-                scale = scaleNormal
+            if isPendingAiEmoji {
+                stoppedAt = nil
+                startedAt = Date()
+            } else if startedAt != nil {
+                let now = Date()
+                stopPosition = reelPosition(at: now)
+                stoppedAt = now
+                do {
+                    try await Task.sleep(for: .seconds(settlingDuration))
+                } catch { return }
+                guard !Task.isCancelled else { return }
+                startedAt = nil
+                stoppedAt = nil
             }
         }
     }
 
-    @MainActor
-    private func spinHaptics() -> UIImpactFeedbackGenerator {
-        if let generator = spinFeedbackGenerator {
-            return generator
+    private func reelPosition(at date: Date) -> Double {
+        if let stoppedAt {
+            let progress = min(1, max(0, date.timeIntervalSince(stoppedAt) / settlingDuration))
+            let eased = 1 - pow(1 - progress, 3)
+            return stopPosition + (destination - stopPosition) * eased
         }
-        let generator = UIImpactFeedbackGenerator(style: .rigid)
-        spinFeedbackGenerator = generator
-        return generator
-    }
-
-    @MainActor
-    private func lockHaptics() -> UIImpactFeedbackGenerator {
-        if let generator = lockFeedbackGenerator {
-            return generator
-        }
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        lockFeedbackGenerator = generator
-        return generator
+        guard let startedAt else { return 0 }
+        let elapsed = max(0, date.timeIntervalSince(startedAt))
+        // A quick spin-up, then a fast mechanical reel; no extra wait for a minimum spin.
+        return elapsed < accelerationDuration
+            ? spinSpeed * elapsed * elapsed / (2 * accelerationDuration)
+            : spinSpeed * (elapsed - accelerationDuration / 2)
     }
 }
 
 private struct SlotMachineTaskState: Hashable {
     let isPendingAiEmoji: Bool
     let reduceMotion: Bool
+}
+
+#Preview("Pending reel") {
+    @Previewable @State var pending = true
+    @Previewable @State var seed = UUID()
+    VStack(spacing: 24) {
+        ForEach([24.0, 56.0], id: \.self) { size in
+            SlotMachineEmojiView(emoji: "🐶", isPendingAiEmoji: pending, fallbackSeed: seed, fontSize: size)
+                .background(CubbyDesign.Palette.itemIconBackground, in: Circle())
+        }
+        Toggle("Choosing emoji", isOn: $pending)
+    }
+    .padding()
+}
+
+#Preview("Reduced motion") {
+    SlotMachineEmojiView(emoji: "🐶", isPendingAiEmoji: true, fallbackSeed: UUID())
+        .environment(\.cubbyReduceMotionValidationOverride, true)
+        .padding()
 }
