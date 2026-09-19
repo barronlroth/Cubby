@@ -4,7 +4,7 @@ Use the shared **Cubby Dev** scheme to install a separate development app beside
 
 ## Install and use
 
-1. Pair the iPhone with this Mac, trust the computer, and enable Developer Mode when iOS requests it. Use Xcode's Devices and Simulators window to confirm the device is connected. Wireless installation requires the device to be paired and reachable.
+1. Pair the iPhone with this Mac, trust the computer, and enable Developer Mode when iOS requests it. In Xcode 27, use Device Hub → Add → Pair Nearby Device. iOS 27 supports first-time wireless pairing: leave Settings → Privacy & Security → Developer Mode open on the phone, select the Mac, and enter the code shown by Device Hub. Confirm the device is paired and reachable.
 2. Select **Cubby Dev**, the iPhone destination, and development signing for team `CVE9ZKS33D`. Build and run with no launch arguments. Verify the installed bundle ID is `com.barronroth.Cubby.dev`; never replace the production app to test this profile.
 3. Complete onboarding and add a few identifiable test belongings. Inventory and photos persist when you close and reopen Cubby Dev or install an updated build over it. Deleting the app removes its local data.
 4. On an iOS 27 phone with the relevant Siri capabilities available, try “Find my surfboard in Cubby Dev,” search and open an item, and try follow-up requests referring to a displayed item. Also test after closing the app and restarting the phone, then unlocking it.
@@ -21,4 +21,8 @@ This profile can validate Siri, Spotlight, navigation, local persistence, and ph
 
 ## Validation
 
-September 14, 2026: the unsigned iOS device build passed with Xcode 27. The built app's identifier and display name match Cubby Dev; its Info.plist enables neither CloudKit sharing nor remote notifications. All 20 selected isolation, CloudKit configuration, and entitlement tests passed. Device signing and installation require the paired phone's identifier; no physical device installation has been performed yet.
+September 14, 2026: the unsigned iOS device build passed with Xcode 27. The built app's identifier and display name match Cubby Dev; its Info.plist enables neither CloudKit sharing nor remote notifications. All 20 selected isolation, CloudKit configuration, and entitlement tests passed. On September 18, the development-signed app was installed and launched wirelessly on an iPhone 15 Pro running iOS 27.0 (24A435). The signed artifact was checked for the dev bundle identity, registered device, and absence of iCloud/push entitlements. Production Cubby remained installed at 1.0.12 (118), alongside Cubby Dev 1.1.0 (120). Onboarding displayed successfully; spoken Siri validation remains a hands-on check.
+
+## Manual signing from the CLI
+
+Automatic signing remains the default. To use an already installed development profile, pass `CUBBY_DEV_SIGNING_STYLE=Manual`, `CUBBY_DEV_PROVISIONING_PROFILE=<profile name>`, and `DEVELOPMENT_TEAM=CVE9ZKS33D` as build arguments. These custom variables scope the profile to the app target; do not pass a global `PROVISIONING_PROFILE_SPECIFIER`, which also affects Swift package dependencies. Before installation, verify the signed application identifier is `CVE9ZKS33D.com.barronroth.Cubby.dev` and the profile includes the paired device.
