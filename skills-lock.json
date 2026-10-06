@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "mobilebuildmcp": {
+      "source": "getsentry/MobileBuildMCP",
+      "sourceType": "github",
+      "skillPath": "skills/mobilebuildmcp/SKILL.md",
+      "computedHash": "11acfced2dc8c6f59af57f60a22608c24e33c1de7baab538dbe4498061599cf9"
+    },
+    "mobilebuildmcp-cli": {
+      "source": "getsentry/MobileBuildMCP",
+      "sourceType": "github",
+      "skillPath": "skills/mobilebuildmcp-cli/SKILL.md",
+      "computedHash": "0084febb2ba554c2d4f12a8130e4f2f788580c840798c3594c236680a9720412"
+    }
+  }
+}
