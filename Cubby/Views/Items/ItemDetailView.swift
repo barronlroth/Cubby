@@ -27,8 +27,9 @@ struct ItemDetailView: View {
                     VStack(spacing: 24) {
                         ItemDetailHeader(
                             item: item,
-                            badgeSize: headerBadgeSize,
-                            emojiSize: headerEmojiSize
+                            // Decorative badge: cap growth so the title keeps the screen at AX sizes.
+                            badgeSize: min(headerBadgeSize, 140),
+                            emojiSize: min(headerEmojiSize, 66)
                         )
 
                         if item.photoFileName != nil {
@@ -255,6 +256,8 @@ private struct ItemDetailHeader: View {
     let badgeSize: CGFloat
     let emojiSize: CGFloat
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         VStack(spacing: 14) {
             ZStack {
@@ -273,8 +276,9 @@ private struct ItemDetailHeader: View {
                 .font(CubbyDesign.Typography.title)
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.75)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.75)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity)
@@ -330,7 +334,7 @@ private struct ItemDetailPhotoCard: View {
                 emoji: item.emoji,
                 isPendingAiEmoji: item.isPendingAiEmoji,
                 fallbackSeed: item.id,
-                fontSize: placeholderEmojiSize
+                fontSize: min(placeholderEmojiSize, 140)
             )
         }
     }
@@ -379,6 +383,7 @@ private struct ItemDetailTags: View {
 }
 
 private struct ItemDetailMetadata: View {
+    @ScaledMetric(relativeTo: .body) private var metadataIconWidth: CGFloat = 20
     let item: AppInventoryItem
 
     private var createdAtText: String {
@@ -424,7 +429,7 @@ private struct ItemDetailMetadata: View {
     private func metadataRow(systemImage: String, title: String, value: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: systemImage)
-                .frame(width: 20)
+                .frame(width: metadataIconWidth)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 

@@ -8,6 +8,8 @@ struct LocationSectionHeader: View {
     var onCollapse: () -> Void = {}
     var onExpand: () -> Void = {}
     var onSelect: () -> Void = {}
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     private var segments: [String] {
         // Support both " > " and ">" separators
@@ -50,9 +52,12 @@ struct LocationSectionHeader: View {
                     onExpand()
                 } label: {
                     Image(systemName: "chevron.right.circle.fill")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.title3.weight(.semibold))
                         .foregroundStyle(Color.accentColor)
-                        .frame(width: 44, height: 44)
+                        .frame(
+                            minWidth: CubbyDesign.Layout.minimumTapTarget,
+                            minHeight: CubbyDesign.Layout.minimumTapTarget
+                        )
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -126,22 +131,31 @@ struct LocationSectionHeader: View {
 
             if segments.count > 1 {
                 let ancestors = Array(segments.dropLast().reversed())
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.turn.down.right")
-                        .renderingMode(.template)
-                        .font(.system(size: 14, weight: .medium))
+                if dynamicTypeSize.isAccessibilitySize {
+                    // One wrapping line keeps every ancestor readable instead of
+                    // truncating each segment to a few characters.
+                    Text("\(Image(systemName: "arrow.turn.down.right")) \(ancestors.joined(separator: " → "))")
+                        .font(CubbyDesign.Typography.path)
                         .foregroundStyle(Color.primary.opacity(0.4))
-                    ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
-                        Text(segment)
-                            .font(CubbyDesign.Typography.path)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.turn.down.right")
+                            .renderingMode(.template)
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(Color.primary.opacity(0.4))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .layoutPriority(1)
-                        if index < ancestors.count - 1 {
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 14, weight: .medium))
+                        ForEach(Array(ancestors.enumerated()), id: \.0) { index, segment in
+                            Text(segment)
+                                .font(CubbyDesign.Typography.path)
                                 .foregroundStyle(Color.primary.opacity(0.4))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .layoutPriority(1)
+                            if index < ancestors.count - 1 {
+                                Image(systemName: "arrow.right")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Color.primary.opacity(0.4))
+                            }
                         }
                     }
                 }

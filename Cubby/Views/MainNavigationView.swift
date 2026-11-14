@@ -168,7 +168,7 @@ struct MainNavigationView: View {
     private var toolbarButton: some View {
         Button(action: handleToolbarButtonTap) {
             Image(systemName: toolbarIconName)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.title3.weight(.semibold))
         }
         .labelStyle(.iconOnly)
         .controlSize(.large)

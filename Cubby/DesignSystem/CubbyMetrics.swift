@@ -16,6 +16,9 @@ extension CubbyDesign {
         static let minimumTapTarget: CGFloat = 44
         static let compactIcon: CGFloat = 24
         static let rowIcon: CGFloat = 48
+        /// Upper bound for a Dynamic Type–scaled `rowIcon`; the emoji anchor grows
+        /// with text but stays decorative rather than crowding out the title.
+        static let rowIconMaximum: CGFloat = 72
         static let readableContentMaximum: CGFloat = 720
     }
 
