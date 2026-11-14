@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -20,6 +21,7 @@ struct AddItemView: View {
     @State private var showingLocationPicker = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
+    @State private var photoPickerItem: PhotosPickerItem?
     @State private var cameraUnavailableAlert = false
     @State private var isSaving = false
     @State private var tags: Set<String> = []
@@ -125,7 +127,7 @@ struct AddItemView: View {
                     } else {
                         Menu {
                             Button {
-                                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                if CameraPicker.isAvailable {
                                     showingCamera = true
                                 } else {
                                     cameraUnavailableAlert = true
@@ -161,11 +163,23 @@ struct AddItemView: View {
             .sheet(isPresented: $showingLocationPicker) {
                 StorageLocationPicker(selectedHomeId: selectedHomeId, selectedLocation: $selectedLocation)
             }
-            .sheet(isPresented: $showingCamera) {
-                ImagePicker(selectedImage: $selectedImage, sourceType: .camera)
+            .fullScreenCover(isPresented: $showingCamera) {
+                CameraPicker(selectedImage: $selectedImage)
+                    .ignoresSafeArea()
             }
-            .sheet(isPresented: $showingPhotoPicker) {
-                PhotoLibraryPicker(selectedImage: $selectedImage)
+            .photosPicker(
+                isPresented: $showingPhotoPicker,
+                selection: $photoPickerItem,
+                matching: .images
+            )
+            .onChange(of: photoPickerItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let image = await item.loadUIImage() {
+                        selectedImage = image
+                    }
+                    photoPickerItem = nil
+                }
             }
             .alert("Camera Unavailable", isPresented: $cameraUnavailableAlert) {
                 Button("OK", role: .cancel) {}
