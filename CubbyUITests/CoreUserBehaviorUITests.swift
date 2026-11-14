@@ -10,17 +10,17 @@ final class CoreUserBehaviorUITests: XCTestCase {
         let app = launchApp(["UI-TESTING", "SNAPSHOT_ONBOARDING", "FORCE_PRO_TIER"])
 
         XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 10))
-
-        let homeNameField = app.textFields["Home Name"]
-        XCTAssertTrue(homeNameField.waitForExistence(timeout: 5))
-        homeNameField.tap()
-        homeNameField.typeText("Lake House")
-
-        submitOnboarding(in: app)
+        navigateOnboardingToReview(
+            homeName: "Lake House",
+            itemName: "Passport",
+            location: "Closet",
+            in: app
+        )
+        app.buttons["onboarding-store-first-item"].tap()
 
         XCTAssertTrue(app.buttons["Add Item"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Lake House"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["No Items"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Passport"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -41,15 +41,44 @@ final class CoreUserBehaviorUITests: XCTestCase {
         setUpButton.tap()
 
         XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 5))
-        let homeNameField = app.textFields["Home Name"]
-        XCTAssertTrue(homeNameField.waitForExistence(timeout: 5))
-        homeNameField.tap()
-        homeNameField.typeText("Recovery Home")
-
-        submitOnboarding(in: app)
+        navigateOnboardingToReview(
+            homeName: "Recovery Home",
+            itemName: "Flashlight",
+            location: "Garage Shelf",
+            in: app
+        )
+        app.buttons["onboarding-store-first-item"].tap()
 
         XCTAssertTrue(app.buttons["Add Item"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Recovery Home"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Flashlight"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testOnboardingBackPreservesRealHomeDraft() throws {
+        let app = launchApp(["UI-TESTING", "SNAPSHOT_ONBOARDING", "FORCE_PRO_TIER"])
+
+        app.buttons["onboarding-welcome-primary"].tap()
+        let homeNavigationBar = app.navigationBars["Your Home"]
+        XCTAssertTrue(homeNavigationBar.waitForExistence(timeout: 5))
+        let homeBackButton = homeNavigationBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(homeBackButton.isHittable)
+        homeBackButton.tap()
+        XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Passport").count, 0)
+
+        app.buttons["onboarding-welcome-primary"].tap()
+        let homeField = app.textFields["onboarding-home-name"]
+        XCTAssertTrue(homeField.waitForExistence(timeout: 5))
+        homeField.tap()
+        homeField.typeText("Draft House")
+        app.buttons["onboarding-home-continue"].tap()
+
+        XCTAssertTrue(app.textFields["onboarding-item-name"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        XCTAssertTrue(homeField.waitForExistence(timeout: 5))
+        XCTAssertEqual(homeField.value as? String, "Draft House")
     }
 
     @MainActor
@@ -233,13 +262,19 @@ final class CoreUserBehaviorUITests: XCTestCase {
         let app = launchApp(["UI-TESTING", "SNAPSHOT_ONBOARDING", "FORCE_FREE_TIER", "FORCE_FREE_TRIAL_PREVIEW"])
 
         XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 10))
-
-        let homeNameField = app.textFields["Home Name"]
-        XCTAssertTrue(homeNameField.waitForExistence(timeout: 5))
-        homeNameField.tap()
-        homeNameField.typeText("Trial House")
-
-        submitOnboarding(in: app)
+        XCTAssertFalse(app.staticTexts["Start your 7-day free trial"].exists)
+        navigateOnboardingToReview(
+            homeName: "Trial House",
+            itemName: "Spare Keys",
+            location: "Nightstand",
+            in: app
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["onboarding-review-path"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(app.staticTexts["Start your 7-day free trial"].exists)
+        app.buttons["onboarding-store-first-item"].tap()
 
         let trialTitle = app.staticTexts["Start your 7-day free trial"]
         XCTAssertTrue(trialTitle.waitForExistence(timeout: 10))
@@ -393,21 +428,35 @@ final class CoreUserBehaviorUITests: XCTestCase {
         return app
     }
 
-    private func submitOnboarding(in app: XCUIApplication) {
-        let keyboardDone = app.keyboards.buttons.matching(
-            NSPredicate(format: "label == %@ OR identifier == %@", "done", "Done")
-        ).firstMatch
+    private func navigateOnboardingToReview(
+        homeName: String,
+        itemName: String,
+        location: String,
+        in app: XCUIApplication
+    ) {
+        let welcomeButton = app.buttons["onboarding-welcome-primary"]
+        XCTAssertTrue(welcomeButton.waitForExistence(timeout: 5))
+        welcomeButton.tap()
 
-        if keyboardDone.waitForExistence(timeout: 2) {
-            keyboardDone.tap()
-        } else {
-            app.buttons["Get Started"].tap()
-        }
+        let homeField = app.textFields["onboarding-home-name"]
+        XCTAssertTrue(homeField.waitForExistence(timeout: 5))
+        homeField.tap()
+        homeField.typeText(homeName)
+        app.buttons["onboarding-home-continue"].tap()
 
-        if !app.buttons["Add Item"].waitForExistence(timeout: 5),
-           app.buttons["Get Started"].waitForExistence(timeout: 1) {
-            app.buttons["Get Started"].tap()
-        }
+        let itemField = app.textFields["onboarding-item-name"]
+        XCTAssertTrue(itemField.waitForExistence(timeout: 5))
+        itemField.tap()
+        itemField.typeText(itemName)
+        app.buttons["onboarding-item-continue"].tap()
+
+        let locationButton = app.buttons[location]
+        XCTAssertTrue(locationButton.waitForExistence(timeout: 5))
+        locationButton.tap()
+        XCTAssertTrue(locationButton.isSelected)
+        app.buttons["onboarding-location-review"].tap()
+
+        XCTAssertTrue(app.staticTexts["Ready to store it?"].waitForExistence(timeout: 5))
     }
 
     private func openSearch(in app: XCUIApplication) {

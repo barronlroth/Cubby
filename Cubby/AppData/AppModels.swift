@@ -89,3 +89,30 @@ struct AppDeletedItemSnapshot: Equatable {
     let createdAt: Date
     let modifiedAt: Date
 }
+
+enum FirstRunLocationChoice: Equatable {
+    case named(String)
+    case unsorted
+
+    var displayName: String {
+        switch self {
+        case .named(let name):
+            name
+        case .unsorted:
+            "Unsorted"
+        }
+    }
+}
+
+struct FirstRunInventoryDraft: Equatable {
+    let homeName: String
+    let itemTitle: String
+    let locationChoice: FirstRunLocationChoice
+}
+
+struct FirstRunInventoryResult: Equatable {
+    let home: AppHome
+    let defaultUnsortedLocationID: UUID
+    let selectedLocation: AppStorageLocation
+    let item: AppInventoryItem
+}

@@ -34,17 +34,53 @@ enum AppRepositoryError: LocalizedError, Equatable {
     }
 }
 
+enum FirstRunInventoryCommitError: LocalizedError, Equatable {
+    case invalidHomeName(String)
+    case invalidItemTitle(String)
+    case invalidLocationName(String)
+    case simulatedFailure
+    case simulatedSaveFailure
+    case resultMappingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidHomeName(let message),
+             .invalidItemTitle(let message),
+             .invalidLocationName(let message):
+            message
+        case .simulatedFailure:
+            "The first-run inventory save was intentionally interrupted."
+        case .simulatedSaveFailure:
+            "The first-run inventory save was intentionally failed."
+        case .resultMappingFailed:
+            "Cubby couldn’t finish creating your first inventory."
+        }
+    }
+}
+
+struct SiriSharedHomeAccess {
+    let acceptanceStatus: CKShare.ParticipantAcceptanceStatus
+    let permission: CKShare.ParticipantPermission
+
+    var allowsRead: Bool {
+        acceptanceStatus == .accepted && (permission == .readOnly || permission == .readWrite)
+    }
+}
+
 @MainActor
-final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepository, ShareRepository, FeatureGateDataSource {
+final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepository, FirstRunInventoryRepository, ShareRepository, FeatureGateDataSource {
     let persistenceController: PersistenceController
     private let shareService: (any HomeSharingServiceProtocol)?
+    private let siriSharedHomeAccess: ((NSManagedObjectID) throws -> SiriSharedHomeAccess?)?
 
     init(
         persistenceController: PersistenceController,
-        shareService: (any HomeSharingServiceProtocol)?
+        shareService: (any HomeSharingServiceProtocol)?,
+        siriSharedHomeAccess: ((NSManagedObjectID) throws -> SiriSharedHomeAccess?)? = nil
     ) {
         self.persistenceController = persistenceController
         self.shareService = shareService
+        self.siriSharedHomeAccess = siriSharedHomeAccess
     }
 
     var ckContainer: CKContainer {
@@ -97,6 +133,174 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.homeNotFound
         }
         return created
+    }
+
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft,
+        testFailureAfterMutationCount: Int? = nil,
+        testShouldFailSave: Bool = false
+    ) throws -> FirstRunInventoryResult {
+        let homeName = draft.homeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itemTitle = draft.itemTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if case .failure(let message) = ValidationHelpers.validateHomeName(homeName) {
+            throw FirstRunInventoryCommitError.invalidHomeName(message)
+        }
+        if case .failure(let message) = ValidationHelpers.validateItemTitle(itemTitle) {
+            throw FirstRunInventoryCommitError.invalidItemTitle(message)
+        }
+
+        let locationName: String?
+        switch draft.locationChoice {
+        case .unsorted:
+            locationName = nil
+        case .named(let rawName):
+            let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedName.isEmpty == false else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Location name cannot be empty"
+                )
+            }
+            guard trimmedName.count <= 100 else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Location name must be less than 100 characters"
+                )
+            }
+            guard trimmedName.caseInsensitiveCompare("Unsorted") != .orderedSame else {
+                throw FirstRunInventoryCommitError.invalidLocationName(
+                    "Use the Unsorted option instead of creating another Unsorted location."
+                )
+            }
+            locationName = trimmedName
+        }
+
+        guard let privateStore = persistenceController.privatePersistentStore() else {
+            throw AppRepositoryError.homeNotFound
+        }
+
+        var mutationCount = 0
+
+        func recordMutation() throws {
+            mutationCount += 1
+            if testFailureAfterMutationCount == mutationCount {
+                throw FirstRunInventoryCommitError.simulatedFailure
+            }
+        }
+
+        let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+        context.persistentStoreCoordinator = persistenceController.persistentContainer.persistentStoreCoordinator
+        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        context.undoManager = nil
+
+        do {
+            let now = Date()
+
+            let homeID = UUID()
+            let home = NSEntityDescription.insertNewObject(forEntityName: "CDHome", into: context)
+            context.assign(home, to: privateStore)
+            home.setValue(homeID, forKey: "id")
+            home.setValue(homeName, forKey: "name")
+            home.setValue(now, forKey: "createdAt")
+            home.setValue(now, forKey: "modifiedAt")
+            try recordMutation()
+
+            let unsortedLocationID = UUID()
+            let unsorted = NSEntityDescription.insertNewObject(
+                forEntityName: "CDStorageLocation",
+                into: context
+            )
+            context.assign(unsorted, to: privateStore)
+            unsorted.setValue(unsortedLocationID, forKey: "id")
+            unsorted.setValue("Unsorted", forKey: "name")
+            unsorted.setValue(Int16(0), forKey: "depth")
+            unsorted.setValue(now, forKey: "createdAt")
+            unsorted.setValue(now, forKey: "modifiedAt")
+            unsorted.setValue(home, forKey: "home")
+            unsorted.setValue(nil, forKey: "parentLocation")
+            try recordMutation()
+
+            let selectedLocation: NSManagedObject
+            let selectedLocationID: UUID
+            if let locationName {
+                selectedLocationID = UUID()
+                let location = NSEntityDescription.insertNewObject(
+                    forEntityName: "CDStorageLocation",
+                    into: context
+                )
+                context.assign(location, to: privateStore)
+                location.setValue(selectedLocationID, forKey: "id")
+                location.setValue(locationName, forKey: "name")
+                location.setValue(Int16(0), forKey: "depth")
+                location.setValue(now, forKey: "createdAt")
+                location.setValue(now, forKey: "modifiedAt")
+                location.setValue(home, forKey: "home")
+                location.setValue(nil, forKey: "parentLocation")
+                selectedLocation = location
+                try recordMutation()
+            } else {
+                selectedLocationID = unsortedLocationID
+                selectedLocation = unsorted
+            }
+
+            let itemID = UUID()
+            let isPendingAiEmoji = FoundationModelEmojiService.isSupported
+            let item = NSEntityDescription.insertNewObject(
+                forEntityName: "CDInventoryItem",
+                into: context
+            )
+            context.assign(item, to: privateStore)
+            item.setValue(itemID, forKey: "id")
+            item.setValue(itemTitle, forKey: "title")
+            item.setValue(nil, forKey: "itemDescription")
+            item.setValue(nil, forKey: "photoFileName")
+            item.setValue(EmojiPicker.emoji(for: itemID), forKey: "emoji")
+            item.setValue(isPendingAiEmoji, forKey: "isPendingAiEmoji")
+            item.setValue(now, forKey: "createdAt")
+            item.setValue(now, forKey: "modifiedAt")
+            item.setValue([], forKey: "tags")
+            item.setValue(selectedLocation, forKey: "storageLocation")
+            try recordMutation()
+
+            let allLocations = locationName == nil ? [unsorted] : [unsorted, selectedLocation]
+            let homesByID = [homeID: home]
+            let locationsByID = [UUID: NSManagedObject](
+                uniqueKeysWithValues: allLocations.compactMap { location -> (UUID, NSManagedObject)? in
+                    guard let locationID = location.uuidValue(forKey: "id") else {
+                        return nil
+                    }
+                    return (locationID, location)
+                }
+            )
+            guard let mappedLocation = makeLocation(
+                selectedLocation,
+                homesByID: homesByID,
+                allLocations: allLocations
+            ), let mappedItem = makeItem(
+                item,
+                homesByID: homesByID,
+                locationsByID: locationsByID
+            ) else {
+                throw FirstRunInventoryCommitError.resultMappingFailed
+            }
+            let mappedHome = makeHome(home)
+
+            if testShouldFailSave {
+                throw FirstRunInventoryCommitError.simulatedSaveFailure
+            }
+            try context.save()
+
+            return FirstRunInventoryResult(
+                home: mappedHome,
+                defaultUnsortedLocationID: unsortedLocationID,
+                selectedLocation: mappedLocation,
+                item: mappedItem
+            )
+        } catch {
+            if context.hasChanges {
+                context.rollback()
+            }
+            throw error
+        }
     }
 
     @discardableResult
@@ -235,6 +439,104 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             }
     }
 
+    /// A saved, consistent snapshot for Siri and system search, independent of UI caches.
+    func siriInventoryRecords(excludingHomeIDs: Set<UUID>) throws -> [SiriInventoryRecord] {
+        let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+        context.persistentStoreCoordinator = persistenceController.persistentContainer.persistentStoreCoordinator
+        context.undoManager = nil
+
+        return try context.performAndWait {
+            // Core Data executes this synchronous closure on its main queue.
+            try MainActor.assumeIsolated {
+                try context.setQueryGenerationFrom(.current)
+
+                func fetch(_ entityName: String) throws -> [NSManagedObject] {
+                    let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+                    request.includesPendingChanges = false
+                    request.returnsObjectsAsFaults = false
+                    return try context.fetch(request)
+                }
+
+                let homes = try fetch("CDHome")
+                let locations = try fetch("CDStorageLocation")
+                let items = try fetch("CDInventoryItem")
+                let locationsByObjectID = Dictionary(uniqueKeysWithValues: locations.map { ($0.objectID, $0) })
+                let privateStore = persistenceController.privatePersistentStore()
+                let sharedStore = persistenceController.sharedPersistentStore()
+
+                let readableHomes = homes.filter { home in
+                    guard let homeID = home.uuidValue(forKey: "id"),
+                          !excludingHomeIDs.contains(homeID),
+                          !home.stringValue(forKey: "name").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                          let store = home.objectID.persistentStore else {
+                        return false
+                    }
+                    if store == privateStore { return true }
+                    guard store == sharedStore else { return false }
+
+                    // A failed/missing share lookup must not be mistaken for ownership.
+                    do {
+                        let access: SiriSharedHomeAccess?
+                        if let siriSharedHomeAccess {
+                            access = try siriSharedHomeAccess(home.objectID)
+                        } else {
+                            let shares = try persistenceController.fetchShares(matching: [home.objectID])
+                            access = shares[home.objectID]?.currentUserParticipant.map {
+                                SiriSharedHomeAccess(acceptanceStatus: $0.acceptanceStatus, permission: $0.permission)
+                            }
+                        }
+                        return access?.allowsRead == true
+                    } catch {
+                        return false
+                    }
+                }
+                let homesByObjectID = Dictionary(uniqueKeysWithValues: readableHomes.map { ($0.objectID, $0) })
+
+                return items.compactMap { item -> SiriInventoryRecord? in
+                    guard let itemID = item.uuidValue(forKey: "id"),
+                          !item.stringValue(forKey: "title").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                          let locationReference = item.value(forKey: "storageLocation") as? NSManagedObject,
+                          let location = locationsByObjectID[locationReference.objectID],
+                          let homeReference = location.value(forKey: "home") as? NSManagedObject,
+                          let home = homesByObjectID[homeReference.objectID],
+                          let homeID = home.uuidValue(forKey: "id"),
+                          item.objectID.persistentStore == home.objectID.persistentStore else {
+                        return nil
+                    }
+
+                    var pathComponents: [String] = []
+                    var visited = Set<NSManagedObjectID>()
+                    var current: NSManagedObject? = location
+                    while let component = current {
+                        guard visited.insert(component.objectID).inserted,
+                              locationsByObjectID[component.objectID] != nil,
+                              component.uuidValue(forKey: "id") != nil,
+                              component.objectID.persistentStore == home.objectID.persistentStore,
+                              (component.value(forKey: "home") as? NSManagedObject)?.objectID == home.objectID else {
+                            return nil
+                        }
+                        let name = component.stringValue(forKey: "name")
+                        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                        pathComponents.insert(name, at: 0)
+                        current = component.value(forKey: "parentLocation") as? NSManagedObject
+                    }
+
+                    return SiriInventoryRecord(
+                        id: itemID,
+                        title: item.stringValue(forKey: "title"),
+                        homeID: homeID,
+                        homeName: home.stringValue(forKey: "name"),
+                        locationPath: pathComponents.joined(separator: " > "),
+                        itemDescription: item.value(forKey: "itemDescription") as? String,
+                        tags: item.value(forKey: "tags") as? [String] ?? [],
+                        emoji: item.value(forKey: "emoji") as? String
+                    )
+                }
+                .sorted { $0.id.uuidString < $1.id.uuidString }
+            }
+        }
+    }
+
     func item(id: UUID) throws -> AppInventoryItem? {
         guard let item = try fetchItemObject(id: id) else {
             return nil
@@ -273,6 +575,19 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.itemNotFound
         }
         return created
+    }
+
+    /// Apply only to the still-pending, unchanged item that requested the suggestion.
+    /// A nil result clears loading while preserving the already assigned fallback.
+    func completeEmojiSuggestion(id: UUID, expectedTitle: String, expectedEmoji: String?, emoji: String?) throws {
+        guard let value = try item(id: id), value.isPendingAiEmoji,
+              let homeID = value.homeID, permission(for: homeID).canMutate,
+              let object = try fetchItemObject(id: id) else { return }
+        if value.title == expectedTitle, value.emoji == expectedEmoji, let emoji {
+            object.setValue(emoji, forKey: "emoji")
+        }
+        object.setValue(false, forKey: "isPendingAiEmoji")
+        try saveContext()
     }
 
     func updateItem(id: UUID, draft: AppItemUpdateDraft) throws -> AppInventoryItem {

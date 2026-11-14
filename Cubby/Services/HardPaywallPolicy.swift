@@ -31,3 +31,25 @@ struct HardPaywallPolicy {
         }
     }
 }
+
+struct HardPaywallPresentationPolicy {
+    static func nextReason(
+        currentReason: PaywallContext.Reason?,
+        entitlementState: ProEntitlementState,
+        isForced: Bool
+    ) -> PaywallContext.Reason? {
+        if isForced {
+            return .subscriptionRequired
+        }
+
+        switch HardPaywallPolicy.access(
+            hasCompletedOnboarding: true,
+            entitlementState: entitlementState
+        ) {
+        case .allowed, .waitingForEntitlement:
+            return currentReason == .subscriptionRequired ? nil : currentReason
+        case .blocked(let reason):
+            return reason
+        }
+    }
+}

@@ -14,6 +14,27 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Welcome to Cubby"].waitForExistence(timeout: 10))
         try validateCompactDestinationIfNeeded(app)
         try performCoreAccessibilityAudit(in: app)
+
+        app.buttons["onboarding-welcome-primary"].tap()
+        XCTAssertTrue(app.navigationBars["Your Home"].waitForExistence(timeout: 5))
+        try performCoreAccessibilityAudit(in: app)
+
+        app.buttons["Home"].tap()
+        app.buttons["onboarding-home-continue"].tap()
+        XCTAssertTrue(app.navigationBars["First Item"].waitForExistence(timeout: 5))
+        try performCoreAccessibilityAudit(in: app)
+
+        let itemField = app.textFields["onboarding-item-name"]
+        itemField.tap()
+        itemField.typeText("Passport")
+        app.keyboards.buttons["continue"].tap()
+        XCTAssertTrue(app.navigationBars["Item Location"].waitForExistence(timeout: 5))
+        try performCoreAccessibilityAudit(in: app)
+
+        app.buttons["Closet"].tap()
+        app.buttons["onboarding-location-review"].tap()
+        XCTAssertTrue(app.navigationBars["Review"].waitForExistence(timeout: 5))
+        try performCoreAccessibilityAudit(in: app)
     }
 
     @MainActor
@@ -158,6 +179,10 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
                 return true
             }
 
+            if self.isOnboardingSuggestionDynamicTypeFalsePositive(issue, in: app) {
+                return true
+            }
+
             if issue.auditType == .hitRegion,
                issue.detailedDescription.contains("_UITextFieldClearButton") {
                 // The system-owned searchable clear button reports its glyph bounds, not its hit slop.
@@ -189,6 +214,31 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         // Require the exact system-owned hierarchy so app content with the same
         // label is never suppressed.
         return String(describing: issue.element).contains("↳NavigationBar")
+    }
+
+    private func isOnboardingSuggestionDynamicTypeFalsePositive(
+        _ issue: XCUIAccessibilityAuditIssue,
+        in app: XCUIApplication
+    ) -> Bool {
+        guard issue.auditType == .dynamicType,
+              issue.element?.elementType == .button,
+              let label = issue.element?.label else {
+            return false
+        }
+
+        let isHomeSuggestion = app.navigationBars["Your Home"].exists
+            && ["Home", "Apartment", "Cabin", "Beach House"].contains(label)
+        let isLocationSuggestion = app.navigationBars["Item Location"].exists
+            && ["Closet", "Kitchen Drawer", "Garage Shelf", "Nightstand"].contains(label)
+        guard isHomeSuggestion || isLocationSuggestion else {
+            return false
+        }
+
+        // XCTest does not recognize the relative custom font inside these
+        // SwiftUI button AccessibilityNodes. The focused scaling test compares
+        // the Home chip at normal and Accessibility XXXL sizes; the Location
+        // chips use the same relative token and flexible-height label.
+        return true
     }
 
     @MainActor

@@ -9,7 +9,7 @@ struct AppStoreRecoveryTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("AppStoreRecoveryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = try PersistenceController(storeDirectory: directory)
+        let controller = try PersistenceController(storeDirectory: directory, cloudKitEnabled: false)
         return CoreDataAppRepository(
             persistenceController: controller,
             shareService: nil

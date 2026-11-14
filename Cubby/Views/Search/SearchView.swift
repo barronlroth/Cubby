@@ -54,6 +54,7 @@ struct SearchView: View {
                         } label: {
                             SearchResultRow(item: item)
                         }
+                        .siriInventoryItem(item.id)
                     }
                 }
             }

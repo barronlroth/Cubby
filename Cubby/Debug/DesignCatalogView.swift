@@ -249,7 +249,10 @@ private struct DesignCatalogScreenView: View {
     private func screenContent(fixture: DesignPreviewFixture) -> some View {
         switch screen {
         case .onboarding:
-            OnboardingView()
+            OnboardingView(
+                coordinator: OnboardingCoordinator(),
+                onComplete: { _ in }
+            )
         case .homeLoaded, .homeEmpty, .homeReadOnly:
             HomeSearchContainer(
                 cloudKitSettings: .designPreview,

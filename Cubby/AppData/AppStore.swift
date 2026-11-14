@@ -10,6 +10,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var locations: [AppStorageLocation] = []
     @Published private(set) var items: [AppInventoryItem] = []
     @Published var recoveryMessage: String?
+    @Published private(set) var inventoryRevision: UInt64 = 0
 
     let repository: CoreDataAppRepository
 
@@ -36,6 +37,7 @@ final class AppStore: ObservableObject {
     }
 
     func refresh() {
+        defer { inventoryRevision &+= 1 }
         do {
             let allHomes = try repository.listHomes()
             let availableHomeIDs = Set(allHomes.map(\.id))
@@ -54,6 +56,11 @@ final class AppStore: ObservableObject {
         } catch {
             DebugLogger.error("AppStore refresh failed: \(error)")
         }
+    }
+
+    /// Siri uses a throwing read instead of the UI's last successful published snapshot.
+    func siriInventoryRecords() throws -> [SiriInventoryRecord] {
+        try repository.siriInventoryRecords(excludingHomeIDs: hiddenSharedHomeIDStore.load())
     }
 
     func home(id: UUID?) -> AppHome? {
@@ -159,6 +166,24 @@ final class AppStore: ObservableObject {
         return home
     }
 
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft
+    ) throws -> FirstRunInventoryResult {
+        let result = try repository.createFirstRunInventory(draft)
+        refresh()
+        LastUsedLocationService.remember(location: result.selectedLocation)
+
+        if result.item.isPendingAiEmoji {
+            EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                for: result.item.id,
+                title: result.item.title,
+                repository: repository
+            )
+        }
+
+        return result
+    }
+
     func deleteHome(id: UUID) async throws {
         let photoFileNames = try repository.deleteHome(id: id)
         hiddenSharedHomeIDs.remove(id)
@@ -219,13 +244,11 @@ final class AppStore: ObservableObject {
             refresh()
             LastUsedLocationService.remember(location: location(id: storageLocationID))
             if shouldEnhanceEmoji {
-                Task {
-                    await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                        for: item.id,
-                        title: item.title,
-                        persistenceController: repository.persistenceController
-                    )
-                }
+                EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                    for: item.id,
+                    title: item.title,
+                    repository: repository
+                )
             }
             return item
         } catch {
@@ -311,13 +334,11 @@ final class AppStore: ObservableObject {
 
         for itemID in result.pendingEmojiItemIDs {
             guard let item = item(id: itemID) else { continue }
-            Task {
-                await EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
-                    for: item.id,
-                    title: item.title,
-                    persistenceController: repository.persistenceController
-                )
-            }
+            EmojiAssignmentCoordinator.shared.postSaveEmojiEnhancement(
+                for: item.id,
+                title: item.title,
+                repository: repository
+            )
         }
 
         return result

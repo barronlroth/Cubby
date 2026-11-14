@@ -129,9 +129,9 @@ xcodebuild -project Cubby.xcodeproj -scheme Cubby test
 
 ## Release Tooling
 
-Current release work uses ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud.
+Current release work uses ASC CLI plus Xcode/MobileBuildMCP (formerly XcodeBuildMCP)/Xcode Cloud.
 
-- Use XcodeBuildMCP or Xcode/xcodebuild for simulator build/run/test validation.
+- Use MobileBuildMCP (repo skills `mobilebuildmcp`, `mobilebuildmcp-cli`) or Xcode/xcodebuild for simulator build/run/test validation.
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` supports local App Store Connect export flows.

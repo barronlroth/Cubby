@@ -149,8 +149,8 @@ xcrun simctl launch booted com.barronroth.Cubby UI-TESTING SEED_MOCK_DATA MOCK_S
 
 ## Release & Distribution
 
-- Current release tooling is ASC CLI plus Xcode/XcodeBuildMCP/Xcode Cloud.
-- Use XcodeBuildMCP or Xcode/xcodebuild for simulator build/run/test validation.
+- Current release tooling is ASC CLI plus Xcode/MobileBuildMCP (formerly XcodeBuildMCP)/Xcode Cloud.
+- Use MobileBuildMCP (repo skills `mobilebuildmcp`, `mobilebuildmcp-cli`) or Xcode/xcodebuild for simulator build/run/test validation.
 - Use `asc` for App Store Connect status, build/version staging, review submission, and release/distribution operations.
 - Use Xcode Cloud when local archive/signing is blocked by keychain or certificate access.
 - `.asc/export-options-app-store.plist` contains App Store Connect export options for local `asc`/Xcode export flows.

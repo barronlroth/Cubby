@@ -36,6 +36,7 @@ final class SharedHomesGateService: SharedHomesGateServiceProtocol {
     }
 
     func isEnabled() -> Bool {
+        guard !CubbyBuildProfile.isDev else { return false }
         if allowLocalOverride, let localOverride {
             return localOverride
         }

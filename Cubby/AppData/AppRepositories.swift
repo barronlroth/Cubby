@@ -30,6 +30,15 @@ protocol ItemRepository {
 }
 
 @MainActor
+protocol FirstRunInventoryRepository {
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft,
+        testFailureAfterMutationCount: Int?,
+        testShouldFailSave: Bool
+    ) throws -> FirstRunInventoryResult
+}
+
+@MainActor
 protocol ShareRepository {
     var ckContainer: CKContainer { get }
 
@@ -46,4 +55,16 @@ protocol ShareRepository {
 protocol FeatureGateDataSource {
     func ownerHomeCount() throws -> Int
     func ownerItemCount(for homeID: UUID) throws -> Int
+}
+
+extension FirstRunInventoryRepository {
+    func createFirstRunInventory(
+        _ draft: FirstRunInventoryDraft
+    ) throws -> FirstRunInventoryResult {
+        try createFirstRunInventory(
+            draft,
+            testFailureAfterMutationCount: nil,
+            testShouldFailSave: false
+        )
+    }
 }

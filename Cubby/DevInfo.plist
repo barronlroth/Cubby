@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow Cubby to take photos of your items so you can visually track inventory.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow Cubby to access your photo library so you can add existing photos of your items.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>RevenueCatPublicApiKey</key>
+	<string>$(REVENUECAT_PUBLIC_API_KEY)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>AwesomeSerif-ExtraTall.otf</string>
+		<string>circular-book.otf</string>
+		<string>circular-book-italic.otf</string>
+		<string>circular-medium.otf</string>
+		<string>circular-medium-italic.otf</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>Cubby Dev</string>
+</dict>
+</plist>
