@@ -194,6 +194,7 @@ struct ItemDetailView: View {
 
         do {
             try appStore.moveItem(id: item.id, to: pendingMoveLocation.id)
+            CubbyDesign.Haptics.play(.success)
         } catch {
             DebugLogger.error("ItemDetailView - Failed to move item: \(error)")
             userFacingError = .persistence(action: "move item", error: error)
@@ -202,6 +203,7 @@ struct ItemDetailView: View {
 
     private func deleteItem() {
         guard canMutateItem, let item else { return }
+        CubbyDesign.Haptics.play(.warning)
         if let snapshot = appStore.deleteSnapshot(for: item.id) {
             undoManager.recordDeletion(snapshot: snapshot)
         }

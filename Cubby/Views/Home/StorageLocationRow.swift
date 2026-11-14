@@ -135,6 +135,7 @@ struct StorageLocationRow: View {
     }
 
     private func deleteLocation() {
+        CubbyDesign.Haptics.play(.warning)
         do {
             try StorageLocationDeletionService.deleteLocationIfAllowed(
                 locationId: location.id,

@@ -124,6 +124,7 @@ struct AddLocationView: View {
                 homeID: home.id,
                 parentLocationID: parentLocation?.id
             )
+            CubbyDesign.Haptics.play(.success)
             onLocationCreated?(location)
             dismiss()
         } catch {

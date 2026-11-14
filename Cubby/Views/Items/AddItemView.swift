@@ -257,6 +257,7 @@ struct AddItemView: View {
                 emoji: selectedEmoji,
                 itemID: itemID
             )
+            CubbyDesign.Haptics.play(.success)
             dismiss()
         } catch {
             DebugLogger.error("Failed to save item: \(error)")

@@ -10,6 +10,7 @@ struct MainNavigationView: View {
     @State private var selectedLocation: AppStorageLocation?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
+    @State private var undoSuccessCount = 0
 
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
@@ -114,6 +115,7 @@ struct MainNavigationView: View {
                 .padding(.top, 8)
             }
         }
+        .sensoryFeedback(.success, trigger: undoSuccessCount)
         .cubbyAnimation(.emphasized, value: undoManager.canUndo)
         .cubbyAnimation(.standard, value: undoManager.timeRemaining)
         .onAppear(perform: restoreSelectedHomeIfNeeded)
@@ -215,7 +217,9 @@ struct MainNavigationView: View {
     }
 
     private func performUndo() {
-        _ = undoManager.undo(using: appStore)
+        if undoManager.undo(using: appStore) {
+            undoSuccessCount += 1
+        }
     }
 
     private func restoreSelectedHomeIfNeeded() {

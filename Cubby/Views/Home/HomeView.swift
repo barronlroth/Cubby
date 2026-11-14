@@ -669,6 +669,7 @@ struct HomePicker: View {
             presenting: pendingHomeAction
         ) { action in
             Button(action.confirmationButtonTitle, role: .destructive) {
+                CubbyDesign.Haptics.play(.warning)
                 Task { await perform(action) }
             }
             Button("Cancel", role: .cancel) {}

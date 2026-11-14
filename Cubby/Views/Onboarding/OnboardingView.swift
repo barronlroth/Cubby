@@ -78,6 +78,7 @@ struct OnboardingView: View {
             _ = try appStore.createHome(
                 name: homeName.trimmingCharacters(in: .whitespacesAndNewlines)
             )
+            CubbyDesign.Haptics.play(.success)
             hasCompletedOnboarding = true
         } catch {
             DebugLogger.error("Failed to create home during onboarding: \(error)")
