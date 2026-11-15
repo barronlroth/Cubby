@@ -91,16 +91,19 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
     }
 
     func listHomes() throws -> [AppHome] {
-        let homes = try fetchHomes()
-        return homes
-            .map(makeHome)
+        let homeObjects = Array(try fetchHomesByID().values)
+        return makeHomes(homeObjects)
             .sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                if order == .orderedSame {
+                    return lhs.id.uuidString < rhs.id.uuidString
+                }
+                return order == .orderedAscending
             }
     }
 
     func home(id: UUID) throws -> AppHome? {
-        try fetchHomeObject(id: id).map(makeHome)
+        try fetchHomeObject(id: id).flatMap(makeHome)
     }
 
     func createHome(name: String) throws -> AppHome {
@@ -263,26 +266,18 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
             let allLocations = locationName == nil ? [unsorted] : [unsorted, selectedLocation]
             let homesByID = [homeID: home]
-            let locationsByID = [UUID: NSManagedObject](
-                uniqueKeysWithValues: allLocations.compactMap { location -> (UUID, NSManagedObject)? in
-                    guard let locationID = location.uuidValue(forKey: "id") else {
-                        return nil
-                    }
-                    return (locationID, location)
-                }
-            )
+            let locationsByID = uniqueObjectsByID(allLocations, entityName: "CDStorageLocation")
             guard let mappedLocation = makeLocation(
                 selectedLocation,
                 homesByID: homesByID,
-                allLocations: allLocations
+                childIDsByParentID: makeChildIDsByParentID(Array(locationsByID.values))
             ), let mappedItem = makeItem(
                 item,
                 homesByID: homesByID,
                 locationsByID: locationsByID
-            ) else {
+            ), let mappedHome = makeHome(home) else {
                 throw FirstRunInventoryCommitError.resultMappingFailed
             }
-            let mappedHome = makeHome(home)
 
             if testShouldFailSave {
                 throw FirstRunInventoryCommitError.simulatedSaveFailure
@@ -309,8 +304,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw AppRepositoryError.homeNotFound
         }
 
-        let appHome = makeHome(home)
-        guard appHome.permission.role == .owner else {
+        guard let appHome = makeHome(home), appHome.permission.role == .owner else {
             throw AppRepositoryError.homeDeleteNotAllowed
         }
 
@@ -332,9 +326,10 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func listLocations() throws -> [AppStorageLocation] {
         let homesByID = try fetchHomesByID()
-        let locations = try fetchLocations()
+        let locations = Array(try fetchLocationsByID().values)
+        let childIDsByParentID = makeChildIDsByParentID(locations)
         return locations
-            .compactMap { makeLocation($0, homesByID: homesByID, allLocations: locations) }
+            .compactMap { makeLocation($0, homesByID: homesByID, childIDsByParentID: childIDsByParentID) }
             .sorted { lhs, rhs in
                 if lhs.homeName == rhs.homeName {
                     return lhs.fullPath.localizedCaseInsensitiveCompare(rhs.fullPath) == .orderedAscending
@@ -348,8 +343,12 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             return nil
         }
         let homesByID = try fetchHomesByID()
-        let locations = try fetchLocations()
-        return makeLocation(location, homesByID: homesByID, allLocations: locations)
+        let locations = Array(try fetchLocationsByID().values)
+        return makeLocation(
+            location,
+            homesByID: homesByID,
+            childIDsByParentID: makeChildIDsByParentID(locations)
+        )
     }
 
     func createLocation(_ draft: AppLocationCreationDraft) throws -> AppStorageLocation {
@@ -431,7 +430,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
     func listItems() throws -> [AppInventoryItem] {
         let homesByID = try fetchHomesByID()
         let locationsByID = try fetchLocationsByID()
-        let items = try fetchItems()
+        let items = Array(uniqueObjectsByID(try fetchItems(), entityName: "CDInventoryItem").values)
         return items
             .compactMap { makeItem($0, homesByID: homesByID, locationsByID: locationsByID) }
             .sorted { lhs, rhs in
@@ -678,8 +677,7 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
             throw InventoryImportCommitError.selectedHomeNotFound
         }
 
-        let selectedHome = makeHome(homeObject)
-        guard selectedHome.permission.canMutate else {
+        guard let selectedHome = makeHome(homeObject), selectedHome.permission.canMutate else {
             throw InventoryImportCommitError.selectedHomeReadOnly
         }
         guard plan.canCommit else {
@@ -981,10 +979,7 @@ private extension CoreDataAppRepository {
     }
 
     func fetchHomesByID() throws -> [UUID: NSManagedObject] {
-        Dictionary(uniqueKeysWithValues: try fetchHomes().compactMap { home in
-            guard let id = home.value(forKey: "id") as? UUID else { return nil }
-            return (id, home)
-        })
+        uniqueObjectsByID(try fetchHomes(), entityName: "CDHome")
     }
 
     func fetchLocations() throws -> [NSManagedObject] {
@@ -992,10 +987,84 @@ private extension CoreDataAppRepository {
     }
 
     func fetchLocationsByID() throws -> [UUID: NSManagedObject] {
-        Dictionary(uniqueKeysWithValues: try fetchLocations().compactMap { location in
-            guard let id = location.value(forKey: "id") as? UUID else { return nil }
-            return (id, location)
-        })
+        uniqueObjectsByID(try fetchLocations(), entityName: "CDStorageLocation")
+    }
+
+    /// Indexes objects by their `id`, tolerating the duplicate rows CloudKit can
+    /// import (for example the same id in the private and shared stores).
+    /// Rows without an id are skipped. Each duplicate is logged once per process.
+    func uniqueObjectsByID(
+        _ objects: [NSManagedObject],
+        entityName: String
+    ) -> [UUID: NSManagedObject] {
+        var result: [UUID: NSManagedObject] = [:]
+        result.reserveCapacity(objects.count)
+        for object in objects {
+            guard let id = object.uuidValue(forKey: "id") else {
+                logMissingID(object, entityName: entityName)
+                continue
+            }
+            guard let existing = result[id] else {
+                result[id] = object
+                continue
+            }
+            let survivor = preferredDuplicate(existing, object)
+            let loser = survivor === existing ? object : existing
+            result[id] = survivor
+            logDuplicate(id: id, entityName: entityName, survivor: survivor, loser: loser)
+        }
+        return result
+    }
+
+    /// Prefers the private-store row, then the newest `modifiedAt`, then a
+    /// stable object-ID ordering so the choice is deterministic.
+    func preferredDuplicate(_ lhs: NSManagedObject, _ rhs: NSManagedObject) -> NSManagedObject {
+        let privateStore = persistenceController.privatePersistentStore()
+        let lhsIsPrivate = privateStore != nil && lhs.objectID.persistentStore == privateStore
+        let rhsIsPrivate = privateStore != nil && rhs.objectID.persistentStore == privateStore
+        if lhsIsPrivate != rhsIsPrivate {
+            return lhsIsPrivate ? lhs : rhs
+        }
+
+        let lhsModified = lhs.dateValue(forKey: "modifiedAt")
+        let rhsModified = rhs.dateValue(forKey: "modifiedAt")
+        if lhsModified != rhsModified {
+            return lhsModified > rhsModified ? lhs : rhs
+        }
+
+        return lhs.objectID.uriRepresentation().absoluteString
+            <= rhs.objectID.uriRepresentation().absoluteString ? lhs : rhs
+    }
+
+    func storeLabel(for object: NSManagedObject) -> String {
+        guard let store = object.objectID.persistentStore else { return "none" }
+        if store == persistenceController.privatePersistentStore() { return "private" }
+        if store == persistenceController.sharedPersistentStore() { return "shared" }
+        return store.identifier ?? "unknown"
+    }
+
+    func logDuplicate(
+        id: UUID,
+        entityName: String,
+        survivor: NSManagedObject,
+        loser: NSManagedObject
+    ) {
+        let key = "\(entityName)|\(survivor.objectID.uriRepresentation())|\(loser.objectID.uriRepresentation())"
+        guard RepositoryIntegrityLog.shouldLog(key) else { return }
+        DebugLogger.warning(
+            "Duplicate \(entityName) id \(id): keeping \(survivor.objectID.uriRepresentation()) "
+                + "(\(storeLabel(for: survivor))), ignoring \(loser.objectID.uriRepresentation()) "
+                + "(\(storeLabel(for: loser)))"
+        )
+    }
+
+    func logMissingID(_ object: NSManagedObject, entityName: String) {
+        let key = "nil-id|\(entityName)|\(object.objectID.uriRepresentation())"
+        guard RepositoryIntegrityLog.shouldLog(key) else { return }
+        DebugLogger.warning(
+            "Skipping \(entityName) without an id: \(object.objectID.uriRepresentation()) "
+                + "(\(storeLabel(for: object)))"
+        )
     }
 
     func fetchItems() throws -> [NSManagedObject] {
@@ -1050,19 +1119,21 @@ private extension CoreDataAppRepository {
     }
 
     func fetchHomeObject(id: UUID) throws -> NSManagedObject? {
-        try fetchObjects(
-            entityName: "CDHome",
-            predicate: NSPredicate(format: "id == %@", id as CVarArg),
-            fetchLimit: 1
-        ).first
+        try fetchPreferredObject(entityName: "CDHome", id: id)
     }
 
     func fetchLocationObject(id: UUID) throws -> NSManagedObject? {
+        try fetchPreferredObject(entityName: "CDStorageLocation", id: id)
+    }
+
+    /// Fetches by id and resolves duplicates the same way the list indexes do.
+    func fetchPreferredObject(entityName: String, id: UUID) throws -> NSManagedObject? {
         try fetchObjects(
-            entityName: "CDStorageLocation",
-            predicate: NSPredicate(format: "id == %@", id as CVarArg),
-            fetchLimit: 1
-        ).first
+            entityName: entityName,
+            predicate: NSPredicate(format: "id == %@", id as CVarArg)
+        ).reduce(nil) { current, object in
+            current.map { preferredDuplicate($0, object) } ?? object
+        }
     }
 
     func fetchRequiredLocationObject(id: UUID) throws -> NSManagedObject {
@@ -1150,42 +1221,71 @@ private extension CoreDataAppRepository {
         return currentHomeID == targetHomeID
     }
 
-    func makeHome(_ homeObject: NSManagedObject) -> AppHome {
-        let baseHome = makeHomeReference(homeObject)
-        let permission = shareService?.permission(for: baseHome) ?? SharePermission(role: .owner)
-        let isShared = shareService?.isShared(baseHome) ?? false
-        let isOwnedByCurrentUser = permission.role == .owner
-        return AppHome(
-            id: baseHome.id,
-            name: baseHome.name,
-            createdAt: baseHome.createdAt,
-            modifiedAt: baseHome.modifiedAt,
-            isShared: isShared,
-            isOwnedByCurrentUser: isOwnedByCurrentUser,
-            permission: permission,
-            participantSummary: participantSummary(for: baseHome.id)
-        )
+    func makeHome(_ homeObject: NSManagedObject) -> AppHome? {
+        makeHomes([homeObject]).first
+    }
+
+    /// Maps homes with one batched share lookup instead of several per home.
+    func makeHomes(_ homeObjects: [NSManagedObject]) -> [AppHome] {
+        let requests = homeObjects.compactMap { object -> HomeShareLookupRequest? in
+            guard let home = makeHomeReference(object) else {
+                logMissingID(object, entityName: "CDHome")
+                return nil
+            }
+            return HomeShareLookupRequest(home: home, objectID: object.objectID)
+        }
+        let snapshots = shareService?.sharingSnapshots(for: requests) ?? [:]
+
+        return requests.map { request in
+            let baseHome = request.home
+            let snapshot = snapshots[baseHome.id] ?? .unshared
+            return AppHome(
+                id: baseHome.id,
+                name: baseHome.name,
+                createdAt: baseHome.createdAt,
+                modifiedAt: baseHome.modifiedAt,
+                isShared: snapshot.isShared,
+                isOwnedByCurrentUser: snapshot.permission.role == .owner,
+                permission: snapshot.permission,
+                participantSummary: participantSummary(for: snapshot.participants)
+            )
+        }
+    }
+
+    /// Parent location id to child ids, sorted by child name, built in one pass.
+    func makeChildIDsByParentID(_ locations: [NSManagedObject]) -> [UUID: [UUID]] {
+        var children: [UUID: [(id: UUID, name: String)]] = [:]
+        for location in locations {
+            guard let id = location.uuidValue(forKey: "id"),
+                  let parent = location.value(forKey: "parentLocation") as? NSManagedObject,
+                  let parentID = parent.uuidValue(forKey: "id") else {
+                continue
+            }
+            children[parentID, default: []].append((id, location.stringValue(forKey: "name")))
+        }
+        return children.mapValues { entries in
+            entries
+                .sorted { lhs, rhs in
+                    let order = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    if order == .orderedSame {
+                        return lhs.id.uuidString < rhs.id.uuidString
+                    }
+                    return order == .orderedAscending
+                }
+                .map(\.id)
+        }
     }
 
     func makeLocation(
         _ locationObject: NSManagedObject,
         homesByID: [UUID: NSManagedObject],
-        allLocations: [NSManagedObject]
+        childIDsByParentID: [UUID: [UUID]]
     ) -> AppStorageLocation? {
         guard let id = locationObject.value(forKey: "id") as? UUID,
               let homeObject = locationObject.value(forKey: "home") as? NSManagedObject,
               let homeID = homeObject.value(forKey: "id") as? UUID,
               let persistedHome = homesByID[homeID] else {
             return nil
-        }
-
-        let childIDs = allLocations.compactMap { location -> UUID? in
-            guard let parent = location.value(forKey: "parentLocation") as? NSManagedObject,
-                  let parentID = parent.value(forKey: "id") as? UUID,
-                  parentID == id else {
-                return nil
-            }
-            return location.value(forKey: "id") as? UUID
         }
 
         let itemCount = (locationObject.value(forKey: "items") as? Set<NSManagedObject>)?.count ?? 0
@@ -1202,11 +1302,7 @@ private extension CoreDataAppRepository {
             homeName: persistedHome.stringValue(forKey: "name"),
             parentLocationID: parentLocationID,
             fullPath: fullPath(for: locationObject),
-            childLocationIDs: childIDs.sorted { lhs, rhs in
-                let lhsName = allLocations.first(where: { ($0.value(forKey: "id") as? UUID) == lhs })?.stringValue(forKey: "name") ?? ""
-                let rhsName = allLocations.first(where: { ($0.value(forKey: "id") as? UUID) == rhs })?.stringValue(forKey: "name") ?? ""
-                return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
-            },
+            childLocationIDs: childIDsByParentID[id] ?? [],
             itemCount: itemCount
         )
     }
@@ -1249,8 +1345,18 @@ private extension CoreDataAppRepository {
 
     func fullPath(for locationObject: NSManagedObject) -> String {
         var names: [String] = []
+        var visitedObjectIDs = Set<NSManagedObjectID>()
         var current: NSManagedObject? = locationObject
         while let currentObject = current {
+            guard visitedObjectIDs.insert(currentObject.objectID).inserted else {
+                let key = "cycle|\(locationObject.objectID.uriRepresentation())"
+                if RepositoryIntegrityLog.shouldLog(key) {
+                    DebugLogger.warning(
+                        "Location parent cycle detected at \(currentObject.objectID.uriRepresentation())"
+                    )
+                }
+                break
+            }
             names.insert(currentObject.stringValue(forKey: "name"), at: 0)
             current = currentObject.value(forKey: "parentLocation") as? NSManagedObject
         }
@@ -1298,8 +1404,7 @@ private extension CoreDataAppRepository {
             .joined(separator: " ")
     }
 
-    func participantSummary(for homeID: UUID) -> String? {
-        let participants = participants(for: homeID)
+    func participantSummary(for participants: [CKShare.Participant]) -> String? {
         guard participants.isEmpty == false else { return nil }
 
         let formatter = PersonNameComponentsFormatter()
@@ -1327,9 +1432,12 @@ private extension CoreDataAppRepository {
         return makeHomeReference(homeObject)
     }
 
-    func makeHomeReference(_ homeObject: NSManagedObject) -> AppHome {
-        AppHome(
-            id: homeObject.value(forKey: "id") as? UUID ?? UUID(),
+    /// Returns nil for rows without an id rather than inventing one, which
+    /// would give the home a different identity on every refresh.
+    func makeHomeReference(_ homeObject: NSManagedObject) -> AppHome? {
+        guard let id = homeObject.uuidValue(forKey: "id") else { return nil }
+        return AppHome(
+            id: id,
             name: homeObject.stringValue(forKey: "name"),
             createdAt: homeObject.dateValue(forKey: "createdAt"),
             modifiedAt: homeObject.dateValue(forKey: "modifiedAt"),
@@ -1338,6 +1446,17 @@ private extension CoreDataAppRepository {
             permission: SharePermission(role: .owner),
             participantSummary: nil
         )
+    }
+}
+
+/// Remembers which data-integrity warnings were already logged so a refresh
+/// loop does not repeat them.
+@MainActor
+enum RepositoryIntegrityLog {
+    private static var loggedKeys = Set<String>()
+
+    static func shouldLog(_ key: String) -> Bool {
+        loggedKeys.insert(key).inserted
     }
 }
 

@@ -27,6 +27,46 @@ protocol HomeSharingServiceProtocol {
         _ home: AppHome,
         completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
     )
+    /// Resolves sharing state for many homes at once so a refresh does not
+    /// issue several share lookups per home.
+    func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot]
+}
+
+/// A home plus the managed object that backs it, used for batched share lookup.
+struct HomeShareLookupRequest {
+    let home: AppHome
+    let objectID: NSManagedObjectID
+}
+
+/// Sharing state derived from one share lookup.
+struct HomeSharingSnapshot {
+    let isShared: Bool
+    let permission: SharePermission
+    let participants: [CKShare.Participant]
+
+    static let unshared = HomeSharingSnapshot(
+        isShared: false,
+        permission: SharePermission(role: .owner),
+        participants: []
+    )
+
+    init(isShared: Bool, permission: SharePermission, participants: [CKShare.Participant]) {
+        self.isShared = isShared
+        self.permission = permission
+        self.participants = participants
+    }
+
+    init(share: CKShare?) {
+        guard let share else {
+            self = .unshared
+            return
+        }
+        self.init(
+            isShared: true,
+            permission: SharePermission(share: share),
+            participants: share.participants
+        )
+    }
 }
 
 // Phase 1 should make PersistenceController conform to this.
@@ -171,22 +211,40 @@ struct SharePermission: Equatable, Hashable {
     }
 }
 
-extension HomeSharingServiceProtocol {
-    func permission(for home: AppHome) -> SharePermission {
-        guard let share = fetchShare(for: home),
-              let participant = share.currentUserParticipant else {
-            return SharePermission(role: .owner)
-        }
-
-        if participant.role == .owner {
-            return SharePermission(role: .owner)
+extension SharePermission {
+    init(share: CKShare) {
+        guard let participant = share.currentUserParticipant,
+              participant.role != .owner else {
+            self.init(role: .owner)
+            return
         }
 
         if participant.permission == .readWrite {
-            return SharePermission(role: .readWriteParticipant)
+            self.init(role: .readWriteParticipant)
+        } else {
+            self.init(role: .readOnlyParticipant)
         }
+    }
+}
 
-        return SharePermission(role: .readOnlyParticipant)
+extension HomeSharingServiceProtocol {
+    func permission(for home: AppHome) -> SharePermission {
+        guard let share = fetchShare(for: home) else {
+            return SharePermission(role: .owner)
+        }
+        return SharePermission(share: share)
+    }
+
+    func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot] {
+        var snapshots: [UUID: HomeSharingSnapshot] = [:]
+        for request in requests {
+            snapshots[request.home.id] = HomeSharingSnapshot(
+                isShared: isShared(request.home),
+                permission: permission(for: request.home),
+                participants: participants(for: request.home)
+            )
+        }
+        return snapshots
     }
 
     func canCreateLocations(in home: AppHome) -> Bool {
@@ -427,6 +485,26 @@ final class HomeSharingService: HomeSharingServiceProtocol {
 
     func participants(for home: AppHome) -> [CKShare.Participant] {
         fetchShare(for: home)?.participants ?? []
+    }
+
+    func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot] {
+        guard requests.isEmpty == false else { return [:] }
+
+        let shares: [NSManagedObjectID: CKShare]
+        do {
+            shares = try persistenceController.persistentContainer.fetchShares(
+                matching: requests.map(\.objectID)
+            )
+        } catch {
+            DebugLogger.warning("Failed to fetch shares for \(requests.count) homes: \(error)")
+            shares = [:]
+        }
+
+        var snapshots: [UUID: HomeSharingSnapshot] = [:]
+        for request in requests {
+            snapshots[request.home.id] = HomeSharingSnapshot(share: shares[request.objectID])
+        }
+        return snapshots
     }
 
     private func deleteShareFromSharedDatabase(_ share: CKShare) async throws {
