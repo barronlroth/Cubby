@@ -322,8 +322,9 @@ final class CoreUserBehaviorUITests: XCTestCase {
         let app = launchApp(["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"])
 
         XCTAssertTrue(app.staticTexts["Roof Cargo Box"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Garage"].waitForExistence(timeout: 5))
-        app.staticTexts["Garage"].tap()
+        let openGarage = app.buttons["location-section-open-Garage"]
+        XCTAssertTrue(openGarage.waitForExistence(timeout: 5))
+        openGarage.tap()
 
         XCTAssertTrue(app.staticTexts["Nested Locations"].waitForExistence(timeout: 5))
 

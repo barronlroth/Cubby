@@ -494,7 +494,8 @@ struct HomeView: View {
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
         ScrollViewReader { proxy in
-        List(selection: $selectedItemIDs) {
+        // Bind selection only in Select mode so row taps keep navigating otherwise.
+        List(selection: isSelectingItems ? $selectedItemIDs : nil) {
             header
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets())
@@ -655,9 +656,7 @@ struct HomeView: View {
         if !deleted.isEmpty {
             UndoManager.shared.record(
                 deleted.count == 1 ? .itemDeleted(deleted[0]) : .itemsDeleted(deleted),
-                message: deleted.count == 1
-                    ? "Deleted \u{201C}\(deleted[0].title)\u{201D}"
-                    : "Deleted \(deleted.count) items",
+                message: deleted.count == 1 ? "\"\(deleted[0].title)\"" : "\(deleted.count) items",
                 appStore: nil,
                 systemUndoManager: nil
             )

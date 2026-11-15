@@ -124,7 +124,7 @@ struct LocationSectionHeader: View {
                 .contentShape(Rectangle())
                 .onTapGesture(perform: handleTitleTap)
                 .accessibilityElement(children: .combine)
-                .accessibilityAddTraits([.isHeader, .isButton])
+                .accessibilityAddTraits(.isHeader)
                 .accessibilityLabel("\(title), \(itemCountText)")
                 .accessibilityValue(allowsCollapse ? (isCollapsed ? "Collapsed" : "Expanded") : "")
                 .accessibilityHint(headerAccessibilityHint)
@@ -146,7 +146,10 @@ struct LocationSectionHeader: View {
                     cancelRename()
                     return .handled
                 }
-                .onChange(of: draftName) { _, _ in renameErrorMessage = nil }
+                .onChange(of: draftName) { _, _ in
+                    renameErrorMessage = nil
+                    keepsFocusAfterFailedSubmit = false
+                }
                 .padding(.vertical, CubbyDesign.Spacing.xSmall)
                 .overlay(alignment: .bottom) {
                     Rectangle()

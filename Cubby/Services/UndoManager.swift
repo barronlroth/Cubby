@@ -50,7 +50,7 @@ class UndoManager: ObservableObject {
     func recordDeletion(snapshot: AppDeletedItemSnapshot) {
         record(
             .itemDeleted(snapshot),
-            message: "Deleted \u{201C}\(snapshot.title)\u{201D}",
+            message: "\"\(snapshot.title)\"",
             appStore: nil,
             systemUndoManager: nil
         )
@@ -84,7 +84,13 @@ class UndoManager: ObservableObject {
         }
 
         canUndo = !entries.isEmpty
-        toastMessage = message
+        switch action {
+        case .itemDeleted, .itemsDeleted:
+            // Deletions keep their original "Undo delete …" wording.
+            toastMessage = "Undo delete \(message)"
+        default:
+            toastMessage = "\(message) \u{00B7} Undo"
+        }
         startAutoHideTimer()
     }
 
@@ -150,8 +156,7 @@ class UndoManager: ObservableObject {
     }
 
     var undoDescription: String? {
-        guard let message = toastMessage else { return nil }
-        return "\(message) \u{00B7} Undo"
+        toastMessage
     }
 
     func dismissUndo() {
