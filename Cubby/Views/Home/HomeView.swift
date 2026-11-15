@@ -23,6 +23,7 @@ struct HomeView: View {
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var searchText: String
     @Binding var showingAddItem: Bool
+    @Binding var isSelectingItems: Bool
 
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
@@ -39,6 +40,11 @@ struct HomeView: View {
     @State private var moveSubject: LocationMoveSubject?
     @State private var highlightedLocationID: UUID?
     @State private var highlightGeneration = 0
+    @State private var selectedItemIDs: Set<UUID> = []
+    @State private var showingBatchDeleteConfirmation = false
+    @State private var dragItemID: UUID?
+    @State private var dropTargetLocationID: UUID?
+    @State private var dropErrorCount = 0
 
     private enum BlockingSheet {
         case addItem, addLocation, addHome, search, options, sharing, addNestedLocation, move
@@ -119,7 +125,7 @@ struct HomeView: View {
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
             || preparingShareHomeID != nil
             || nestedLocationParent != nil || pendingLocationDeletion != nil
-            || moveSubject != nil
+            || moveSubject != nil || showingBatchDeleteConfirmation
             || locationActionErrorMessage != nil
             || !presentedSheets.isEmpty
     }
@@ -147,6 +153,22 @@ struct HomeView: View {
             .background(CubbyDesign.Palette.canvas)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { selectionToolbar }
+            .confirmationDialog(
+                selectedItemIDs.count == 1 ? "Delete 1 Item?" : "Delete \(selectedItemIDs.count) Items?",
+                isPresented: $showingBatchDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive, action: deleteSelectedItems)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You can undo this from the banner for a few seconds.")
+            }
+            .sensoryFeedback(.error, trigger: dropErrorCount)
+            .onChange(of: appStore.items) { _, items in
+                let existing = Set(items.map(\.id))
+                selectedItemIDs.formIntersection(existing)
+            }
             .navigationDestination(item: $selectedLocation) { location in
                 LocationDetailView(location: location)
             }
@@ -281,6 +303,7 @@ struct HomeView: View {
             .onChange(of: selectedHome?.id) { _, _ in
                 searchText = ""
                 collapsedLocationSectionIDs.removeAll()
+                endSelection()
             }
             .siriPresentationBlocker(isPresented: hasBlockingPresentation)
     }
@@ -288,17 +311,43 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                HomePicker(
-                    selectedHome: $selectedHome,
-                    showingAddHome: $showingAddHome,
-                    showingSearch: $showingSearch,
-                    showingOptions: $showingOptions
-                )
-                .buttonStyle(.plain)
+                if isSelectingItems {
+                    Text(selectedItemIDs.count == 1 ? "1 Selected" : "\(selectedItemIDs.count) Selected")
+                        .font(CubbyDesign.Typography.title)
+                        .minimumScaleFactor(0.8)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("home-selection-count")
+                } else {
+                    HomePicker(
+                        selectedHome: $selectedHome,
+                        showingAddHome: $showingAddHome,
+                        showingSearch: $showingSearch,
+                        showingOptions: $showingOptions
+                    )
+                    .buttonStyle(.plain)
+                }
 
                 Spacer(minLength: 8)
 
-                if let selectedHome {
+                if canSelectItems {
+                    Button(isSelectingItems ? "Done" : "Select") {
+                        if isSelectingItems {
+                            endSelection()
+                        } else {
+                            withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
+                                isSelectingItems = true
+                            }
+                        }
+                    }
+                    .font(CubbyDesign.Typography.bodyEmphasized)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
+                    .accessibilityIdentifier("home-select-button")
+                }
+
+                if let selectedHome, !isSelectingItems {
                     shareControl(for: selectedHome)
                 }
             }
@@ -445,24 +494,38 @@ struct HomeView: View {
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
         ScrollViewReader { proxy in
-        List {
+        List(selection: $selectedItemIDs) {
             header
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
+                .selectionDisabled()
 
             if sections.isEmpty {
                 emptyState
+                    .selectionDisabled()
             } else {
                 ForEach(sections) { section in
                     let isCollapsed = isSectionCollapsed(section)
                     Section {
                         if !isCollapsed {
                             ForEach(section.items) { item in
-                                ItemRow(item: item, showLocation: false)
-                                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
+                                ItemRow(
+                                    item: item,
+                                    showLocation: false,
+                                    onMove: canMutateSelectedHome ? { moveSubject = .items([item]) } : nil
+                                )
+                                .modifier(
+                                    ItemDragSource(
+                                        item: item,
+                                        isEnabled: canMutateSelectedHome && !isSelectingItems,
+                                        onDragStart: { dragItemID = item.id }
+                                    )
+                                )
+                                .tag(item.id)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
                             }
                         }
                     } header: {
@@ -471,7 +534,8 @@ struct HomeView: View {
                             itemCount: section.items.count,
                             isCollapsed: isCollapsed,
                             allowsCollapse: !isSearching,
-                            actions: headerActions(for: section.location),
+                            actions: isSelectingItems ? .readOnly : headerActions(for: section.location),
+                            dropState: dropState(for: section.location),
                             onCollapse: { collapseSection(section) },
                             onExpand: { expandSection(section) },
                             onSelect: { selectedLocation = section.location }
@@ -484,11 +548,19 @@ struct HomeView: View {
                                     .transition(.opacity)
                             }
                         }
+                        .modifier(
+                            ItemDropTarget(isEnabled: canMutateSelectedHome && !isSelectingItems) { refs in
+                                handleItemDrop(refs, onto: section.location)
+                            } onTargetChange: { isTargeted in
+                                updateDropTarget(section.location, isTargeted: isTargeted)
+                            }
+                        )
                         .id(section.id)
                     }
                 }
             }
         }
+        .environment(\.editMode, .constant(isSelectingItems ? .active : .inactive))
         .onChange(of: highlightedLocationID) { _, locationID in
             guard let locationID else { return }
             withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
@@ -523,6 +595,124 @@ struct HomeView: View {
         )
     }
 
+    // MARK: Select mode
+
+    private var canSelectItems: Bool {
+        canMutateSelectedHome && !locationSections.isEmpty
+    }
+
+    private var selectedItems: [AppInventoryItem] {
+        guard let selectedHome else { return [] }
+        return appStore.items(in: selectedHome.id).filter { selectedItemIDs.contains($0.id) }
+    }
+
+    @ToolbarContentBuilder
+    private var selectionToolbar: some ToolbarContent {
+        if isSelectingItems {
+            ToolbarItem(placement: .bottomBar) {
+                Button {
+                    moveSubject = .items(selectedItems)
+                } label: {
+                    Text(selectedItemIDs.count == 1 ? "Move 1 Item\u{2026}" : "Move \(selectedItemIDs.count) Items\u{2026}")
+                }
+                .disabled(selectedItemIDs.isEmpty)
+                .accessibilityIdentifier("home-selection-move")
+            }
+            ToolbarSpacer(.flexible, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) {
+                Button(role: .destructive) {
+                    showingBatchDeleteConfirmation = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(selectedItemIDs.isEmpty)
+                .accessibilityIdentifier("home-selection-delete")
+            }
+        }
+    }
+
+    private func endSelection() {
+        withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
+            isSelectingItems = false
+            selectedItemIDs.removeAll()
+        }
+    }
+
+    private func deleteSelectedItems() {
+        let ids = selectedItems.map(\.id)
+        guard !ids.isEmpty else { return }
+        CubbyDesign.Haptics.play(.warning)
+        let snapshots = ids.compactMap(appStore.deleteSnapshot(for:))
+        var deleted: [AppDeletedItemSnapshot] = []
+        do {
+            for snapshot in snapshots {
+                try appStore.deleteItem(id: snapshot.itemID)
+                deleted.append(snapshot)
+            }
+        } catch {
+            locationActionErrorMessage = error.localizedDescription
+        }
+        if !deleted.isEmpty {
+            UndoManager.shared.record(
+                deleted.count == 1 ? .itemDeleted(deleted[0]) : .itemsDeleted(deleted),
+                message: deleted.count == 1
+                    ? "Deleted \u{201C}\(deleted[0].title)\u{201D}"
+                    : "Deleted \(deleted.count) items",
+                appStore: nil,
+                systemUndoManager: nil
+            )
+        }
+        endSelection()
+    }
+
+    // MARK: Drag and drop
+
+    private func isValidItemDrop(itemID: UUID?, onto location: AppStorageLocation) -> Bool {
+        guard let itemID, let item = appStore.item(id: itemID) else { return false }
+        return item.homeID == location.homeID && item.storageLocationID != location.id
+    }
+
+    private func dropState(for location: AppStorageLocation) -> LocationSectionHeader.DropTargetState {
+        guard dropTargetLocationID == location.id else { return .none }
+        return isValidItemDrop(itemID: dragItemID, onto: location) ? .valid : .invalid
+    }
+
+    private func updateDropTarget(_ location: AppStorageLocation, isTargeted: Bool) {
+        if isTargeted {
+            guard dropTargetLocationID != location.id else { return }
+            dropTargetLocationID = location.id
+            if isValidItemDrop(itemID: dragItemID, onto: location) {
+                CubbyDesign.Haptics.play(.selection)
+            }
+        } else if dropTargetLocationID == location.id {
+            dropTargetLocationID = nil
+        }
+    }
+
+    private func handleItemDrop(_ refs: [ItemDragRef], onto location: AppStorageLocation) -> Bool {
+        dropTargetLocationID = nil
+        dragItemID = nil
+        let ids = refs.map(\.id).filter { isValidItemDrop(itemID: $0, onto: location) }
+        guard !ids.isEmpty else {
+            dropErrorCount += 1
+            return false
+        }
+        do {
+            try InventoryReorganizer.moveItems(
+                ids,
+                to: location.id,
+                appStore: appStore,
+                systemUndoManager: systemUndoManager
+            )
+            highlight(location.id)
+            return true
+        } catch {
+            dropErrorCount += 1
+            locationActionErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     private func performMove(_ subject: LocationMoveSubject, to destination: UUID?) {
         do {
             switch subject {
@@ -543,6 +733,7 @@ struct HomeView: View {
                     systemUndoManager: systemUndoManager
                 )
                 highlight(destination)
+                endSelection()
             }
         } catch {
             locationActionErrorMessage = error.localizedDescription
@@ -605,6 +796,60 @@ struct HomeView: View {
             .buttonStyle(.plain)
         case .shared:
             SharedHomeStatusRow(isSharedWithYou: false)
+        }
+    }
+}
+
+/// Makes an item row draggable as an `ItemDragRef`, with a compact preview.
+private struct ItemDragSource: ViewModifier {
+    let item: AppInventoryItem
+    let isEnabled: Bool
+    let onDragStart: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.draggable(ItemDragRef(id: item.id)) {
+                ItemDragPreview(item: item)
+                    .onAppear(perform: onDragStart)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+struct ItemDragPreview: View {
+    let item: AppInventoryItem
+
+    var body: some View {
+        HStack(spacing: CubbyDesign.Spacing.small) {
+            Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
+                .font(.title3)
+            Text(item.title)
+                .font(CubbyDesign.Typography.bodyCompactEmphasized)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, CubbyDesign.Spacing.medium)
+        .padding(.vertical, CubbyDesign.Spacing.small)
+        .background(CubbyDesign.Palette.elevatedSurface, in: Capsule())
+    }
+}
+
+/// Accepts dropped `ItemDragRef`s when enabled.
+private struct ItemDropTarget: ViewModifier {
+    let isEnabled: Bool
+    let onDrop: ([ItemDragRef]) -> Bool
+    let onTargetChange: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.dropDestination(for: ItemDragRef.self) { refs, _ in
+                onDrop(refs)
+            } isTargeted: { isTargeted in
+                onTargetChange(isTargeted)
+            }
+        } else {
+            content
         }
     }
 }

@@ -18,6 +18,7 @@ class UndoManager: ObservableObject {
 
     enum Action {
         case itemDeleted(AppDeletedItemSnapshot)
+        case itemsDeleted([AppDeletedItemSnapshot])
         case itemsMoved([MovedItem])
         case locationMoved(id: UUID, fromParentID: UUID?)
         case renamed(kind: RenameKind, id: UUID, oldName: String)
@@ -122,6 +123,10 @@ class UndoManager: ObservableObject {
                 throw AppRepositoryError.locationNotFound
             }
             try appStore.restoreDeletedItem(snapshot)
+        case .itemsDeleted(let snapshots):
+            for snapshot in snapshots where appStore.location(id: snapshot.storageLocationID) != nil {
+                try appStore.restoreDeletedItem(snapshot)
+            }
         case .itemsMoved(let movedItems):
             let byOrigin = Dictionary(grouping: movedItems, by: \.fromLocationID)
             for (locationID, items) in byOrigin {
@@ -157,7 +162,16 @@ class UndoManager: ObservableObject {
 
     private func discard(_ entry: Entry) {
         entry.systemUndoManager?.removeAllActions(withTarget: entry.token)
-        if case .itemDeleted(let snapshot) = entry.action, let photoFileName = snapshot.photoFileName {
+        let snapshots: [AppDeletedItemSnapshot]
+        switch entry.action {
+        case .itemDeleted(let snapshot):
+            snapshots = [snapshot]
+        case .itemsDeleted(let deleted):
+            snapshots = deleted
+        default:
+            snapshots = []
+        }
+        for photoFileName in snapshots.compactMap(\.photoFileName) {
             Task {
                 await PhotoService.shared.deletePhoto(fileName: photoFileName)
             }

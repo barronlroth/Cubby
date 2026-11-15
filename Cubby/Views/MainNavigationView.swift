@@ -14,6 +14,7 @@ struct MainNavigationView: View {
     @ObservedObject private var siriService = SiriInventoryService.shared
     @State private var presentedSiriRequest: SiriNavigationRequest?
     @State private var presentedSiriRequestID: UUID?
+    @State private var isSelectingItems = false
 
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
@@ -40,7 +41,8 @@ struct MainNavigationView: View {
                 selectedHome: $selectedHome,
                 selectedLocation: $selectedLocation,
                 searchText: $searchText,
-                showingAddItem: $showingAddItem
+                showingAddItem: $showingAddItem,
+                isSelectingItems: $isSelectingItems
             )
             .searchable(text: $searchText, prompt: Text("Search Items"))
             .applyLiquidGlassSearchBehaviors()
@@ -51,7 +53,7 @@ struct MainNavigationView: View {
             .modifier(ContentTopMarginZero())
             .toolbar {
                 #if os(iOS)
-                if #available(iOS 26.0, *) {
+                if #available(iOS 26.0, *), !isSelectingItems {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                     ToolbarItem(placement: .bottomBar) { Spacer(minLength: 12) }
                     ToolbarItem(placement: .bottomBar) { toolbarButton }

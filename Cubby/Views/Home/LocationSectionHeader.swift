@@ -13,11 +13,18 @@ struct LocationSectionHeaderActions {
 }
 
 struct LocationSectionHeader: View {
+    enum DropTargetState: Equatable {
+        case none
+        case valid
+        case invalid
+    }
+
     let locationPath: String
     let itemCount: Int
     var isCollapsed = false
     var allowsCollapse = true
     var actions: LocationSectionHeaderActions = .readOnly
+    var dropState: DropTargetState = .none
     var onCollapse: () -> Void = {}
     var onExpand: () -> Void = {}
     var onSelect: () -> Void = {}
@@ -58,7 +65,16 @@ struct LocationSectionHeader: View {
 
             Spacer(minLength: CubbyDesign.Spacing.small)
 
-            if isCollapsed, !isRenaming {
+            if dropState == .valid {
+                Label("Drop in \(title)", systemImage: "arrow.down.to.line")
+                    .font(CubbyDesign.Typography.captionEmphasized)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, CubbyDesign.Spacing.small)
+                    .padding(.vertical, CubbyDesign.Spacing.xSmall)
+                    .background(CubbyDesign.Palette.accent, in: Capsule())
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .accessibilityHidden(true)
+            } else if isCollapsed, !isRenaming {
                 Text(itemCountText)
                     .font(CubbyDesign.Typography.captionEmphasized)
                     .foregroundStyle(.secondary)
@@ -76,6 +92,19 @@ struct LocationSectionHeader: View {
         .padding(.trailing, CubbyDesign.Spacing.xSmall)
         .padding(.top, CubbyDesign.Spacing.standard)
         .padding(.bottom, CubbyDesign.Spacing.small)
+        .background {
+            if dropState == .valid {
+                RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
+                    .strokeBorder(CubbyDesign.Palette.accent, lineWidth: CubbyDesign.Stroke.emphasized)
+                    .background(
+                        CubbyDesign.Palette.accent.opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
+                    )
+                    .padding(.horizontal, CubbyDesign.Spacing.small)
+                    .padding(.top, CubbyDesign.Spacing.small)
+            }
+        }
+        .cubbyAnimation(.quick, value: dropState)
         .contentShape(.rect)
         .contextMenu { contextMenuContent }
         .renameAction(beginRename)

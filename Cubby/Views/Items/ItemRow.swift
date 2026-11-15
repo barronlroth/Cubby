@@ -3,13 +3,15 @@ import SwiftUI
 struct ItemRow: View {
     let item: AppInventoryItem
     let showLocation: Bool
+    var onMove: (() -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var scaledIconSize = CubbyDesign.Layout.rowIcon
 
-    init(item: AppInventoryItem, showLocation: Bool = true) {
+    init(item: AppInventoryItem, showLocation: Bool = true, onMove: (() -> Void)? = nil) {
         self.item = item
         self.showLocation = showLocation
+        self.onMove = onMove
     }
 
     private var iconSize: CGFloat {
@@ -34,6 +36,11 @@ struct ItemRow: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
+        .accessibilityActions {
+            if let onMove {
+                Button("Move to\u{2026}", action: onMove)
+            }
+        }
         .siriInventoryItem(item.id)
     }
 
