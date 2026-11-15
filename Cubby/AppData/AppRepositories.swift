@@ -42,8 +42,8 @@ protocol FirstRunInventoryRepository {
 protocol ShareRepository {
     var ckContainer: CKContainer { get }
 
-    func share(for homeID: UUID) async throws -> CKShare
-    func shareURL(for homeID: UUID) async throws -> URL
+    func shareLookup(for homeID: UUID) -> HomeShareLookup
+    func prepareShare(for homeID: UUID) async throws -> CKShare
     func existingShare(for homeID: UUID) -> CKShare?
     func permission(for homeID: UUID) -> SharePermission
     func participants(for homeID: UUID) -> [CKShare.Participant]

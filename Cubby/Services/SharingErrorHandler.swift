@@ -111,11 +111,17 @@ private extension SharingErrorHandler {
                     isOffline: false,
                     shouldRetry: false
                 )
-            case .unsupportedHomeModel, .shareCreationFailed, .shareLinkUnavailable:
+            case .unsupportedHomeModel, .shareCreationFailed:
                 return SharingErrorPresentation(
                     message: "Cubby could not create a share link right now. Please try again.",
                     isOffline: false,
                     shouldRetry: false
+                )
+            case .shareLookupFailed:
+                return SharingErrorPresentation(
+                    message: "Cubby couldn't check this home's sharing status. Please try again in a moment.",
+                    isOffline: false,
+                    shouldRetry: true
                 )
             case .missingSharedPersistentStore:
                 return SharingErrorPresentation(
@@ -123,13 +129,16 @@ private extension SharingErrorHandler {
                     isOffline: false,
                     shouldRetry: false
                 )
-            case .shareExportTimedOut:
-                return SharingErrorPresentation(
-                    message: "Cubby took too long to prepare the share link. Please try again.",
-                    isOffline: false,
-                    shouldRetry: false
-                )
             }
+        }
+
+        if let preflightError = error as? HomeSharePreflightError {
+            return SharingErrorPresentation(
+                message: preflightError.errorDescription
+                    ?? "This home has data that iCloud can't share yet.",
+                isOffline: false,
+                shouldRetry: false
+            )
         }
 
         guard let ckError = error as? CKError else {

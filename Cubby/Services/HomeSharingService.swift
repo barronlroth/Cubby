@@ -1,32 +1,42 @@
 import CloudKit
 import CoreData
 import Foundation
-#if canImport(UIKit)
-import UIKit
-#endif
 
-private enum HomeSharingServiceConstants {
-    static let exportTimeout: TimeInterval = 20
-}
+// MARK: - Share lookup
 
-private final class CloudKitExportObserverBox: @unchecked Sendable {
-    var observer: NSObjectProtocol?
+/// The result of looking up a home's share. A failed lookup is not proof that a
+/// home is unshared, so it is kept distinct from `.notShared`.
+enum HomeShareLookup {
+    case notShared
+    case shared(CKShare)
+    case lookupFailed(Error)
+
+    var share: CKShare? {
+        if case .shared(let share) = self { return share }
+        return nil
+    }
+
+    var isLookupFailure: Bool {
+        if case .lookupFailed = self { return true }
+        return false
+    }
 }
 
 protocol HomeSharingServiceProtocol {
-    func shareHome(_ home: AppHome) async throws -> CKShare
-    func shareURL(for home: AppHome) async throws -> URL
-    func fetchShare(for home: AppHome) -> CKShare?
+    /// The CloudKit container that owns Cubby's shares, for ShareLink and
+    /// UICloudSharingController.
+    var cloudKitContainer: CKContainer { get }
+
+    func shareLookup(for home: AppHome) -> HomeShareLookup
+    /// Returns the home's existing share, or validates the home graph and
+    /// creates one. Fails without creating anything when the lookup fails.
+    func prepareShare(for home: AppHome) async throws -> CKShare
     func permission(for home: AppHome) -> SharePermission
     func canEdit(_ home: AppHome) -> Bool
     func isShared(_ home: AppHome) -> Bool
     func leaveSharedHome(_ home: AppHome) async throws
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
     func participants(for home: AppHome) -> [CKShare.Participant]
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    )
     /// Resolves sharing state for many homes at once so a refresh does not
     /// issue several share lookups per home.
     func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot]
@@ -43,37 +53,30 @@ struct HomeSharingSnapshot {
     let isShared: Bool
     let permission: SharePermission
     let participants: [CKShare.Participant]
+    let lookupFailed: Bool
 
-    static let unshared = HomeSharingSnapshot(
-        isShared: false,
-        permission: SharePermission(role: .owner),
-        participants: []
-    )
+    static let unshared = HomeSharingSnapshot(lookup: .notShared)
 
-    init(isShared: Bool, permission: SharePermission, participants: [CKShare.Participant]) {
+    init(
+        isShared: Bool,
+        permission: SharePermission,
+        participants: [CKShare.Participant],
+        lookupFailed: Bool = false
+    ) {
         self.isShared = isShared
         self.permission = permission
         self.participants = participants
+        self.lookupFailed = lookupFailed
     }
 
-    init(share: CKShare?) {
-        guard let share else {
-            self = .unshared
-            return
-        }
+    init(lookup: HomeShareLookup) {
         self.init(
-            isShared: true,
-            permission: SharePermission(share: share),
-            participants: share.participants
+            isShared: lookup.share != nil,
+            permission: SharePermission(lookup: lookup),
+            participants: lookup.share?.participants ?? [],
+            lookupFailed: lookup.isLookupFailure
         )
     }
-}
-
-// Phase 1 should make PersistenceController conform to this.
-protocol CloudKitSharingPersistenceControlling: AnyObject {
-    var persistentContainer: NSPersistentCloudKitContainer { get }
-    func privatePersistentStore() -> NSPersistentStore?
-    func sharedPersistentStore() -> NSPersistentStore?
 }
 
 enum HomeSharingServiceError: Error, Equatable {
@@ -82,9 +85,8 @@ enum HomeSharingServiceError: Error, Equatable {
     case cannotLeaveOwnedShare
     case unsupportedHomeModel
     case shareCreationFailed
-    case shareLinkUnavailable
+    case shareLookupFailed
     case missingSharedPersistentStore
-    case shareExportTimedOut
 }
 
 extension HomeSharingServiceError: LocalizedError {
@@ -100,12 +102,103 @@ extension HomeSharingServiceError: LocalizedError {
             return "This home could not be prepared for sharing."
         case .shareCreationFailed:
             return "Cubby could not create the share invite."
-        case .shareLinkUnavailable:
-            return "Cubby could not create the share link."
+        case .shareLookupFailed:
+            return "Cubby couldn't check this home's sharing status."
         case .missingSharedPersistentStore:
             return "Cubby could not access the shared iCloud store."
-        case .shareExportTimedOut:
-            return "Cubby took too long to prepare the share invite. Please try again."
+        }
+    }
+}
+
+/// A problem found in a home's object graph before it is shared (#86). Sharing
+/// such a graph can fail in CloudKit or pull other homes' records into the zone.
+enum HomeSharePreflightError: Error, Equatable {
+    case missingID(entity: String)
+    case duplicateID(entity: String, id: UUID)
+    case objectNotInPrivateStore(entity: String, id: UUID)
+    case belongsToAnotherHome(entity: String, id: UUID)
+    case parentCycle(locationID: UUID)
+}
+
+extension HomeSharePreflightError: LocalizedError {
+    var errorDescription: String? {
+        "This home has data that iCloud can't share yet. Try again after Cubby finishes syncing."
+    }
+}
+
+// MARK: - Container seam
+
+/// The `NSPersistentCloudKitContainer` calls the sharing service makes, behind a
+/// protocol so tests can drive the real service with a fake.
+protocol CloudKitSharingContaining: AnyObject {
+    func share(_ objects: [NSManagedObject], to share: CKShare?) async throws -> CKShare
+    func fetchShares(matching objectIDs: [NSManagedObjectID]) throws -> [NSManagedObjectID: CKShare]
+    func acceptShareInvitations(from metadata: [CKShare.Metadata], into store: NSPersistentStore) async throws
+    func purgeObjectsAndRecordsInZone(with zoneID: CKRecordZone.ID, in store: NSPersistentStore?) async throws
+    func persistUpdatedShare(_ share: CKShare, in store: NSPersistentStore) async throws -> CKShare
+}
+
+final class PersistentCloudKitSharingContainer: CloudKitSharingContaining {
+    private let container: NSPersistentCloudKitContainer
+
+    init(container: NSPersistentCloudKitContainer) {
+        self.container = container
+    }
+
+    func share(_ objects: [NSManagedObject], to share: CKShare?) async throws -> CKShare {
+        try await withCheckedThrowingContinuation { continuation in
+            container.share(objects, to: share) { _, share, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let share {
+                    continuation.resume(returning: share)
+                } else {
+                    continuation.resume(throwing: HomeSharingServiceError.shareCreationFailed)
+                }
+            }
+        }
+    }
+
+    func fetchShares(matching objectIDs: [NSManagedObjectID]) throws -> [NSManagedObjectID: CKShare] {
+        guard objectIDs.isEmpty == false else { return [:] }
+        return try container.fetchShares(matching: objectIDs)
+    }
+
+    func acceptShareInvitations(from metadata: [CKShare.Metadata], into store: NSPersistentStore) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            container.acceptShareInvitations(from: metadata, into: store) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    func purgeObjectsAndRecordsInZone(with zoneID: CKRecordZone.ID, in store: NSPersistentStore?) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            container.purgeObjectsAndRecordsInZone(with: zoneID, in: store) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    func persistUpdatedShare(_ share: CKShare, in store: NSPersistentStore) async throws -> CKShare {
+        try await withCheckedThrowingContinuation { continuation in
+            container.persistUpdatedShare(share, in: store) { share, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let share {
+                    continuation.resume(returning: share)
+                } else {
+                    continuation.resume(throwing: HomeSharingServiceError.shareCreationFailed)
+                }
+            }
         }
     }
 }
@@ -225,14 +318,39 @@ extension SharePermission {
             self.init(role: .readOnlyParticipant)
         }
     }
+
+    /// A failed lookup never grants owner or edit rights.
+    init(lookup: HomeShareLookup) {
+        switch lookup {
+        case .notShared:
+            self.init(role: .owner)
+        case .shared(let share):
+            self.init(share: share)
+        case .lookupFailed:
+            self.init(role: .readOnlyParticipant)
+        }
+    }
 }
 
 extension HomeSharingServiceProtocol {
+    func fetchShare(for home: AppHome) -> CKShare? {
+        shareLookup(for: home).share
+    }
+
     func permission(for home: AppHome) -> SharePermission {
-        guard let share = fetchShare(for: home) else {
-            return SharePermission(role: .owner)
-        }
-        return SharePermission(share: share)
+        SharePermission(lookup: shareLookup(for: home))
+    }
+
+    func canEdit(_ home: AppHome) -> Bool {
+        permission(for: home).canMutate
+    }
+
+    func isShared(_ home: AppHome) -> Bool {
+        shareLookup(for: home).share != nil
+    }
+
+    func participants(for home: AppHome) -> [CKShare.Participant] {
+        shareLookup(for: home).share?.participants ?? []
     }
 
     func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot] {
@@ -283,25 +401,20 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
         self.mode = mode
     }
 
-    func shareHome(_ home: AppHome) async throws -> CKShare {
+    var cloudKitContainer: CKContainer {
+        CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
+
+    func shareLookup(for home: AppHome) -> HomeShareLookup {
+        mode.isEnabled ? .shared(makeShare(for: home)) : .notShared
+    }
+
+    func prepareShare(for home: AppHome) async throws -> CKShare {
         makeShare(for: home)
-    }
-
-    func fetchShare(for home: AppHome) -> CKShare? {
-        guard mode.isEnabled else { return nil }
-        return makeShare(for: home)
-    }
-
-    func shareURL(for home: AppHome) async throws -> URL {
-        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
     }
 
     func permission(for home: AppHome) -> SharePermission {
         SharePermission(role: role(for: home))
-    }
-
-    func canEdit(_ home: AppHome) -> Bool {
-        permission(for: home).canMutate
     }
 
     func isShared(_ home: AppHome) -> Bool {
@@ -325,14 +438,6 @@ final class DebugMockHomeSharingService: HomeSharingServiceProtocol {
     func participants(for home: AppHome) -> [CKShare.Participant] {
         _ = home
         return []
-    }
-
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        let share = makeShare(for: home)
-        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
     }
 }
 
@@ -365,91 +470,92 @@ private extension DebugMockHomeSharingService {
     }
 }
 
+// Phase 1 should make PersistenceController conform to this.
+protocol CloudKitSharingPersistenceControlling: AnyObject {
+    var persistentContainer: NSPersistentCloudKitContainer { get }
+    func privatePersistentStore() -> NSPersistentStore?
+    func sharedPersistentStore() -> NSPersistentStore?
+}
+
 final class HomeSharingService: HomeSharingServiceProtocol {
     private let persistenceController: any CloudKitSharingPersistenceControlling
+    private let container: any CloudKitSharingContaining
     let ckContainer: CKContainer
 
     init(
         persistenceController: any CloudKitSharingPersistenceControlling,
+        container: (any CloudKitSharingContaining)? = nil,
         ckContainer: CKContainer = CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
     ) {
         self.persistenceController = persistenceController
+        self.container = container
+            ?? PersistentCloudKitSharingContainer(container: persistenceController.persistentContainer)
         self.ckContainer = ckContainer
     }
 
-    func shareHome(_ home: AppHome) async throws -> CKShare {
-        guard fetchShare(for: home) == nil else {
-            throw HomeSharingServiceError.homeAlreadyShared
+    var cloudKitContainer: CKContainer { ckContainer }
+
+    func shareLookup(for home: AppHome) -> HomeShareLookup {
+        guard let objectID = managedObject(for: home)?.objectID else {
+            return .notShared
+        }
+        return lookup(objectID: objectID, homeID: home.id)
+    }
+
+    func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot] {
+        guard requests.isEmpty == false else { return [:] }
+
+        let lookups: (NSManagedObjectID) -> HomeShareLookup
+        do {
+            let shares = try container.fetchShares(matching: requests.map(\.objectID))
+            lookups = { shares[$0].map(HomeShareLookup.shared) ?? .notShared }
+        } catch {
+            DebugLogger.warning("Failed to fetch shares for \(requests.count) homes: \(error)")
+            lookups = { _ in .lookupFailed(error) }
         }
 
-        guard let managedObject = managedObject(for: home) else {
+        var snapshots: [UUID: HomeSharingSnapshot] = [:]
+        for request in requests {
+            snapshots[request.home.id] = HomeSharingSnapshot(lookup: lookups(request.objectID))
+        }
+        return snapshots
+    }
+
+    func prepareShare(for home: AppHome) async throws -> CKShare {
+        guard let homeObject = managedObject(for: home) else {
             throw HomeSharingServiceError.unsupportedHomeModel
         }
 
-        let exportStartDate = Date()
-        let share = try await createShare(for: managedObject)
-        let configuredShare = try await configureLinkShare(
-            share,
-            for: home,
-            exportStartDate: exportStartDate
-        )
-        return configuredShare
-    }
-
-    func shareURL(for home: AppHome) async throws -> URL {
-        let share: CKShare
-        if let existingShare = fetchShare(for: home) {
-            share = try await configureLinkShare(
-                existingShare,
-                for: home,
-                exportStartDate: nil
-            )
-        } else {
-            share = try await shareHome(home)
+        switch lookup(objectID: homeObject.objectID, homeID: home.id) {
+        case .shared(let share):
+            return share
+        case .lookupFailed(let error):
+            DebugLogger.error("Blocking share creation for \(home.id): share lookup failed: \(error)")
+            throw HomeSharingServiceError.shareLookupFailed
+        case .notShared:
+            break
         }
 
-        return try await resolveShareURL(for: home, initialShare: share)
-    }
+        try validateShareableGraph(homeObject)
 
-    func fetchShare(for home: AppHome) -> CKShare? {
-        guard let objectID = managedObjectID(for: home) else {
-            return nil
+        DebugLogger.info("Creating share for home \(home.id)")
+        let share = try await container.share([homeObject], to: nil)
+        if home.name.isEmpty == false {
+            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         }
-
-        do {
-            let shares = try persistenceController.persistentContainer.fetchShares(
-                matching: [objectID]
-            )
-            return shares[objectID]
-        } catch {
-            DebugLogger.warning("Failed to fetch share for home \(home.id): \(error)")
-            return nil
-        }
-    }
-
-    func canEdit(_ home: AppHome) -> Bool {
-        guard let share = fetchShare(for: home) else {
-            return true
-        }
-
-        guard let currentParticipant = share.currentUserParticipant else {
-            return true
-        }
-
-        if currentParticipant.role == .owner {
-            return true
-        }
-
-        return currentParticipant.permission == .readWrite
-    }
-
-    func isShared(_ home: AppHome) -> Bool {
-        fetchShare(for: home) != nil
+        DebugLogger.info("Created share \(share.recordID.recordName) for home \(home.id)")
+        return share
     }
 
     func leaveSharedHome(_ home: AppHome) async throws {
-        guard let share = fetchShare(for: home) else {
+        let share: CKShare
+        switch shareLookup(for: home) {
+        case .shared(let found):
+            share = found
+        case .notShared:
             throw HomeSharingServiceError.shareNotFound
+        case .lookupFailed:
+            throw HomeSharingServiceError.shareLookupFailed
         }
 
         guard let currentParticipant = share.currentUserParticipant else {
@@ -467,44 +573,87 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         guard let sharedPersistentStore = persistenceController.sharedPersistentStore() else {
             throw HomeSharingServiceError.missingSharedPersistentStore
         }
+        try await container.acceptShareInvitations(from: [metadata], into: sharedPersistentStore)
+    }
 
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, Error>) in
-            persistenceController.persistentContainer.acceptShareInvitations(
-                from: [metadata],
-                into: sharedPersistentStore
-            ) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
+    /// Checks the graph `container.share` would copy into the share zone (#86):
+    /// ids present and unique, every location and item belongs to this home, no
+    /// parent cycles, and every object lives in the private store.
+    func validateShareableGraph(_ homeObject: NSManagedObject) throws {
+        let privateStore = persistenceController.privatePersistentStore()
+        func inPrivateStore(_ object: NSManagedObject) -> Bool {
+            privateStore != nil && object.objectID.persistentStore == privateStore
+        }
+        func fail(_ error: HomeSharePreflightError, _ object: NSManagedObject) throws -> Never {
+            DebugLogger.error(
+                "Share preflight failed: \(error) at \(object.objectID.uriRepresentation())"
+            )
+            throw error
+        }
+
+        guard let homeID = homeObject.value(forKey: "id") as? UUID else {
+            try fail(.missingID(entity: "CDHome"), homeObject)
+        }
+        guard inPrivateStore(homeObject) else {
+            try fail(.objectNotInPrivateStore(entity: "CDHome", id: homeID), homeObject)
+        }
+
+        let locations = homeObject.value(forKey: "storageLocations") as? Set<NSManagedObject> ?? []
+        var locationIDs = Set<UUID>()
+        var itemIDs = Set<UUID>()
+
+        for location in locations.sorted(by: { $0.objectID.uriRepresentation().absoluteString < $1.objectID.uriRepresentation().absoluteString }) {
+            guard let locationID = location.value(forKey: "id") as? UUID else {
+                try fail(.missingID(entity: "CDStorageLocation"), location)
+            }
+            guard locationIDs.insert(locationID).inserted else {
+                try fail(.duplicateID(entity: "CDStorageLocation", id: locationID), location)
+            }
+            guard inPrivateStore(location) else {
+                try fail(.objectNotInPrivateStore(entity: "CDStorageLocation", id: locationID), location)
+            }
+
+            var visited: Set<NSManagedObjectID> = [location.objectID]
+            var parent = location.value(forKey: "parentLocation") as? NSManagedObject
+            while let current = parent {
+                guard (current.value(forKey: "home") as? NSManagedObject)?.objectID == homeObject.objectID else {
+                    try fail(.belongsToAnotherHome(entity: "CDStorageLocation", id: locationID), location)
+                }
+                guard visited.insert(current.objectID).inserted else {
+                    try fail(.parentCycle(locationID: locationID), location)
+                }
+                parent = current.value(forKey: "parentLocation") as? NSManagedObject
+            }
+
+            let children = location.value(forKey: "childLocations") as? Set<NSManagedObject> ?? []
+            for child in children where (child.value(forKey: "home") as? NSManagedObject)?.objectID != homeObject.objectID {
+                let childID = child.value(forKey: "id") as? UUID ?? locationID
+                try fail(.belongsToAnotherHome(entity: "CDStorageLocation", id: childID), child)
+            }
+
+            let items = location.value(forKey: "items") as? Set<NSManagedObject> ?? []
+            for item in items {
+                guard let itemID = item.value(forKey: "id") as? UUID else {
+                    try fail(.missingID(entity: "CDInventoryItem"), item)
+                }
+                guard itemIDs.insert(itemID).inserted else {
+                    try fail(.duplicateID(entity: "CDInventoryItem", id: itemID), item)
+                }
+                guard inPrivateStore(item) else {
+                    try fail(.objectNotInPrivateStore(entity: "CDInventoryItem", id: itemID), item)
                 }
             }
         }
     }
 
-    func participants(for home: AppHome) -> [CKShare.Participant] {
-        fetchShare(for: home)?.participants ?? []
-    }
-
-    func sharingSnapshots(for requests: [HomeShareLookupRequest]) -> [UUID: HomeSharingSnapshot] {
-        guard requests.isEmpty == false else { return [:] }
-
-        let shares: [NSManagedObjectID: CKShare]
+    private func lookup(objectID: NSManagedObjectID, homeID: UUID) -> HomeShareLookup {
         do {
-            shares = try persistenceController.persistentContainer.fetchShares(
-                matching: requests.map(\.objectID)
-            )
+            let shares = try container.fetchShares(matching: [objectID])
+            return shares[objectID].map(HomeShareLookup.shared) ?? .notShared
         } catch {
-            DebugLogger.warning("Failed to fetch shares for \(requests.count) homes: \(error)")
-            shares = [:]
+            DebugLogger.warning("Failed to fetch share for home \(homeID): \(error)")
+            return .lookupFailed(error)
         }
-
-        var snapshots: [UUID: HomeSharingSnapshot] = [:]
-        for request in requests {
-            snapshots[request.home.id] = HomeSharingSnapshot(share: shares[request.objectID])
-        }
-        return snapshots
     }
 
     private func deleteShareFromSharedDatabase(_ share: CKShare) async throws {
@@ -520,208 +669,16 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 
+    /// Fetches the home, preferring the private-store row when duplicates exist.
     private func managedObject(for home: AppHome) -> NSManagedObject? {
         let context = persistenceController.persistentContainer.viewContext
         let request = NSFetchRequest<NSManagedObject>(entityName: "CDHome")
         request.predicate = NSPredicate(format: "id == %@", home.id as CVarArg)
-        request.fetchLimit = 1
-        return try? context.fetch(request).first
-    }
-
-    private func managedObjectID(for home: AppHome) -> NSManagedObjectID? {
-        managedObject(for: home)?.objectID
-    }
-
-    private func createShare(for managedObject: NSManagedObject) async throws -> CKShare {
-        try await withCheckedThrowingContinuation { continuation in
-            persistenceController.persistentContainer.share(
-                [managedObject],
-                to: nil
-            ) { _, share, _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let share else {
-                    continuation.resume(throwing: HomeSharingServiceError.shareCreationFailed)
-                    return
-                }
-
-                continuation.resume(returning: share)
-            }
+        guard let objects = try? context.fetch(request), objects.isEmpty == false else {
+            return nil
         }
-    }
-
-    private func configureLinkShare(
-        _ share: CKShare,
-        for home: AppHome,
-        exportStartDate: Date?
-    ) async throws -> CKShare {
-        var didMutateShare = false
-
-        if home.name.isEmpty == false,
-           (share[CKShare.SystemFieldKey.title] as? String) != home.name {
-            share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
-            didMutateShare = true
-        }
-
-        if share.publicPermission != .readWrite {
-            share.publicPermission = .readWrite
-            didMutateShare = true
-        }
-
-        if didMutateShare {
-            guard let privatePersistentStore = persistenceController.privatePersistentStore() else {
-                throw HomeSharingServiceError.shareCreationFailed
-            }
-
-            let exportStartDate = exportStartDate ?? Date()
-            try await persistUpdatedShare(share, in: privatePersistentStore)
-            try await waitForPrivateStoreExport(startingAfter: exportStartDate)
-        }
-
-        return fetchShare(for: home) ?? share
-    }
-
-    private func resolveShareURL(for home: AppHome, initialShare: CKShare) async throws -> URL {
-        if let initialURL = initialShare.url {
-            return initialURL
-        }
-
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline {
-            if let persistedURL = fetchShare(for: home)?.url {
-                return persistedURL
-            }
-            try await Task.sleep(nanoseconds: 250_000_000)
-        }
-
-        throw HomeSharingServiceError.shareLinkUnavailable
-    }
-
-    private func persistUpdatedShare(
-        _ share: CKShare,
-        in persistentStore: NSPersistentStore
-    ) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            persistenceController.persistentContainer.persistUpdatedShare(
-                share,
-                in: persistentStore
-            ) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
-
-    private func waitForPrivateStoreExport(startingAfter startDate: Date) async throws {
-        let timeoutNanoseconds = UInt64(HomeSharingServiceConstants.exportTimeout * 1_000_000_000)
-        let privateStoreIdentifier = currentPrivateStoreIdentifier()
-
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { [persistentContainer = persistenceController.persistentContainer] in
-                let notificationCenter = NotificationCenter.default
-                let observerBox = CloudKitExportObserverBox()
-
-                try await withTaskCancellationHandler(operation: {
-                    try await withCheckedThrowingContinuation { continuation in
-                        observerBox.observer = notificationCenter.addObserver(
-                            forName: NSPersistentCloudKitContainer.eventChangedNotification,
-                            object: persistentContainer,
-                            queue: nil
-                        ) { notification in
-                            guard let event = notification.userInfo?[
-                                NSPersistentCloudKitContainer.eventNotificationUserInfoKey
-                            ] as? NSPersistentCloudKitContainer.Event else {
-                                return
-                            }
-
-                            guard event.type == .export,
-                                  event.endDate != nil,
-                                  event.startDate >= startDate else {
-                                return
-                            }
-
-                            if let privateStoreIdentifier,
-                               event.storeIdentifier != privateStoreIdentifier {
-                                return
-                            }
-
-                            if let observer = observerBox.observer {
-                                notificationCenter.removeObserver(observer)
-                                observerBox.observer = nil
-                            }
-
-                            if event.succeeded {
-                                continuation.resume(returning: ())
-                            } else {
-                                continuation.resume(
-                                    throwing: event.error ?? HomeSharingServiceError.shareCreationFailed
-                                )
-                            }
-                        }
-                    }
-                }, onCancel: {
-                    if let observer = observerBox.observer {
-                        notificationCenter.removeObserver(observer)
-                        observerBox.observer = nil
-                    }
-                })
-            }
-
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                throw HomeSharingServiceError.shareExportTimedOut
-            }
-
-            guard let _ = try await group.next() else {
-                return
-            }
-            group.cancelAll()
-        }
-    }
-
-    private func currentPrivateStoreIdentifier() -> String? {
-        persistenceController.privatePersistentStore()?.identifier
-    }
-
-    /// Callback-based share for direct use with UICloudSharingController.
-    /// No export waiting — just creates the share locally and returns.
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        if let existingShare = fetchShare(for: home) {
-            DebugLogger.info("shareForController: reusing existing share for \(home.id)")
-            completion(existingShare, ckContainer, nil)
-            return
-        }
-        guard let managedObject = managedObject(for: home) else {
-            DebugLogger.error("shareForController: unsupported home model \(home.id)")
-            completion(nil, nil, HomeSharingServiceError.unsupportedHomeModel)
-            return
-        }
-        DebugLogger.info("shareForController: calling container.share() for \(home.id)")
-        persistenceController.persistentContainer.share(
-            [managedObject],
-            to: nil
-        ) { [weak self] _, share, _, error in
-            if let error {
-                DebugLogger.error("shareForController: container.share() failed: \(error)")
-            } else {
-                DebugLogger.info("shareForController: container.share() succeeded for \(home.id)")
-            }
-            if let share {
-                if !home.name.isEmpty {
-                    share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
-                }
-            }
-            completion(share, self?.ckContainer, error)
-        }
+        let privateStore = persistenceController.privatePersistentStore()
+        return objects.first { $0.objectID.persistentStore == privateStore } ?? objects.first
     }
 }
 

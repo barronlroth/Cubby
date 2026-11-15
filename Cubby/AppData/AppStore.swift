@@ -368,8 +368,11 @@ final class AppStore: ObservableObject {
         LastUsedLocationService.preferredLocation(for: homeID, availableLocations: locations)
     }
 
-    func shareHome(homeID: UUID) async throws -> CKShare {
-        let share = try await repository.share(for: homeID)
+    /// Used by ShareLink's CKShareTransferRepresentation: returns the existing
+    /// share or creates one. Lookup failures and invalid home graphs throw
+    /// without creating a share.
+    func prepareShareForTransfer(homeID: UUID) async throws -> CKShare {
+        let share = try await repository.prepareShare(for: homeID)
         refresh()
         return share
     }
@@ -381,24 +384,12 @@ final class AppStore: ObservableObject {
         refresh()
     }
 
-    func shareURL(homeID: UUID) async throws -> URL {
-        let shareURL = try await repository.shareURL(for: homeID)
-        refresh()
-        return shareURL
-    }
-
     func existingShare(homeID: UUID) -> CKShare? {
         repository.existingShare(for: homeID)
     }
 
-    func shareForController(
-        homeID: UUID,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        repository.shareForController(homeID: homeID) { [weak self] share, container, error in
-            DispatchQueue.main.async { self?.refresh() }
-            completion(share, container, error)
-        }
+    func shareLookup(homeID: UUID) -> HomeShareLookup {
+        repository.shareLookup(for: homeID)
     }
 
     var shareContainer: CKContainer {

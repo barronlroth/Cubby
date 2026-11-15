@@ -143,11 +143,12 @@ File: `Cubby/Services/CloudKitSyncSettings.swift`
 - Posts app-level notifications so `AppStore`/sync state can refresh.
 
 ### `HomeSharingService`
-- Creates and configures `CKShare` for owned homes.
-- Resolves stable share URLs.
+- `shareLookup(for:)` returns `HomeShareLookup` (`notShared` / `shared` / `lookupFailed`). A failed lookup maps to read-only permission and blocks share creation; never treat it as owner or unshared.
+- `prepareShare(for:)` returns the existing share or runs preflight validation (`HomeSharePreflightError`) and creates one with `container.share(_:to:)`. `HomeView` hands it to SwiftUI `ShareLink` through `ShareableHome`'s `CKShareTransferRepresentation`; owners pick public/private and read-write/read-only. Do not set `publicPermission` in code.
+- `UICloudSharingController` (`CloudSharingControllerRepresentable`) is only for managing an existing share.
+- Container calls go through `CloudKitSharingContaining`; tests drive the real service with a fake.
 - Accepts incoming share invitations into the shared persistent store.
-- Allows collaborators to leave shared homes.
-- Rejects owner leave and already-shared creation cases with `HomeSharingServiceError`.
+- Allows collaborators to leave shared homes; rejects owner leave with `HomeSharingServiceError`.
 - `DebugMockHomeSharingService` supports local UX review without real iCloud invites.
 
 ### `SharedHomesGateService`

@@ -472,6 +472,20 @@ struct CoreDataAppRepositoryTests {
 
 @MainActor
 private final class RecordingHomeSharingService: HomeSharingServiceProtocol {
+    var cloudKitContainer: CKContainer {
+        CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
+
+    func shareLookup(for home: AppHome) -> HomeShareLookup {
+        fetchShare(for: home).map(HomeShareLookup.shared) ?? .notShared
+    }
+
+    func prepareShare(for home: AppHome) async throws -> CKShare {
+        let share = CKShare(rootRecord: CKRecord(recordType: "CDHome"))
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        return share
+    }
+
     var leftHomeIDs: [UUID] = []
     private let role: SharePermission.Role
 
@@ -479,13 +493,7 @@ private final class RecordingHomeSharingService: HomeSharingServiceProtocol {
         self.role = role
     }
 
-    func shareHome(_ home: AppHome) async throws -> CKShare {
-        makeShare(for: home)
-    }
 
-    func shareURL(for home: AppHome) async throws -> URL {
-        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
-    }
 
     func fetchShare(for home: AppHome) -> CKShare? {
         makeShare(for: home)
@@ -516,12 +524,6 @@ private final class RecordingHomeSharingService: HomeSharingServiceProtocol {
         leftHomeIDs.append(home.id)
     }
 
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        completion(makeShare(for: home), CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
-    }
 
     private func makeShare(for home: AppHome) -> CKShare {
         let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
