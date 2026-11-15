@@ -7,7 +7,7 @@ struct AddLocationView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     @State private var locationName = ""
     @State private var showingError = false

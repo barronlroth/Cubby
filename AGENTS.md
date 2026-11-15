@@ -271,7 +271,6 @@ Cubby/
 |   |-- Components/
 |   `-- Onboarding/
 |-- Utils/                           # Validation, tags, image pickers, typography, mock data
-|-- ViewModels/                      # Legacy SwiftData search view model
 |-- Cubby.xcdatamodeld/              # Core Data CDHome/CDStorageLocation/CDInventoryItem schema
 |-- Config/                          # Build xcconfigs, including RevenueCat public SDK key
 `-- Info.plist
@@ -283,7 +282,7 @@ Cubby/
 3. `DataMigrationService` copies legacy/seeded SwiftData records into the Core Data private store when needed.
 4. `CoreDataAppRepository` reads/writes Core Data entities and maps them into value models.
 5. `AppStore` publishes `AppHome`, `AppStorageLocation`, and `AppInventoryItem` arrays.
-6. Views use `@EnvironmentObject AppStore` and call `AppStore` methods for mutations.
+6. Views read `@Environment(AppStore.self)` and call `AppStore` methods for mutations. App state types use Observation (`@Observable`), not `ObservableObject`; inject them with `.environment(_:)` and use `@Bindable` when a view needs bindings.
 7. `RemoteChangeHandler` listens for persistent-store remote changes and refreshes app state.
 
 ### Data Passing Pattern
@@ -326,7 +325,6 @@ Cubby/
 ### Search and Tags
 - `AppStore.searchItems` searches title, description, and tags.
 - Home inline search filters currently use title/description.
-- `SearchViewModel` is legacy SwiftData search support.
 - Tags are normalized through `TagHelpers` and shown with `TagInputView`, `TagDisplayView`, and `TagChip`.
 
 ### Pro and Paywall

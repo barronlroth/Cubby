@@ -3,21 +3,23 @@ import CoreData
 import Foundation
 import SwiftUI
 import UIKit
+import Observation
 
 @MainActor
-final class AppStore: ObservableObject {
-    @Published private(set) var homes: [AppHome] = []
-    @Published private(set) var locations: [AppStorageLocation] = []
-    @Published private(set) var items: [AppInventoryItem] = []
-    @Published var recoveryMessage: String?
-    @Published private(set) var inventoryRevision: UInt64 = 0
+@Observable
+final class AppStore {
+    private(set) var homes: [AppHome] = []
+    private(set) var locations: [AppStorageLocation] = []
+    private(set) var items: [AppInventoryItem] = []
+    var recoveryMessage: String?
+    private(set) var inventoryRevision: UInt64 = 0
 
     let repository: CoreDataAppRepository
 
     private let notificationCenter: NotificationCenter
     private let hiddenSharedHomeIDStore: HiddenSharedHomeIDStore
-    private var observers: [NSObjectProtocol] = []
-    private var hiddenSharedHomeIDs = Set<UUID>()
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var hiddenSharedHomeIDs = Set<UUID>()
 
     init(
         repository: CoreDataAppRepository,

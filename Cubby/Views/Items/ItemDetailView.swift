@@ -9,10 +9,10 @@ struct ItemDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
-    @EnvironmentObject private var appStore: AppStore
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
+    @Environment(ProAccessManager.self) private var proAccessManager
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var undoManager = UndoManager.shared
+    private let undoManager = UndoManager.shared
 
     @State private var presentedSheet: PresentedSheet?
     @State private var showingDeleteConfirmation = false

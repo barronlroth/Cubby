@@ -40,8 +40,8 @@ struct HomeView: View {
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.cubbyReduceMotion) private var reduceMotion
-    @EnvironmentObject private var appStore: AppStore
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
+    @Environment(ProAccessManager.self) private var proAccessManager
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
 
     private let debugMockSharingMode = DebugMockSharingMode.resolve()
@@ -635,15 +635,9 @@ private struct ShareHomeButtonLabel: View {
 private struct ShareHomeButtonStyle: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
-        if #available(iOS 26.0, *) {
-            content
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-        } else {
-            content
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-        }
+        content
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
         #else
         content
         #endif
@@ -668,8 +662,8 @@ struct HomePicker: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @Environment(\.activePaywall) private var activePaywall
-    @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(ProAccessManager.self) private var proAccessManager
+    @Environment(AppStore.self) private var appStore
 
     private var hasBlockingPresentation: Bool {
         isPickerPresented || pendingHomeAction != nil || homeActionErrorMessage != nil

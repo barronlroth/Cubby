@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @ObservedObject var coordinator: OnboardingCoordinator
+    @Bindable var coordinator: OnboardingCoordinator
     let onComplete: (FirstRunInventoryResult) -> Void
 
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     var body: some View {
         NavigationStack(path: $coordinator.path) {
@@ -109,7 +109,7 @@ private struct OnboardingWelcomeView: View {
 }
 
 private struct OnboardingHomeView: View {
-    @ObservedObject var coordinator: OnboardingCoordinator
+    @Bindable var coordinator: OnboardingCoordinator
     @FocusState private var fieldIsFocused: Bool
 
     private let suggestions = ["Home", "Apartment", "Cabin", "Beach House"]
@@ -166,7 +166,7 @@ private struct OnboardingHomeView: View {
 }
 
 private struct OnboardingFirstItemView: View {
-    @ObservedObject var coordinator: OnboardingCoordinator
+    @Bindable var coordinator: OnboardingCoordinator
     @FocusState private var fieldIsFocused: Bool
 
     var body: some View {
@@ -220,7 +220,7 @@ private struct OnboardingFirstItemView: View {
 }
 
 private struct OnboardingLocationView: View {
-    @ObservedObject var coordinator: OnboardingCoordinator
+    let coordinator: OnboardingCoordinator
     @FocusState private var customFieldIsFocused: Bool
 
     private let suggestions = ["Closet", "Kitchen Drawer", "Garage Shelf", "Nightstand"]
@@ -354,7 +354,7 @@ private struct OnboardingLocationView: View {
 }
 
 private struct OnboardingReviewView: View {
-    @ObservedObject var coordinator: OnboardingCoordinator
+    let coordinator: OnboardingCoordinator
     let onStore: () -> Void
 
     @AccessibilityFocusState private var errorIsFocused: Bool

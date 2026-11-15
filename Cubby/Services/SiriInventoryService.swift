@@ -1,27 +1,30 @@
 import Combine
 import Foundation
+import Observation
 #if canImport(UIKit)
 import UIKit
 #endif
 
 /// One runtime shared by SwiftUI and main-process App Intents, including cold launches.
 @MainActor
-final class SiriInventoryService: ObservableObject {
+@Observable
+final class SiriInventoryService {
     static let shared = SiriInventoryService(indexWriter: SiriInventoryIndex())
 
-    @Published private(set) var navigationRequest: SiriNavigationRequest?
-    @Published private(set) var hasPresentationBlockers = false
+    private(set) var navigationRequest: SiriNavigationRequest?
+    private(set) var hasPresentationBlockers = false
     private var presentationBlockers = Set<UUID>()
 
-    private var recordLoader: () throws -> [SiriInventoryRecord]
-    private var accessProvider: () async -> ProEntitlementState
-    private var protectedDataAvailable: () -> Bool
-    private var prepareNavigation: () -> Void
+    @ObservationIgnored private var recordLoader: () throws -> [SiriInventoryRecord]
+    @ObservationIgnored private var accessProvider: () async -> ProEntitlementState
+    @ObservationIgnored private var protectedDataAvailable: () -> Bool
+    @ObservationIgnored private var prepareNavigation: () -> Void
     private let indexWriter: any SiriInventoryIndexWriting
-    private var observations = Set<AnyCancellable>()
-    private var indexUpdatesEnabled = true
-    private var indexGeneration: UInt64 = 0
-    private var indexTask: Task<Void, Error>?
+    @ObservationIgnored private var observations = Set<AnyCancellable>()
+    @ObservationIgnored private var observationTasks: [Task<Void, Never>] = []
+    @ObservationIgnored private var indexUpdatesEnabled = true
+    @ObservationIgnored private var indexGeneration: UInt64 = 0
+    @ObservationIgnored private var indexTask: Task<Void, Error>?
 
     init(
         recordLoader: @escaping () throws -> [SiriInventoryRecord] = { throw SiriInventoryError.storageUnavailable },
@@ -45,6 +48,8 @@ final class SiriInventoryService: ObservableObject {
         indexingEnabled: Bool = true
     ) {
         observations.removeAll()
+        observationTasks.forEach { $0.cancel() }
+        observationTasks.removeAll()
         indexUpdatesEnabled = indexingEnabled
         recordLoader = {
             guard let appStore else { throw SiriInventoryError.storageUnavailable }
@@ -63,17 +68,30 @@ final class SiriInventoryService: ObservableObject {
             .store(in: &observations)
         #endif
 
-        appStore?.$inventoryRevision
-            .sink { [weak self] _ in self?.scheduleIndexRefresh() }
-            .store(in: &observations)
-        proAccessManager.$entitlementState
-            .removeDuplicates()
-            .sink { [weak self] state in
-                // Published delivers the new value before the manager's property changes.
+        // Observations replays the current value first; seed each baseline so only real
+        // changes schedule work, matching the single refresh scheduled below.
+        if let appStore {
+            let initialRevision = appStore.inventoryRevision
+            observationTasks.append(Task { [weak self] in
+                var previousRevision = initialRevision
+                for await revision in Observations({ appStore.inventoryRevision }) {
+                    guard revision != previousRevision else { continue }
+                    previousRevision = revision
+                    self?.scheduleIndexRefresh()
+                }
+            })
+        }
+        let initialState = proAccessManager.entitlementState
+        if initialState != .pro { navigationRequest = nil }
+        observationTasks.append(Task { [weak self] in
+            var previousState = initialState
+            for await state in Observations({ proAccessManager.entitlementState }) {
+                guard state != previousState else { continue }
+                previousState = state
                 if state != .pro { self?.navigationRequest = nil }
                 self?.scheduleIndexRefresh()
             }
-            .store(in: &observations)
+        })
         scheduleIndexRefresh()
     }
 

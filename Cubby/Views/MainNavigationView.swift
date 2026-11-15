@@ -9,17 +9,17 @@ struct MainNavigationView: View {
     @State private var selectedHome: AppHome?
     @State private var selectedLocation: AppStorageLocation?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
-    @StateObject private var undoManager = UndoManager.shared
+    private let undoManager = UndoManager.shared
     @State private var undoSuccessCount = 0
-    @ObservedObject private var siriService = SiriInventoryService.shared
+    private let siriService = SiriInventoryService.shared
     @State private var presentedSiriRequest: SiriNavigationRequest?
     @State private var presentedSiriRequestID: UUID?
 
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
     @Environment(\.activePaywall) private var activePaywall
-    @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(ProAccessManager.self) private var proAccessManager
+    @Environment(AppStore.self) private var appStore
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
 
     init(
@@ -51,11 +51,9 @@ struct MainNavigationView: View {
             .modifier(ContentTopMarginZero())
             .toolbar {
                 #if os(iOS)
-                if #available(iOS 26.0, *) {
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) { Spacer(minLength: 12) }
-                    ToolbarItem(placement: .bottomBar) { toolbarButton }
-                }
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                ToolbarItem(placement: .bottomBar) { Spacer(minLength: 12) }
+                ToolbarItem(placement: .bottomBar) { toolbarButton }
                 #endif
             }
         } detail: {
@@ -273,9 +271,7 @@ struct MainNavigationView: View {
     private func handleToolbarButtonTap() {
         if isSearchEngaged {
             searchText = ""
-            if #available(iOS 17.0, *) {
-                dismissSearch()
-            }
+            dismissSearch()
             return
         }
 
@@ -342,13 +338,9 @@ private extension View {
     @ViewBuilder
     func applyLiquidGlassSearchBehaviors() -> some View {
         #if os(iOS)
-        if #available(iOS 26.0, *) {
-            self
-                .searchToolbarBehavior(.minimize)
-                .searchPresentationToolbarBehavior(.avoidHidingContent)
-        } else {
-            self
-        }
+        self
+            .searchToolbarBehavior(.minimize)
+            .searchPresentationToolbarBehavior(.avoidHidingContent)
         #else
         self
         #endif
@@ -358,12 +350,8 @@ private extension View {
 private struct ContentTopMarginZero: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
-        if #available(iOS 17.0, *) {
-            content
-                .contentMargins(.top, 0, for: .scrollContent)
-        } else {
-            content
-        }
+        content
+            .contentMargins(.top, 0, for: .scrollContent)
         #else
         content
         #endif
