@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -23,6 +24,7 @@ struct ItemEditView: View {
 
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
+    @State private var photoPickerItem: PhotosPickerItem?
     @State private var cameraUnavailableAlert = false
     @State private var isSaving = false
     @State private var didLoadDraft = false
@@ -32,11 +34,23 @@ struct ItemEditView: View {
         NavigationStack {
             content
         }
-        .sheet(isPresented: $showingCamera) {
-            ImagePicker(selectedImage: $selectedPhoto, sourceType: .camera)
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraPicker(selectedImage: $selectedPhoto)
+                .ignoresSafeArea()
         }
-        .sheet(isPresented: $showingPhotoPicker) {
-            PhotoLibraryPicker(selectedImage: $selectedPhoto)
+        .photosPicker(
+            isPresented: $showingPhotoPicker,
+            selection: $photoPickerItem,
+            matching: .images
+        )
+        .onChange(of: photoPickerItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let image = await item.loadUIImage() {
+                    selectedPhoto = image
+                }
+                photoPickerItem = nil
+            }
         }
         .onChange(of: selectedPhoto) { _, newValue in
             if newValue != nil {
@@ -253,7 +267,7 @@ struct ItemEditView: View {
     }
 
     private func beginTakingPhoto() {
-        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+        if CameraPicker.isAvailable {
             showingCamera = true
         } else {
             cameraUnavailableAlert = true
