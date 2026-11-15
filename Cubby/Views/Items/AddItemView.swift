@@ -9,8 +9,8 @@ struct AddItemView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
-    @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(ProAccessManager.self) private var proAccessManager
+    @Environment(AppStore.self) private var appStore
 
     @State private var title = ""
     @State private var itemDescription = ""

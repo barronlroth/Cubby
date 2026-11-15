@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     @State private var searchText = ""
     @State private var selectedHomeID: UUID?

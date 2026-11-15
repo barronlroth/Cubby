@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Observation
 
 protocol CloudKitAvailabilityChecking {
     func check(
@@ -25,15 +26,16 @@ struct LiveCloudKitAvailabilityChecker: CloudKitAvailabilityChecking {
 }
 
 @MainActor
-final class CloudSyncCoordinator: ObservableObject {
-    @Published private(set) var state: CloudSyncState
+@Observable
+final class CloudSyncCoordinator {
+    private(set) var state: CloudSyncState
 
     private let forcedAvailability: CloudKitSyncSettings.ForcedAvailability?
     private let availabilityChecker: any CloudKitAvailabilityChecking
     private let pollIntervalNanoseconds: UInt64
     private let notificationCenter: NotificationCenter
-    private var pollingTask: Task<Void, Never>?
-    private var remoteChangeObserver: NSObjectProtocol?
+    @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    @ObservationIgnored private var remoteChangeObserver: NSObjectProtocol?
 
     var isRunning: Bool {
         pollingTask != nil

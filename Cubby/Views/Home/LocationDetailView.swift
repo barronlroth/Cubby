@@ -10,8 +10,8 @@ struct LocationDetailView: View {
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
-    @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(ProAccessManager.self) private var proAccessManager
+    @Environment(AppStore.self) private var appStore
 
     private var resolvedLocation: AppStorageLocation? {
         appStore.location(id: location.id)

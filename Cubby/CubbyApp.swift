@@ -348,7 +348,7 @@ struct CubbyApp: App {
                         homeSharingService: homeSharingService,
                         forceExistingHomesRecoveryView: forceExistingHomesRecoveryView
                     )
-                    .environmentObject(appStore)
+                    .environment(appStore)
                 } else {
                     RuntimeInitializationFailureView()
                 }
@@ -361,7 +361,7 @@ struct CubbyApp: App {
                         homeSharingService: homeSharingService,
                         forceExistingHomesRecoveryView: forceExistingHomesRecoveryView
                     )
-                    .environmentObject(appStore)
+                    .environment(appStore)
                 } else {
                     RuntimeInitializationFailureView()
                 }
@@ -397,7 +397,7 @@ struct CubbyApp: App {
 }
 
 private struct LaunchContentView: View {
-    @ObservedObject var proAccessManager: ProAccessManager
+    let proAccessManager: ProAccessManager
     let cloudKitSettings: CloudKitSyncSettings
     let sharedHomesGateService: any SharedHomesGateServiceProtocol
     let homeSharingService: (any HomeSharingServiceProtocol)?
@@ -405,8 +405,8 @@ private struct LaunchContentView: View {
 
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("lastUsedHomeId") private var lastUsedHomeId: String?
-    @EnvironmentObject private var appStore: AppStore
-    @StateObject private var onboardingCoordinator = OnboardingCoordinator()
+    @Environment(AppStore.self) private var appStore
+    @State private var onboardingCoordinator = OnboardingCoordinator()
     @State private var shouldShowNewHomeSetup = false
     @State private var newlyCreatedHomeID: UUID?
 

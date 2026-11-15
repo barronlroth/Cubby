@@ -13,9 +13,10 @@ enum SuggestionError: Error { case unavailable, invalidResponse }
 actor FoundationModelEmojiService: EmojiSuggesting {
     static var isSupported: Bool {
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) { return true }
-        #endif
+        return true
+        #else
         return false
+        #endif
     }
 
     func suggestEmoji(for title: String) async throws -> String {
@@ -23,24 +24,23 @@ actor FoundationModelEmojiService: EmojiSuggesting {
         guard !trimmed.isEmpty else { throw SuggestionError.invalidResponse }
         try Task.checkCancellation()
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            guard case .available = SystemLanguageModel.default.availability else {
-                throw SuggestionError.unavailable
-            }
-            // Independent titles must not share conversation history or in-flight requests.
-            let session = LanguageModelSession(instructions: Self.instructions)
-            let start = ContinuousClock.now
-            let response = try await session.respond(to: "Title: \(trimmed)\nReturn one emoji.")
-            try Task.checkCancellation()
-            guard let emoji = Self.validatedEmoji(response.content) else {
-                // Model output can contain private inventory text; never log it.
-                throw SuggestionError.invalidResponse
-            }
-            DebugLogger.info("[EmojiAI] Suggestion succeeded duration=\(start.duration(to: .now))")
-            return emoji
+        guard case .available = SystemLanguageModel.default.availability else {
+            throw SuggestionError.unavailable
         }
-        #endif
+        // Independent titles must not share conversation history or in-flight requests.
+        let session = LanguageModelSession(instructions: Self.instructions)
+        let start = ContinuousClock.now
+        let response = try await session.respond(to: "Title: \(trimmed)\nReturn one emoji.")
+        try Task.checkCancellation()
+        guard let emoji = Self.validatedEmoji(response.content) else {
+            // Model output can contain private inventory text; never log it.
+            throw SuggestionError.invalidResponse
+        }
+        DebugLogger.info("[EmojiAI] Suggestion succeeded duration=\(start.duration(to: .now))")
+        return emoji
+        #else
         throw SuggestionError.unavailable
+        #endif
     }
 
     static let instructions = "You return exactly one Unicode emoji character that best matches the meaning of the given item title. Return only the emoji character with no words."

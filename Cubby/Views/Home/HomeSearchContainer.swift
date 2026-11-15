@@ -9,8 +9,8 @@ struct HomeSearchContainer: View {
     @State private var showingAddItem = false
     @State private var canAddItem = false
     @State private var activePaywall: PaywallContext?
-    @ObservedObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    private let proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
     private let initialSelectedHomeID: UUID?
 
     init(
@@ -54,13 +54,13 @@ struct HomeSearchContainer: View {
                 )
             }
         }
-        .environmentObject(proAccessManager)
+        .environment(proAccessManager)
         .environment(\.activePaywall, $activePaywall)
         .environment(\.sharedHomesGateService, sharedHomesGateService)
         .environment(\.homeSharingService, homeSharingService)
         .sheet(item: $activePaywall) { context in
             ProPaywallSheetView(context: context)
-                .environmentObject(proAccessManager)
+                .environment(proAccessManager)
                 .interactiveDismissDisabled(context.isBlocking)
         }
         .onAppear(perform: reconcileHardPaywall)

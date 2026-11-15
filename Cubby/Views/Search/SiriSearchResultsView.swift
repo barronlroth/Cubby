@@ -5,8 +5,8 @@ import SwiftUI
 struct SiriSearchResultsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var appStore: AppStore
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
+    @Environment(ProAccessManager.self) private var proAccessManager
 
     @State private var query: String
     @State private var results: [SiriInventoryRecord] = []

@@ -16,8 +16,8 @@ private extension EnvironmentValues {
 /// Resolve eligibility once for the navigation tree, rather than fetching the store per row.
 private struct SiriInventoryAnnotationScope: ViewModifier {
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var appStore: AppStore
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
+    @Environment(ProAccessManager.self) private var proAccessManager
     @State private var eligibleItemIDs: Set<UUID> = []
     @State private var refreshID = UUID()
     @State private var protectedDataAvailable = UIApplication.shared.isProtectedDataAvailable

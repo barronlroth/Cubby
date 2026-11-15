@@ -14,8 +14,8 @@ struct OptionsView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @EnvironmentObject private var appStore: AppStore
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(AppStore.self) private var appStore
+    @Environment(ProAccessManager.self) private var proAccessManager
     @State private var showingPaywall = false
 
     init(
@@ -50,7 +50,7 @@ struct OptionsView: View {
             }
             .sheet(isPresented: $showingPaywall) {
                 ProPaywallSheetView(context: PaywallContext(reason: .manualUpgrade))
-                    .environmentObject(proAccessManager)
+                    .environment(proAccessManager)
             }
         }
     }
@@ -212,7 +212,7 @@ struct OptionsView: View {
 private struct InventoryExportView: View {
     let selectedHomeID: UUID?
 
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
     @State private var exportText = ""
     @State private var errorMessage: String?
     @State private var didCopy = false
@@ -321,7 +321,7 @@ private struct InventoryImportJSONView: View {
     let selectedHomeID: UUID?
     let importCommitter: InventoryImportConfirmAction
 
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
     @State private var jsonText = ""
     @State private var reviewRoute: InventoryImportReviewRoute?
     @State private var showingFileImporter = false

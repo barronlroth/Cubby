@@ -1,7 +1,9 @@
 import Foundation
+import Observation
 
 @MainActor
-final class OnboardingCoordinator: ObservableObject {
+@Observable
+final class OnboardingCoordinator {
     enum Stage: String, Hashable {
         case welcome
         case home
@@ -16,12 +18,12 @@ final class OnboardingCoordinator: ObservableObject {
         var locationChoice: FirstRunLocationChoice?
     }
 
-    @Published var path: [Stage] = []
-    @Published var draft = Draft()
-    @Published var customLocationName = ""
-    @Published private(set) var validationMessage: String?
-    @Published private(set) var saveErrorMessage: String?
-    @Published private(set) var isSaving = false
+    var path: [Stage] = []
+    var draft = Draft()
+    var customLocationName = ""
+    private(set) var validationMessage: String?
+    private(set) var saveErrorMessage: String?
+    private(set) var isSaving = false
 
     var currentStage: Stage {
         path.last ?? .welcome

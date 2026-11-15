@@ -5,8 +5,8 @@ struct AddHomeView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.activePaywall) private var activePaywall
-    @EnvironmentObject private var proAccessManager: ProAccessManager
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(ProAccessManager.self) private var proAccessManager
+    @Environment(AppStore.self) private var appStore
 
     @State private var homeName = ""
     @State private var showingGateAlert = false

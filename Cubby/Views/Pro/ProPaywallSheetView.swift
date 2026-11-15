@@ -12,7 +12,7 @@ struct ProPaywallSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
-    @EnvironmentObject private var proAccessManager: ProAccessManager
+    @Environment(ProAccessManager.self) private var proAccessManager
     @ScaledMetric(relativeTo: .body) private var scaledPerkIconSize: CGFloat = 34
 
     @State private var didTimeout = false

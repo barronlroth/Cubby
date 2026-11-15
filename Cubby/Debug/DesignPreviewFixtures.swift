@@ -156,8 +156,8 @@ struct DesignPreviewHarness<Content: View>: View {
     var body: some View {
         content(fixture)
             .defaultAppStorage(fixture.userDefaults)
-            .environmentObject(fixture.appStore)
-            .environmentObject(fixture.proAccessManager)
+            .environment(fixture.appStore)
+            .environment(fixture.proAccessManager)
             .environment(\.sharedHomesGateService, fixture.sharedHomesGateService)
             .environment(\.homeSharingService, fixture.homeSharingService)
             .modifier(DesignValidationEnvironmentModifier(traits: traits))

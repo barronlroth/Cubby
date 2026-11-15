@@ -9,7 +9,7 @@ struct StorageLocationRow: View {
     @State private var showingDeleteAlert = false
     @State private var deletionErrorMessage: String?
 
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     private var isExpanded: Bool {
         expandedLocations.contains(location.id)

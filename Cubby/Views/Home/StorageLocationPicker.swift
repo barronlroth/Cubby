@@ -7,7 +7,7 @@ struct StorageLocationPicker: View {
     let onDone: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     @State private var searchText = ""
     @State private var showingAddLocation = false
@@ -113,7 +113,7 @@ struct LocationPickerRow: View {
     @State private var showingDeleteConfirmation = false
     @State private var deletionErrorMessage: String?
 
-    @EnvironmentObject private var appStore: AppStore
+    @Environment(AppStore.self) private var appStore
 
     private var isSelected: Bool {
         selectedLocation?.id == location.id

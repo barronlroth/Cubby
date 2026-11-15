@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import RevenueCat
 
 #if DEBUG
@@ -12,7 +13,8 @@ enum DesignProAccessState: Equatable {
 #endif
 
 @MainActor
-final class ProAccessManager: NSObject, ObservableObject {
+@Observable
+final class ProAccessManager: NSObject {
     static let proEntitlementId = "pro"
     static let annualProductId = "cubby_pro_annual"
     static let monthlyProductId = "cubby_pro_monthly"
@@ -27,19 +29,19 @@ final class ProAccessManager: NSObject, ObservableObject {
         return nil
     }
 
-    @Published private(set) var customerInfo: CustomerInfo?
-    @Published private(set) var offerings: Offerings?
-    @Published private(set) var availablePackages: [Package] = []
-    @Published private(set) var introEligibilityByProductIdentifier: [String: IntroEligibilityStatus] = [:]
-    @Published private(set) var isPro: Bool = false
-    @Published private(set) var entitlementState: ProEntitlementState = .resolving
+    private(set) var customerInfo: CustomerInfo?
+    private(set) var offerings: Offerings?
+    private(set) var availablePackages: [Package] = []
+    private(set) var introEligibilityByProductIdentifier: [String: IntroEligibilityStatus] = [:]
+    private(set) var isPro: Bool = false
+    private(set) var entitlementState: ProEntitlementState = .resolving
 
-    @Published private(set) var isRefreshingCustomerInfo = false
-    @Published private(set) var isLoadingOfferings = false
-    @Published private(set) var offeringsErrorMessage: String?
+    private(set) var isRefreshingCustomerInfo = false
+    private(set) var isLoadingOfferings = false
+    private(set) var offeringsErrorMessage: String?
 
-    @Published private(set) var isRestoringPurchases = false
-    @Published private(set) var restoreMessage: String?
+    private(set) var isRestoringPurchases = false
+    private(set) var restoreMessage: String?
 
     private let isUITestingOverride: Bool
     private let isConfigured: Bool

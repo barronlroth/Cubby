@@ -1,7 +1,9 @@
 import Foundation
+import Observation
 
 @MainActor
-class UndoManager: ObservableObject {
+@Observable
+final class UndoManager {
     static let shared = UndoManager()
     
     private struct DeletedItem {
@@ -9,12 +11,12 @@ class UndoManager: ObservableObject {
         let timestamp: Date
     }
     
-    @Published private(set) var canUndo = false
-    @Published private(set) var timeRemaining: Int = 0
+    private(set) var canUndo = false
+    private(set) var timeRemaining: Int = 0
     private var deletedItems: [DeletedItem] = []
     private let maxUndoItems = 10
     private let autoHideDelay: Int = 8 // seconds
-    private var autoHideTimer: Timer?
+    @ObservationIgnored private var autoHideTimer: Timer?
     
     private init() {}
     
