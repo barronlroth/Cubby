@@ -11,6 +11,8 @@ struct InventoryItemEntity: IndexedEntity, Transferable {
 
     let id: UUID
     let homeID: UUID
+    /// The saved emoji, or the same stable fallback in-app rows show.
+    let emoji: String
 
     @Property(title: "Name") var title: String
     @Property(title: "Home") var homeName: String
@@ -26,7 +28,7 @@ struct InventoryItemEntity: IndexedEntity, Transferable {
         DisplayRepresentation(
             title: "\(title)",
             subtitle: "\(fullPath)",
-            image: .init(systemName: "shippingbox")
+            image: Self.resultImage(for: emoji)
         )
     }
 
@@ -38,7 +40,15 @@ struct InventoryItemEntity: IndexedEntity, Transferable {
             .filter { !$0.isEmpty }
             .joined(separator: ". ")
         attributes.keywords = tags
+        attributes.thumbnailData = InventoryItemEmojiImage.pngData(for: emoji)
         return attributes
+    }
+
+    private static func resultImage(for emoji: String) -> DisplayRepresentation.Image {
+        guard let data = InventoryItemEmojiImage.pngData(for: emoji) else {
+            return .init(systemName: "shippingbox")
+        }
+        return .init(data: data)
     }
 
     /// Export only a human-readable summary; importing text never creates inventory.
@@ -52,6 +62,7 @@ struct InventoryItemEntity: IndexedEntity, Transferable {
     init(record: SiriInventoryRecord) {
         id = record.id
         homeID = record.homeID
+        emoji = InventoryItemEmojiImage.emoji(record.emoji, for: record.id)
         title = record.title
         homeName = record.homeName
         locationPath = record.locationPath

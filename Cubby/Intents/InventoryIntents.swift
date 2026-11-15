@@ -15,13 +15,14 @@ struct LocateInventoryItemIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
         // Entity parameters may contain old indexed values. Resolve again before answering.
         let currentItem = try await SiriInventoryService.shared.locateItem(id: item.id)
         let spokenPath = currentItem.fullPath.replacingOccurrences(of: " > ", with: ", ")
         return .result(
             value: currentItem.fullPath,
-            dialog: "\(currentItem.title) is stored in \(spokenPath)."
+            dialog: "\(currentItem.title) is stored in \(spokenPath).",
+            view: InventoryItemSnippetView(record: currentItem)
         )
     }
 }
