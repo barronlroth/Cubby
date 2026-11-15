@@ -36,9 +36,12 @@ struct HomeView: View {
     @State private var nestedLocationParent: AppStorageLocation?
     @State private var pendingLocationDeletion: AppStorageLocation?
     @State private var locationActionErrorMessage: String?
+    @State private var moveSubject: LocationMoveSubject?
+    @State private var highlightedLocationID: UUID?
+    @State private var highlightGeneration = 0
 
     private enum BlockingSheet {
-        case addItem, addLocation, addHome, search, options, sharing, addNestedLocation
+        case addItem, addLocation, addHome, search, options, sharing, addNestedLocation, move
     }
 
     @Environment(\.activePaywall) private var activePaywall
@@ -46,6 +49,7 @@ struct HomeView: View {
     @EnvironmentObject private var appStore: AppStore
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
+    @Environment(\.undoManager) private var systemUndoManager
 
     private let debugMockSharingMode = DebugMockSharingMode.resolve()
     private let sharingErrorHandler = SharingErrorHandler()
@@ -115,6 +119,7 @@ struct HomeView: View {
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
             || preparingShareHomeID != nil
             || nestedLocationParent != nil || pendingLocationDeletion != nil
+            || moveSubject != nil
             || locationActionErrorMessage != nil
             || !presentedSheets.isEmpty
     }
@@ -215,6 +220,14 @@ struct HomeView: View {
             }) { parent in
                 AddLocationView(homeId: parent.homeID, parentLocation: parent)
                     .onAppear { presentedSheets.insert(.addNestedLocation) }
+            }
+            .sheet(item: $moveSubject, onDismiss: {
+                presentedSheets.remove(.move)
+            }) { subject in
+                LocationDestinationPicker(subject: subject) { destination in
+                    performMove(subject, to: destination)
+                }
+                .onAppear { presentedSheets.insert(.move) }
             }
             .alert(
                 "Delete Location?",
@@ -431,6 +444,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
+        ScrollViewReader { proxy in
         List {
             header
                 .listRowSeparator(.hidden)
@@ -462,9 +476,25 @@ struct HomeView: View {
                             onExpand: { expandSection(section) },
                             onSelect: { selectedLocation = section.location }
                         )
+                        .background {
+                            if highlightedLocationID == section.id {
+                                RoundedRectangle(cornerRadius: CubbyDesign.Radius.medium)
+                                    .fill(CubbyDesign.Palette.accent.opacity(0.14))
+                                    .padding(.horizontal, CubbyDesign.Spacing.small)
+                                    .transition(.opacity)
+                            }
+                        }
+                        .id(section.id)
                     }
                 }
             }
+        }
+        .onChange(of: highlightedLocationID) { _, locationID in
+            guard let locationID else { return }
+            withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
+                proxy.scrollTo(locationID, anchor: .center)
+            }
+        }
         }
     }
 
@@ -477,15 +507,62 @@ struct HomeView: View {
         guard canMutateSelectedHome else { return .readOnly }
         return LocationSectionHeaderActions(
             onRename: { name in
-                try appStore.renameLocation(id: location.id, to: name)
+                try InventoryReorganizer.renameLocation(
+                    id: location.id,
+                    to: name,
+                    appStore: appStore,
+                    systemUndoManager: systemUndoManager
+                )
             },
-            onMove: nil,
+            onMove: { moveSubject = .location(location) },
             onAddNested: location.depth < StorageLocation.maxNestingDepth - 1
                 ? { nestedLocationParent = location }
                 : nil,
             onDelete: { pendingLocationDeletion = location },
             canDelete: location.canDelete
         )
+    }
+
+    private func performMove(_ subject: LocationMoveSubject, to destination: UUID?) {
+        do {
+            switch subject {
+            case .location(let location):
+                try InventoryReorganizer.moveLocation(
+                    location,
+                    toParent: destination,
+                    appStore: appStore,
+                    systemUndoManager: systemUndoManager
+                )
+                highlight(location.id)
+            case .items(let items):
+                guard let destination else { return }
+                try InventoryReorganizer.moveItems(
+                    items.map(\.id),
+                    to: destination,
+                    appStore: appStore,
+                    systemUndoManager: systemUndoManager
+                )
+                highlight(destination)
+            }
+        } catch {
+            locationActionErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// Briefly tints the section a change landed in, and scrolls it into view.
+    private func highlight(_ locationID: UUID) {
+        collapsedLocationSectionIDs.remove(locationID)
+        highlightGeneration += 1
+        let generation = highlightGeneration
+        withAnimation(CubbyDesign.Motion.animation(for: .emphasized, reduceMotion: reduceMotion)) {
+            highlightedLocationID = locationID
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            guard highlightGeneration == generation else { return }
+            withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
+                highlightedLocationID = nil
+            }
+        }
     }
 
     private func isSectionCollapsed(_ section: LocationSection) -> Bool {
@@ -740,6 +817,7 @@ struct HomePicker: View {
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @EnvironmentObject private var appStore: AppStore
+    @Environment(\.undoManager) private var systemUndoManager
 
     private var hasBlockingPresentation: Bool {
         isPickerPresented || pendingHomeAction != nil || homeActionErrorMessage != nil
@@ -818,7 +896,12 @@ struct HomePicker: View {
     private func commitHomeRenameIfNeeded() {
         guard let homeID = renamingHomeID else { return }
         do {
-            let renamed = try appStore.renameHome(id: homeID, to: homeDraftName)
+            let renamed = try InventoryReorganizer.renameHome(
+                id: homeID,
+                to: homeDraftName,
+                appStore: appStore,
+                systemUndoManager: systemUndoManager
+            )
             if selectedHome?.id == homeID {
                 selectedHome = renamed
             }

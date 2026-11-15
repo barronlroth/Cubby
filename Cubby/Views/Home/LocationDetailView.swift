@@ -12,7 +12,10 @@ struct LocationDetailView: View {
     @State private var showingDeleteConfirmation = false
     @State private var locationActionErrorMessage: String?
 
+    @State private var moveSubject: LocationMoveSubject?
+
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.undoManager) private var systemUndoManager
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
@@ -60,6 +63,11 @@ struct LocationDetailView: View {
             .onChange(of: currentName) { _, newName in draftTitle = newName }
             .onChange(of: draftTitle) { _, newTitle in commitTitle(newTitle) }
             .sensoryFeedback(.error, trigger: renameErrorCount)
+            .sheet(item: $moveSubject) { subject in
+                LocationDestinationPicker(subject: subject) { destination in
+                    performMove(subject, to: destination)
+                }
+            }
             .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
                 Button("Delete", role: .destructive, action: deleteLocation)
                 Button("Cancel", role: .cancel) {}
@@ -82,6 +90,11 @@ struct LocationDetailView: View {
     @ViewBuilder
     private var titleMenu: some View {
         RenameButton()
+        Button {
+            moveSubject = .location(resolvedLocation ?? location)
+        } label: {
+            Label("Move to\u{2026}", systemImage: "folder")
+        }
         Divider()
         Button(role: .destructive) {
             showingDeleteConfirmation = true
@@ -95,10 +108,39 @@ struct LocationDetailView: View {
         let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canMutateLocation, trimmed != currentName else { return }
         do {
-            try appStore.renameLocation(id: location.id, to: trimmed)
+            try InventoryReorganizer.renameLocation(
+                id: location.id,
+                to: trimmed,
+                appStore: appStore,
+                systemUndoManager: systemUndoManager
+            )
         } catch {
             renameErrorCount += 1
             draftTitle = currentName
+            locationActionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func performMove(_ subject: LocationMoveSubject, to destination: UUID?) {
+        do {
+            switch subject {
+            case .location(let moving):
+                try InventoryReorganizer.moveLocation(
+                    moving,
+                    toParent: destination,
+                    appStore: appStore,
+                    systemUndoManager: systemUndoManager
+                )
+            case .items(let items):
+                guard let destination else { return }
+                try InventoryReorganizer.moveItems(
+                    items.map(\.id),
+                    to: destination,
+                    appStore: appStore,
+                    systemUndoManager: systemUndoManager
+                )
+            }
+        } catch {
             locationActionErrorMessage = error.localizedDescription
         }
     }
@@ -222,6 +264,7 @@ struct LocationDetailView: View {
         }
         .siriPresentationBlocker(
             isPresented: showingAddItem || showingAddLocation || addItemSheetActive || addLocationSheetActive
+                || moveSubject != nil
         )
         .safeAreaInset(edge: .top) {
             HStack {
