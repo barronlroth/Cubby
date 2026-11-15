@@ -12,6 +12,33 @@ struct LocationSection: Identifiable {
     let items: [AppInventoryItem]
 }
 
+/// Remembers the grouped, sorted sections for one home and inventory revision.
+/// HomeView's body re-runs for unrelated reasons (for example when scrolling
+/// starts or stops), and regrouping every item each time can drop frames.
+/// It is deliberately not observable, so filling it never invalidates the view.
+final class LocationSectionCache {
+    private struct Key: Equatable {
+        let homeID: UUID
+        let revision: UInt64
+    }
+
+    private var key: Key?
+    private var cached: [LocationSection] = []
+
+    func sections(
+        homeID: UUID,
+        revision: UInt64,
+        build: () -> [LocationSection]
+    ) -> [LocationSection] {
+        let requested = Key(homeID: homeID, revision: revision)
+        if key != requested {
+            cached = build()
+            key = requested
+        }
+        return cached
+    }
+}
+
 struct HomeView: View {
     enum SharedStatusPresentation: Equatable {
         case sharedWithYou
@@ -33,6 +60,7 @@ struct HomeView: View {
     @State private var preparingShareHomeID: UUID?
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
     @State private var presentedSheets: Set<BlockingSheet> = []
+    @State private var sectionCache = LocationSectionCache()
 
     private enum BlockingSheet {
         case addItem, addLocation, addHome, search, options, sharing
@@ -49,7 +77,16 @@ struct HomeView: View {
 
     private var locationSections: [LocationSection] {
         guard let selectedHome else { return [] }
-        let homeItems = appStore.items(in: selectedHome.id)
+        return sectionCache.sections(
+            homeID: selectedHome.id,
+            revision: appStore.inventoryRevision
+        ) {
+            buildLocationSections(homeID: selectedHome.id)
+        }
+    }
+
+    private func buildLocationSections(homeID: UUID) -> [LocationSection] {
+        let homeItems = appStore.items(in: homeID)
         let grouped = Dictionary(grouping: homeItems) { $0.storageLocationID }
 
         return grouped.compactMap { (key, items) -> LocationSection? in

@@ -130,6 +130,44 @@ struct MockDataGenerator {
         try? modelContext.save()
     }
 
+    /// A scroll-performance fixture: one home with nested locations and enough
+    /// items to fill many screens. Deterministic so runs are comparable.
+    static func generateLargeInventoryMockData(in modelContext: ModelContext, itemCount: Int = 400) {
+        let home = Home(name: "Main Home")
+        modelContext.insert(home)
+        UserDefaults.standard.set(home.id.uuidString, forKey: "lastUsedHomeId")
+
+        let rooms = ["Garage", "Kitchen", "Office", "Bedroom", "Basement", "Attic", "Hall Closet", "Laundry"]
+        let containers = ["Shelf A", "Shelf B", "Bin 1", "Bin 2", "Drawer"]
+        var locations: [StorageLocation] = []
+        for room in rooms {
+            let parent = StorageLocation(name: room, home: home)
+            modelContext.insert(parent)
+            locations.append(parent)
+            for container in containers {
+                let child = StorageLocation(name: container, home: home, parentLocation: parent)
+                modelContext.insert(child)
+                locations.append(child)
+            }
+        }
+
+        let nouns = ["Cable", "Charger", "Manual", "Wrench", "Lamp", "Battery Pack", "Tape", "Candle",
+                     "Notebook", "Adapter", "Blanket", "Scarf", "Headphones", "Screwdriver", "Jar"]
+        let emojis = ["🔌", "🔋", "📘", "🔧", "💡", "🪫", "📼", "🕯️", "📓", "🧲", "🛏️", "🧣", "🎧", "🪛", "🫙"]
+        for index in 0..<itemCount {
+            let noun = nouns[index % nouns.count]
+            let item = InventoryItem(
+                title: "\(noun) \(index + 1)",
+                description: "Spare \(noun.lowercased()) kept for when it's needed",
+                storageLocation: locations[index % locations.count]
+            )
+            item.emoji = emojis[index % emojis.count]
+            modelContext.insert(item)
+        }
+
+        try? modelContext.save()
+    }
+
     static func generateMissingLocalPhotoMockData(in modelContext: ModelContext) {
         let home = Home(name: "Main Home")
         modelContext.insert(home)

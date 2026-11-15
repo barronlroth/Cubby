@@ -27,6 +27,7 @@ struct CubbyApp: App {
     private let shouldSeedFreeTierData: Bool
     private let shouldSeedEmptyHomeData: Bool
     private let shouldSeedMissingLocalPhotoData: Bool
+    private let shouldSeedLargeInventoryData: Bool
     private let skipSeeding: Bool
     private let coreDataPersistenceController: PersistenceController?
     private let coreDataRemoteChangeHandler: RemoteChangeHandler?
@@ -83,6 +84,7 @@ struct CubbyApp: App {
         self.shouldSeedFreeTierData = args.contains("SEED_FREE_TIER")
         self.shouldSeedEmptyHomeData = args.contains("SEED_EMPTY_HOME")
         self.shouldSeedMissingLocalPhotoData = args.contains("SEED_MISSING_LOCAL_PHOTO")
+        self.shouldSeedLargeInventoryData = args.contains("SEED_LARGE_INVENTORY")
         self.skipSeeding = CubbyBuildProfile.isDev || args.contains("SKIP_SEEDING") || args.contains("SEED_NONE")
         #if DEBUG
         self.forceExistingHomesRecoveryView = !CubbyBuildProfile.isDev && args.contains("FORCE_EXISTING_HOMES_RECOVERY")
@@ -103,6 +105,7 @@ struct CubbyApp: App {
                 || shouldSeedFreeTierData
                 || shouldSeedEmptyHomeData
                 || shouldSeedMissingLocalPhotoData
+                || shouldSeedLargeInventoryData
         )
 
         if isUITesting, !showsDesignCatalog, let bundleId = Bundle.main.bundleIdentifier {
@@ -197,6 +200,8 @@ struct CubbyApp: App {
                 MockDataGenerator.generateFreeTierMockData(in: modelContainer.mainContext)
             } else if shouldSeedEmptyHomeData {
                 MockDataGenerator.generateEmptyHomeMockData(in: modelContainer.mainContext)
+            } else if shouldSeedLargeInventoryData {
+                MockDataGenerator.generateLargeInventoryMockData(in: modelContainer.mainContext)
             } else if shouldSeedMissingLocalPhotoData {
                 MockDataGenerator.generateMissingLocalPhotoMockData(in: modelContainer.mainContext)
             } else {

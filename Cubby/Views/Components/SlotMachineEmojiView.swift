@@ -22,38 +22,20 @@ struct SlotMachineEmojiView: View {
     // Cubic deceleration starts close to the running speed and lands on a whole cell.
     private var destination: Double { ceil(stopPosition + spinSpeed * settlingDuration / 3) }
 
+    private var isSpinning: Bool {
+        startedAt != nil && !reduceMotion
+    }
+
     var body: some View {
-        TimelineView(.animation(paused: startedAt == nil || reduceMotion)) { timeline in
-            ZStack {
-                if startedAt != nil && !reduceMotion {
-                    let position = reelPosition(at: timeline.date)
-                    let center = Int(floor(position))
-                    ForEach((center - 1)...(center + 1), id: \.self) { index in
-                        let distance = position - Double(index)
-                        Text(stoppedAt != nil && index == Int(destination)
-                             ? finalEmoji
-                             : slotEmojis[((index % slotEmojis.count) + slotEmojis.count) % slotEmojis.count])
-                            // Compress the top/bottom of the drum without blurring glyphs.
-                            .scaleEffect(x: 1, y: max(0.55, 1 - abs(distance) * 0.35))
-                            .offset(y: CGFloat(distance) * cellHeight)
-                    }
-                } else {
-                    Text(finalEmoji)
-                }
-            }
-            .font(.system(size: fontSize))
-            .frame(width: viewportSize, height: viewportSize)
-            .mask {
-                // Fade alpha rather than cutting glyphs against an inner square.
-                // White supplies mask opacity only; this adds no visible surface color.
-                Circle().fill(
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .white, location: 0.24),
-                        .init(color: .white, location: 0.76),
-                        .init(color: .clear, location: 1)
-                    ], startPoint: .top, endPoint: .bottom)
-                )
+        Group {
+            if isSpinning {
+                reel
+            } else {
+                // A settled emoji needs no timeline or mask; skipping them keeps
+                // list rows free of an offscreen render pass while scrolling.
+                Text(finalEmoji)
+                    .font(.system(size: fontSize))
+                    .frame(width: viewportSize, height: viewportSize)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -77,6 +59,38 @@ struct SlotMachineEmojiView: View {
                 guard !Task.isCancelled else { return }
                 startedAt = nil
                 stoppedAt = nil
+            }
+        }
+    }
+
+    private var reel: some View {
+        TimelineView(.animation(paused: !isSpinning)) { timeline in
+            ZStack {
+                let position = reelPosition(at: timeline.date)
+                let center = Int(floor(position))
+                ForEach((center - 1)...(center + 1), id: \.self) { index in
+                    let distance = position - Double(index)
+                    Text(stoppedAt != nil && index == Int(destination)
+                         ? finalEmoji
+                         : slotEmojis[((index % slotEmojis.count) + slotEmojis.count) % slotEmojis.count])
+                        // Compress the top/bottom of the drum without blurring glyphs.
+                        .scaleEffect(x: 1, y: max(0.55, 1 - abs(distance) * 0.35))
+                        .offset(y: CGFloat(distance) * cellHeight)
+                }
+            }
+            .font(.system(size: fontSize))
+            .frame(width: viewportSize, height: viewportSize)
+            .mask {
+                // Fade alpha rather than cutting glyphs against an inner square.
+                // White supplies mask opacity only; this adds no visible surface color.
+                Circle().fill(
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .white, location: 0.24),
+                        .init(color: .white, location: 0.76),
+                        .init(color: .clear, location: 1)
+                    ], startPoint: .top, endPoint: .bottom)
+                )
             }
         }
     }
