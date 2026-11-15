@@ -15,6 +15,14 @@ enum SharedHomeShareBranding {
         "Home Inventory"
     }
 
+    /// The image ShareLink shows in its preview header.
+    static var previewImage: Image {
+        if let icon = appIconImage() {
+            return Image(uiImage: icon)
+        }
+        return Image(systemName: "house")
+    }
+
     static func appIconImage(maxDimension: CGFloat = iconMaxDimension) -> UIImage? {
         guard let iconName = primaryIconName(),
               let image = UIImage(named: iconName) else {
@@ -53,9 +61,13 @@ enum SharedHomeShareBranding {
 }
 
 struct CloudSharingControllerRepresentable: UIViewControllerRepresentable {
+    /// Owners can switch between link and invite-only access and between
+    /// editing and view-only when managing an existing share.
     static let supportedPermissions: UICloudSharingController.PermissionOptions = [
         .allowPublic,
-        .allowReadWrite
+        .allowPrivate,
+        .allowReadWrite,
+        .allowReadOnly
     ]
 
     let share: CKShare
@@ -96,7 +108,6 @@ struct CloudSharingControllerRepresentable: UIViewControllerRepresentable {
             container: container
         )
         controller.delegate = context.coordinator
-        // Shared homes currently ship as editable link sharing only.
         controller.availablePermissions = Self.supportedPermissions
         return controller
     }

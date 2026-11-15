@@ -302,6 +302,20 @@ struct RepositoryIntegrityTests {
 }
 
 private final class CountingSharingService: HomeSharingServiceProtocol {
+    var cloudKitContainer: CKContainer {
+        CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
+
+    func shareLookup(for home: AppHome) -> HomeShareLookup {
+        fetchShare(for: home).map(HomeShareLookup.shared) ?? .notShared
+    }
+
+    func prepareShare(for home: AppHome) async throws -> CKShare {
+        let share = CKShare(rootRecord: CKRecord(recordType: "CDHome"))
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        return share
+    }
+
     private(set) var snapshotCalls = 0
     private(set) var lastRequestCount = 0
     private(set) var perHomeCalls = 0
@@ -318,8 +332,6 @@ private final class CountingSharingService: HomeSharingServiceProtocol {
         return [:]
     }
 
-    func shareHome(_ home: AppHome) async throws -> CKShare { throw HomeSharingServiceError.shareCreationFailed }
-    func shareURL(for home: AppHome) async throws -> URL { throw HomeSharingServiceError.shareLinkUnavailable }
     func fetchShare(for home: AppHome) -> CKShare? { perHomeCalls += 1; return nil }
     func permission(for home: AppHome) -> SharePermission { perHomeCalls += 1; return SharePermission(role: .owner) }
     func canEdit(_ home: AppHome) -> Bool { true }
@@ -327,10 +339,4 @@ private final class CountingSharingService: HomeSharingServiceProtocol {
     func leaveSharedHome(_ home: AppHome) async throws {}
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {}
     func participants(for home: AppHome) -> [CKShare.Participant] { perHomeCalls += 1; return [] }
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        completion(nil, nil, HomeSharingServiceError.shareCreationFailed)
-    }
 }

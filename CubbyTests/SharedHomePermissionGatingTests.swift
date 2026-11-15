@@ -99,22 +99,28 @@ struct SharedHomePermissionGatingTests {
 }
 
 private final class PermissionGatingHomeSharingServiceMock: HomeSharingServiceProtocol {
-    private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
+    var cloudKitContainer: CKContainer {
+        CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+    }
 
-    func shareHome(_ home: AppHome) async throws -> CKShare {
-        let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
+    func shareLookup(for home: AppHome) -> HomeShareLookup {
+        fetchShare(for: home).map(HomeShareLookup.shared) ?? .notShared
+    }
+
+    func prepareShare(for home: AppHome) async throws -> CKShare {
+        let share = CKShare(rootRecord: CKRecord(recordType: "CDHome"))
         share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
         return share
     }
+
+    private var rolesByHomeID: [UUID: SharePermission.Role] = [:]
+
 
     func fetchShare(for home: AppHome) -> CKShare? {
         _ = home
         return nil
     }
 
-    func shareURL(for home: AppHome) async throws -> URL {
-        URL(string: "https://icloud.com/share/\(home.id.uuidString)")!
-    }
 
     func canEdit(_ home: AppHome) -> Bool {
         let role = rolesByHomeID[home.id] ?? .owner
@@ -141,14 +147,6 @@ private final class PermissionGatingHomeSharingServiceMock: HomeSharingServicePr
         return []
     }
 
-    func shareForController(
-        _ home: AppHome,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        let share = CKShare(rootRecord: CKRecord(recordType: "Home"))
-        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
-        completion(share, CKContainer(identifier: CloudKitSyncSettings.containerIdentifier), nil)
-    }
 
     func canCreateLocations(in home: AppHome) -> Bool {
         canEdit(home)

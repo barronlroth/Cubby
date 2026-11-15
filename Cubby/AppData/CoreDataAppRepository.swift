@@ -84,10 +84,8 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
     }
 
     var ckContainer: CKContainer {
-        if let service = shareService as? HomeSharingService {
-            return service.ckContainer
-        }
-        return CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
+        shareService?.cloudKitContainer
+            ?? CKContainer(identifier: CloudKitSyncSettings.containerIdentifier)
     }
 
     func listHomes() throws -> [AppHome] {
@@ -865,47 +863,28 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         }
     }
 
-    func shareForController(
-        homeID: UUID,
-        completion: @escaping (CKShare?, CKContainer?, Error?) -> Void
-    ) {
-        guard let shareService else {
-            completion(nil, nil, HomeSharingServiceError.shareCreationFailed)
-            return
+    func shareLookup(for homeID: UUID) -> HomeShareLookup {
+        guard let shareService,
+              let home = makeHomeReference(id: homeID) else {
+            return .notShared
         }
-        guard let home = makeHomeReference(id: homeID) else {
-            completion(nil, nil, AppRepositoryError.homeNotFound)
-            return
-        }
-        shareService.shareForController(home, completion: completion)
+        return shareService.shareLookup(for: home)
     }
 
-    func share(for homeID: UUID) async throws -> CKShare {
+    /// Returns the existing share or creates one after preflight validation.
+    /// Only owned (private-store) homes can be shared.
+    func prepareShare(for homeID: UUID) async throws -> CKShare {
         guard let shareService else {
             throw HomeSharingServiceError.shareCreationFailed
         }
         guard let home = makeHomeReference(id: homeID) else {
             throw AppRepositoryError.homeNotFound
         }
-        return try await shareService.shareHome(home)
-    }
-
-    func shareURL(for homeID: UUID) async throws -> URL {
-        guard let shareService else {
-            throw HomeSharingServiceError.shareCreationFailed
-        }
-        guard let home = makeHomeReference(id: homeID) else {
-            throw AppRepositoryError.homeNotFound
-        }
-        return try await shareService.shareURL(for: home)
+        return try await shareService.prepareShare(for: home)
     }
 
     func existingShare(for homeID: UUID) -> CKShare? {
-        guard let shareService,
-              let home = makeHomeReference(id: homeID) else {
-            return nil
-        }
-        return shareService.fetchShare(for: home)
+        shareLookup(for: homeID).share
     }
 
     func permission(for homeID: UUID) -> SharePermission {
@@ -934,9 +913,17 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
 
     func leaveSharedHome(id: UUID) async throws {
         guard let shareService,
-              let home = makeHomeReference(id: id),
-              shareService.isShared(home) else {
+              let home = makeHomeReference(id: id) else {
             throw HomeSharingServiceError.shareNotFound
+        }
+
+        switch shareService.shareLookup(for: home) {
+        case .notShared:
+            throw HomeSharingServiceError.shareNotFound
+        case .lookupFailed:
+            throw HomeSharingServiceError.shareLookupFailed
+        case .shared:
+            break
         }
 
         guard shareService.permission(for: home).role != .owner else {

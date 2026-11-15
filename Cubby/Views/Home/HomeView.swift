@@ -1,9 +1,6 @@
 import SwiftUI
 import UIKit
 import CloudKit
-#if canImport(UIKit)
-import LinkPresentation
-#endif
 
 struct LocationSection: Identifiable {
     let id: UUID
@@ -30,7 +27,6 @@ struct HomeView: View {
     @State private var showingOptions = false
     @State private var activeShareSheet: HomeShareSheetContext?
     @State private var shareErrorMessage: String?
-    @State private var preparingShareHomeID: UUID?
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
     @State private var presentedSheets: Set<BlockingSheet> = []
 
@@ -110,7 +106,6 @@ struct HomeView: View {
     private var hasBlockingPresentation: Bool {
         showingAddItem || showingAddLocation || showingAddHome || showingSearch
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
-            || preparingShareHomeID != nil
             || !presentedSheets.isEmpty
     }
 
@@ -192,11 +187,6 @@ struct HomeView: View {
                         onSave: { appStore.refresh() },
                         onStopSharing: { appStore.refresh() },
                         onError: handleShareError
-                    )
-                case let .activity(url):
-                    ShareURLActivityControllerRepresentable(
-                        url: url,
-                        title: context.title
                     )
                 }
 #else
@@ -312,25 +302,37 @@ struct HomeView: View {
             return
         }
 
-        guard let existingShare = appStore.existingShare(homeID: selectedHome.id) else {
+        switch appStore.shareLookup(homeID: selectedHome.id) {
+        case .shared(let existingShare):
+            presentManageShareSheet(existingShare, title: selectedHome.name)
+        case .notShared:
             handleShareError(CKError(.unknownItem))
-            return
+        case .lookupFailed:
+            handleShareError(HomeSharingServiceError.shareLookupFailed)
         }
-        presentManageShareSheet(existingShare, title: selectedHome.name)
     }
 
-    @MainActor
-    private func prepareAndPresentShareLink(for home: AppHome) async {
-        guard preparingShareHomeID == nil else { return }
-        preparingShareHomeID = home.id
-        defer { preparingShareHomeID = nil }
-
-        do {
-            let shareURL = try await appStore.shareURL(homeID: home.id)
-            presentShareActivitySheet(shareURL, title: home.name)
-        } catch {
+    private func shareableHome(for home: AppHome) -> ShareableHome {
+        let appStore = appStore
+        let homeID = home.id
+        let reportError: @MainActor (Error) -> Void = { error in
+            DebugLogger.error("ShareLink share preparation failed for \(homeID): \(error)")
             handleShareError(error)
         }
+        return ShareableHome(
+            homeID: homeID,
+            title: SharedHomeShareBranding.shareTitle(for: home.name),
+            container: appStore.shareContainer,
+            existingShare: appStore.existingShare(homeID: homeID),
+            prepare: {
+                do {
+                    return try await appStore.prepareShareForTransfer(homeID: homeID)
+                } catch {
+                    await reportError(error)
+                    throw error
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -354,12 +356,18 @@ struct HomeView: View {
                         )
                     }
                 } else {
-                    ShareHomeButton(
-                        isLoading: preparingShareHomeID == home.id,
-                        action: {
-                            Task { await prepareAndPresentShareLink(for: home) }
-                        }
-                    )
+                    let shareable = shareableHome(for: home)
+                    ShareLink(
+                        item: shareable,
+                        preview: SharePreview(
+                            shareable.title,
+                            image: SharedHomeShareBranding.previewImage
+                        )
+                    ) {
+                        ShareHomeButtonLabel()
+                    }
+                    .modifier(ShareHomeButtonStyle())
+                    .accessibilityLabel("Share Home")
                 }
             }
         }
@@ -369,13 +377,6 @@ struct HomeView: View {
         activeShareSheet = HomeShareSheetContext(
             mode: .manage(share),
             title: title
-        )
-    }
-
-    private func presentShareActivitySheet(_ url: URL, title: String) {
-        activeShareSheet = HomeShareSheetContext(
-            mode: .activity(url),
-            title: SharedHomeShareBranding.shareTitle(for: title)
         )
     }
 
@@ -470,7 +471,6 @@ private struct HomeShareSheetContext: Identifiable {
     enum Mode {
         case mockPreview
         case manage(CKShare)
-        case activity(URL)
     }
 
     let id = UUID()
@@ -528,70 +528,6 @@ private struct SharedHomeStatusRow: View {
     }
 }
 
-#if canImport(UIKit)
-private struct ShareURLActivityControllerRepresentable: UIViewControllerRepresentable {
-    let url: URL
-    let title: String
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let source = ShareURLActivityItemSource(url: url, title: title)
-        return UIActivityViewController(
-            activityItems: [source],
-            applicationActivities: nil
-        )
-    }
-
-    func updateUIViewController(
-        _ uiViewController: UIActivityViewController,
-        context: Context
-    ) {}
-}
-
-private final class ShareURLActivityItemSource: NSObject, UIActivityItemSource {
-    private let url: URL
-    private let title: String
-    private let iconImage: UIImage?
-
-    init(url: URL, title: String) {
-        self.url = url
-        self.title = title
-        self.iconImage = SharedHomeShareBranding.appIconImage()
-    }
-
-    func activityViewControllerPlaceholderItem(
-        _ activityViewController: UIActivityViewController
-    ) -> Any {
-        url
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        itemForActivityType activityType: UIActivity.ActivityType?
-    ) -> Any? {
-        url
-    }
-
-    func activityViewControllerLinkMetadata(
-        _ activityViewController: UIActivityViewController
-    ) -> LPLinkMetadata? {
-        let metadata = LPLinkMetadata()
-        metadata.title = title
-        metadata.originalURL = url
-        metadata.url = url
-        if let iconImage {
-            metadata.iconProvider = NSItemProvider(object: iconImage)
-        }
-        return metadata
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        subjectForActivityType activityType: UIActivity.ActivityType?
-    ) -> String {
-        title
-    }
-}
-#endif
 
 private struct ShareHomeButton: View {
     var isLoading = false
