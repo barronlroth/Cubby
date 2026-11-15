@@ -119,24 +119,15 @@ struct CubbyApp: App {
             InventoryItem.self
         ])
 
-        let modelConfiguration: ModelConfiguration
-        if cloudKitSettings.isInMemory {
-            modelConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                cloudKitDatabase: .none
-            )
-        } else if cloudKitSettings.usesCloudKit {
-            modelConfiguration = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .private(CloudKitSyncSettings.containerIdentifier)
-            )
-        } else {
-            modelConfiguration = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .none
-            )
-        }
+        // The legacy SwiftData store is only a migration and seed source. It must
+        // never sync: a CloudKit-backed legacy store re-imports old records on a
+        // new install, and migrating them duplicates rows Core Data already
+        // imports from iCloud.
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: cloudKitSettings.isInMemory,
+            cloudKitDatabase: .none
+        )
 
         CloudKitSchemaBootstrapper.initializeIfRequested(
             settings: cloudKitSettings
@@ -171,7 +162,7 @@ struct CubbyApp: App {
                 fatalError("STRICT_CLOUDKIT_STARTUP is enabled. Failed to create ModelContainer: \(error)")
             }
             #else
-            Self.logModelContainerError("Failed to create ModelContainer with CloudKit, falling back to local-only", error: error)
+            Self.logModelContainerError("Failed to create ModelContainer, retrying with a local-only configuration", error: error)
             do {
                 let fallbackConfiguration = ModelConfiguration(
                     schema: schema,
@@ -252,6 +243,12 @@ struct CubbyApp: App {
                     )
                 }
                 _ = migrationService.runMigrationIfNeeded()
+                if !cloudKitSettings.isInMemory, !CubbyBuildProfile.isDev, !isRunningTests {
+                    // Off the launch path: waits for the first successful import.
+                    DuplicateRecordRepairCoordinator.startIfNeeded(
+                        persistenceController: persistenceController
+                    )
+                }
 
                 let remoteChangeHandler = RemoteChangeHandler(
                     persistenceController: persistenceController

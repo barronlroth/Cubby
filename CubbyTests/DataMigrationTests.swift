@@ -403,4 +403,106 @@ struct DataMigrationTests {
         #expect(outcome == .skippedAlreadyCompleted)
         #expect(sourceContainerCallCount == 0)
     }
+
+    @Test
+    func test_migration_keepsRowsAlreadyImportedFromCloudKit() throws {
+        let homeID = UUID()
+        let parentID = UUID()
+        let childID = UUID()
+        let itemID = UUID()
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(
+            in: sourceContainer,
+            homeID: homeID,
+            parentLocationID: parentID,
+            childLocationID: childID,
+            itemID: itemID
+        )
+
+        let targetController = try makeTargetController()
+        let context = targetController.persistentContainer.viewContext
+        let privateStore = try #require(targetController.privatePersistentStore())
+        // Simulate the same home already imported from iCloud with a newer name.
+        let imported = NSEntityDescription.insertNewObject(forEntityName: "CDHome", into: context)
+        context.assign(imported, to: privateStore)
+        imported.setValue(homeID, forKey: "id")
+        imported.setValue("Renamed on iPad", forKey: "name")
+        imported.setValue(Date(), forKey: "createdAt")
+        imported.setValue(Date(), forKey: "modifiedAt")
+        try context.save()
+
+        let outcome = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: makeUserDefaults(),
+            sourceContainerProvider: { .available(sourceContainer) }
+        ).runMigrationIfNeeded()
+        #expect(outcome == .migrated)
+
+        context.refreshAllObjects()
+        let homes = try fetchObjects(entityName: "CDHome", from: context)
+        #expect(homes.count == 1)
+        #expect(homes.first?.value(forKey: "name") as? String == "Renamed on iPad")
+        // Locations and items that were not imported yet still migrate into that home.
+        let locations = try fetchObjects(entityName: "CDStorageLocation", from: context)
+        #expect(Set(locations.compactMap { $0.value(forKey: "id") as? UUID }) == [parentID, childID])
+        #expect(locations.allSatisfy { ($0.value(forKey: "home") as? NSManagedObject)?.objectID == imported.objectID })
+        let items = try fetchObjects(entityName: "CDInventoryItem", from: context)
+        #expect(items.compactMap { $0.value(forKey: "id") as? UUID } == [itemID])
+    }
+
+    @Test
+    func test_migration_doesNotCopySharedStoreHomesIntoPrivateStore() throws {
+        let homeID = UUID()
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer, homeID: homeID)
+
+        let targetController = try makeTargetController()
+        let context = targetController.persistentContainer.viewContext
+        let sharedStore = try #require(targetController.sharedPersistentStore())
+        let sharedHome = NSEntityDescription.insertNewObject(forEntityName: "CDHome", into: context)
+        context.assign(sharedHome, to: sharedStore)
+        sharedHome.setValue(homeID, forKey: "id")
+        sharedHome.setValue("Shared Home", forKey: "name")
+        sharedHome.setValue(Date(), forKey: "createdAt")
+        sharedHome.setValue(Date(), forKey: "modifiedAt")
+        try context.save()
+
+        let outcome = DataMigrationService(
+            persistenceController: targetController,
+            userDefaults: makeUserDefaults(),
+            sourceContainerProvider: { .available(sourceContainer) }
+        ).runMigrationIfNeeded()
+        #expect(outcome == .migrated)
+
+        let homes = try fetchObjects(entityName: "CDHome", from: context)
+        #expect(homes.count == 1)
+        #expect(homes.first?.objectID.persistentStore == sharedStore)
+        // Relationships cannot cross stores, so the legacy children are not orphaned into private.
+        #expect(try fetchObjects(entityName: "CDStorageLocation", from: context).isEmpty)
+        #expect(try fetchObjects(entityName: "CDInventoryItem", from: context).isEmpty)
+    }
+
+    @Test
+    func test_migration_runTwiceWithoutResetIsIdempotent() throws {
+        let sourceContainer = try makeSourceContainer()
+        try seedHomeGraph(in: sourceContainer)
+        let targetController = try makeTargetController()
+
+        for _ in 0..<2 {
+            let outcome = DataMigrationService(
+                persistenceController: targetController,
+                userDefaults: makeUserDefaults(),
+                sourceContainerProvider: { .available(sourceContainer) }
+            ).runMigrationIfNeeded()
+            #expect(outcome == .migrated)
+        }
+
+        let context = targetController.persistentContainer.viewContext
+        #expect(try fetchObjects(entityName: "CDHome", from: context).count == 1)
+        #expect(try fetchObjects(entityName: "CDStorageLocation", from: context).count == 2)
+        #expect(try fetchObjects(entityName: "CDInventoryItem", from: context).count == 1)
+        let child = try fetchObjects(entityName: "CDStorageLocation", from: context)
+            .first { $0.value(forKey: "name") as? String == "Shelf" }
+        #expect((child?.value(forKey: "parentLocation") as? NSManagedObject)?.value(forKey: "name") as? String == "Garage")
+    }
 }

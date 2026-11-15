@@ -140,25 +140,42 @@ private extension DataMigrationService {
             )
         }
 
+        let sharedStore = persistenceController.sharedPersistentStore()
+
         var migrationError: Error?
         targetContext.performAndWait {
             do {
+                // Rows Core Data already holds, whether written by an earlier
+                // migration attempt or imported from iCloud, are kept as they are.
+                // Overwriting them would roll back newer cloud edits, and inserting
+                // a second row with the same id would duplicate the record.
+                let existingIDs = try existingIDsByEntity(
+                    in: targetContext,
+                    stores: [privateStore, sharedStore].compactMap { $0 }
+                )
+                var stats = MigrationStats()
+
                 var homesByID = try existingObjectsByID(
                     entityName: "CDHome",
                     in: targetContext,
                     store: privateStore
                 )
                 homesByID.reserveCapacity(max(homesByID.count, homes.count))
+                var insertedHomeIDs = Set<UUID>()
 
                 for home in homes {
-                    let cdHome = upsertObject(
+                    guard existingIDs.homes.contains(home.id) == false,
+                          insertedHomeIDs.insert(home.id).inserted else {
+                        stats.skippedHomes += 1
+                        continue
+                    }
+                    let cdHome = insertObject(
                         entityName: "CDHome",
                         id: home.id,
                         existingObjects: &homesByID,
                         in: targetContext,
                         store: privateStore
                     )
-                    cdHome.setValue(home.id, forKey: "id")
                     cdHome.setValue(home.name, forKey: "name")
                     cdHome.setValue(home.createdAt, forKey: "createdAt")
                     cdHome.setValue(home.modifiedAt, forKey: "modifiedAt")
@@ -170,29 +187,45 @@ private extension DataMigrationService {
                     store: privateStore
                 )
                 locationsByID.reserveCapacity(max(locationsByID.count, locations.count))
+                var insertedLocationIDs = Set<UUID>()
 
                 for location in locations {
-                    let cdLocation = upsertObject(
+                    guard existingIDs.locations.contains(location.id) == false else {
+                        stats.skippedLocations += 1
+                        continue
+                    }
+                    // A new location must hang off a private-store home; Core Data
+                    // relationships cannot cross stores.
+                    guard let homeID = location.home?.id, let cdHome = homesByID[homeID] else {
+                        stats.orphanedLocations += 1
+                        continue
+                    }
+                    guard insertedLocationIDs.insert(location.id).inserted else {
+                        stats.skippedLocations += 1
+                        continue
+                    }
+                    let cdLocation = insertObject(
                         entityName: "CDStorageLocation",
                         id: location.id,
                         existingObjects: &locationsByID,
                         in: targetContext,
                         store: privateStore
                     )
-                    cdLocation.setValue(location.id, forKey: "id")
                     cdLocation.setValue(location.name, forKey: "name")
                     cdLocation.setValue(Int16(location.depth), forKey: "depth")
                     cdLocation.setValue(location.createdAt, forKey: "createdAt")
                     cdLocation.setValue(location.modifiedAt, forKey: "modifiedAt")
-                    cdLocation.setValue(location.home.flatMap { homesByID[$0.id] }, forKey: "home")
+                    cdLocation.setValue(cdHome, forKey: "home")
                 }
 
-                for location in locations {
+                for location in locations where insertedLocationIDs.contains(location.id) {
                     guard let cdLocation = locationsByID[location.id] else { continue }
-                    cdLocation.setValue(
-                        location.parentLocation.flatMap { locationsByID[$0.id] },
-                        forKey: "parentLocation"
-                    )
+                    let parent = location.parentLocation.flatMap { locationsByID[$0.id] }
+                    let sameHome = parent.map {
+                        ($0.value(forKey: "home") as? NSManagedObject)?.objectID
+                            == (cdLocation.value(forKey: "home") as? NSManagedObject)?.objectID
+                    } ?? true
+                    cdLocation.setValue(sameHome ? parent : nil, forKey: "parentLocation")
                 }
 
                 var itemsByID = try existingObjectsByID(
@@ -201,16 +234,29 @@ private extension DataMigrationService {
                     store: privateStore
                 )
                 itemsByID.reserveCapacity(max(itemsByID.count, items.count))
+                var insertedItemIDs = Set<UUID>()
 
                 for item in items {
-                    let cdItem = upsertObject(
+                    guard existingIDs.items.contains(item.id) == false else {
+                        stats.skippedItems += 1
+                        continue
+                    }
+                    guard let locationID = item.storageLocation?.id,
+                          let cdLocation = locationsByID[locationID] else {
+                        stats.orphanedItems += 1
+                        continue
+                    }
+                    guard insertedItemIDs.insert(item.id).inserted else {
+                        stats.skippedItems += 1
+                        continue
+                    }
+                    let cdItem = insertObject(
                         entityName: "CDInventoryItem",
                         id: item.id,
                         existingObjects: &itemsByID,
                         in: targetContext,
                         store: privateStore
                     )
-                    cdItem.setValue(item.id, forKey: "id")
                     cdItem.setValue(item.title, forKey: "title")
                     cdItem.setValue(item.itemDescription, forKey: "itemDescription")
                     cdItem.setValue(item.photoFileName, forKey: "photoFileName")
@@ -219,16 +265,18 @@ private extension DataMigrationService {
                     cdItem.setValue(item.createdAt, forKey: "createdAt")
                     cdItem.setValue(item.modifiedAt, forKey: "modifiedAt")
                     cdItem.setValue(item.tags, forKey: "tags")
-                    cdItem.setValue(
-                        item.storageLocation.flatMap { locationsByID[$0.id] },
-                        forKey: "storageLocation"
-                    )
+                    cdItem.setValue(cdLocation, forKey: "storageLocation")
+                }
+
+                if stats.hasSkips {
+                    DebugLogger.warning("Legacy migration kept existing Core Data rows: \(stats)")
                 }
 
                 if targetContext.hasChanges {
                     try targetContext.save()
                 }
             } catch {
+                targetContext.rollback()
                 migrationError = error
             }
         }
@@ -251,7 +299,9 @@ private extension DataMigrationService {
         }
     }
 
-    static func upsertObject(
+    /// Inserts a new private-store object with `id`, or returns the private
+    /// object already inserted for it in this pass.
+    static func insertObject(
         entityName: String,
         id: UUID,
         existingObjects: inout [UUID: NSManagedObject],
@@ -264,7 +314,49 @@ private extension DataMigrationService {
 
         let object = NSEntityDescription.insertNewObject(forEntityName: entityName, into: context)
         context.assign(object, to: store)
+        object.setValue(id, forKey: "id")
         existingObjects[id] = object
         return object
+    }
+
+    struct ExistingIDs {
+        var homes = Set<UUID>()
+        var locations = Set<UUID>()
+        var items = Set<UUID>()
+    }
+
+    struct MigrationStats: CustomStringConvertible {
+        var skippedHomes = 0
+        var skippedLocations = 0
+        var skippedItems = 0
+        var orphanedLocations = 0
+        var orphanedItems = 0
+
+        var hasSkips: Bool {
+            skippedHomes + skippedLocations + skippedItems + orphanedLocations + orphanedItems > 0
+        }
+
+        var description: String {
+            "skipped homes \(skippedHomes), locations \(skippedLocations), items \(skippedItems); "
+                + "orphaned locations \(orphanedLocations), items \(orphanedItems)"
+        }
+    }
+
+    static func existingIDsByEntity(
+        in context: NSManagedObjectContext,
+        stores: [NSPersistentStore]
+    ) throws -> ExistingIDs {
+        func ids(_ entityName: String) throws -> Set<UUID> {
+            let request = NSFetchRequest<NSDictionary>(entityName: entityName)
+            request.affectedStores = stores
+            request.resultType = .dictionaryResultType
+            request.propertiesToFetch = ["id"]
+            return Set(try context.fetch(request).compactMap { $0["id"] as? UUID })
+        }
+        return ExistingIDs(
+            homes: try ids("CDHome"),
+            locations: try ids("CDStorageLocation"),
+            items: try ids("CDInventoryItem")
+        )
     }
 }
