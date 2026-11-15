@@ -25,6 +25,9 @@ Cubby is an iPhone home-inventory app that helps users track belongings across h
 - `Cubby/Services/AGENTS.md` for service-layer notes, including RevenueCat, Core Data, CloudKit, sharing, migration, photos, and feature gates.
 - `CubbyTests/AGENTS.md` for unit-test conventions, SwiftData/Core Data test setup, and CloudKit test boundaries.
 
+## Agent skills
+Third-party skills in `.agents/skills/` are installed with the skills.sh CLI and pinned in `skills-lock.json`; `.claude/skills/` holds relative links so Claude Code sees the same set as Codex. Don't hand-edit them: update from upstream head with `npx skills update -p`, and add one with `npx skills add <owner/repo> -s <skill> -a claude-code codex`. The `cubby-*` skills are written for this repo, so edit them in place and link each new one into `.claude/skills/` with a relative symlink.
+
 ## Essential Commands
 
 ### Building and Running

@@ -1,6 +1,6 @@
 ---
 name: swift-concurrency
-description: 'Diagnose data races, convert callback-based code to async/await, implement actor isolation patterns, resolve Sendable conformance issues, and guide Swift 6 migration. Use when developers mention: (1) Swift Concurrency, async/await, actors, or tasks, (2) "use Swift Concurrency" or "modern concurrency patterns", (3) migrating to Swift 6, (4) data races or thread safety issues, (5) refactoring closures to async/await, (6) @MainActor, Sendable, or actor isolation, (7) concurrent code architecture or performance optimization, (8) concurrency-related linter warnings (SwiftLint or similar; e.g. async_without_await, Sendable/actor isolation/MainActor lint).'
+description: Diagnose Swift Concurrency issues, refactor callback-based code to async/await, and guide Swift 6 migration when working with tasks, actors, @MainActor, Sendable, data races, thread safety, or concurrency-related compiler and linter warnings.
 ---
 # Swift Concurrency
 
@@ -11,7 +11,7 @@ Before proposing a fix:
 1. Analyze `Package.swift` or `.pbxproj` to determine Swift language mode, strict concurrency level, default isolation, and upcoming features. Do this always, not only for migration work.
 2. Capture the exact diagnostic and offending symbol.
 3. Determine the isolation boundary: `@MainActor`, custom actor, actor instance isolation, or `nonisolated`.
-4. Confirm whether the code is UI-bound or intended to run off the main actor.
+4. Confirm whether the code is UI-bound or intended to run off the main actor. When spawning unstructured tasks, inspect the synchronous prefix (everything before the first `await`): start on `@MainActor` only when that prefix truly needs main-actor access; otherwise use `Task { @concurrent in ... }` and hop back with `MainActor.run` only after the suspension. A trivial non-main line (for example, `print`) followed by main-actor work in the same prefix is not a reason to use `@concurrent`. For delayed retries, timers, and backoff tasks, separate the waiting from the UI mutation. The sleep often belongs off the main actor even when the final state update belongs on it.
 
 Project settings that change concurrency behavior:
 
@@ -21,8 +21,11 @@ Project settings that change concurrency behavior:
 | Strict concurrency | `.enableExperimentalFeature("StrictConcurrency=targeted")` | `SWIFT_STRICT_CONCURRENCY` |
 | Default isolation | `.defaultIsolation(MainActor.self)` | `SWIFT_DEFAULT_ACTOR_ISOLATION` |
 | Upcoming features | `.enableUpcomingFeature("NonisolatedNonsendingByDefault")` | `SWIFT_UPCOMING_FEATURE_*` |
+| Approachable Concurrency | N/A (use individual upcoming features) | `SWIFT_APPROACHABLE_CONCURRENCY` |
 
-If any of these are unknown, ask the developer to confirm them before giving migration-sensitive guidance. Do not guess.
+> **Xcode 26 note**: New projects created in Xcode 26 will often start with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and `SWIFT_APPROACHABLE_CONCURRENCY = YES` enabled by default. Treat these as likely defaults for newly created projects, not as confirmed settings.
+
+If any of these are unknown, ask the developer to confirm them before giving migration-sensitive guidance. Do not guess, even for new Xcode 26 projects.
 
 Guardrails:
 
@@ -56,8 +59,10 @@ Skip Quick Fix Mode when any of these are true:
 | `SwiftLint async_without_await` | Is `async` actually required by protocol, override, or `@concurrent`? | Remove `async`, or use a narrow suppression with rationale. Never add fake awaits. | `references/linting.md` |
 | `wait(...) is unavailable from asynchronous contexts` | Is this legacy XCTest async waiting? | Replace with `await fulfillment(of:)` or Swift Testing equivalents. | `references/testing.md` |
 | Core Data concurrency warnings | Are `NSManagedObject` instances crossing contexts or actors? | Pass `NSManagedObjectID` or map to a Sendable value type. | `references/core-data.md` |
+| `@Observable` isolation or Sendable errors | Is the `@Observable` class annotated with the correct actor? | Add `@MainActor` for UI state; pass Sendable snapshots across boundaries. | `references/observation.md` |
 | `Thread.current` unavailable from asynchronous contexts | Are you debugging by thread instead of isolation? | Reason in terms of isolation and use Instruments/debugger instead. | `references/threading.md` |
 | SwiftLint concurrency-related warnings | Which specific lint rule triggered? | Use `references/linting.md` for rule intent and preferred fixes; avoid dummy awaits. | `references/linting.md` |
+| `... cannot satisfy conformance requirement for a 'Sendable' type parameter` (`SendableMetatype`) | Does the conformance carry global-actor isolation? | Remove actor isolation from the conformance, or avoid passing the metatype across isolation boundaries. See `SendableMetatype` section in `references/actors.md`. | `references/actors.md` |
 
 ## When Quick Fixes Fail
 
@@ -72,7 +77,7 @@ Prefer changes that preserve behavior while satisfying data-race safety:
 
 - **UI-bound state**: isolate the type or member to `@MainActor`.
 - **Shared mutable state**: move it behind an `actor`, or use `@MainActor` only if the state is UI-owned.
-- **Background work**: when work must hop off caller isolation, use an `async` API marked `@concurrent`; when work can safely inherit caller isolation, use `nonisolated` without `@concurrent`.
+- **Background work**: when work must hop off caller isolation, use an `async` API marked `@concurrent`; when work can safely inherit caller isolation, use `nonisolated` without `@concurrent`. When spawning a `Task`, match entry isolation to its synchronous prefix. If nothing before the first `await` needs the main actor, use `Task { @concurrent in ... }` and hop back via `await MainActor.run { ... }` for the UI update. If the prefix mixes a trivial non-main statement with main-actor work, keep the inherited `@MainActor` start—splitting the cheap line off-main is not worth an extra hop.
 - **Sendability issues**: prefer immutable values and explicit boundaries over `@unchecked Sendable`.
 
 ## Concurrency Tool Selection
@@ -105,6 +110,40 @@ await withTaskGroup(of: ProcessedItem.self) { group in
     for await result in group {
         results.append(result)
     }
+}
+```
+
+
+## Task entry isolation
+
+Match a `Task`'s entry isolation to its synchronous prefix (everything from `{` to the first `await`).
+
+- If anything in that prefix needs `@MainActor`, keep the inherited `@MainActor` start.
+- If nothing in that prefix needs `@MainActor`, prefer `Task { @concurrent in ... }` and hop back only for UI-owned mutation.
+
+```swift
+// ❌ Synchronous prefix is empty; first work hops away
+Task {
+    await hopToOtherIsolationDomain()
+}
+
+// ❌ Synchronous prefix is only `print` (trivial, non-main); first await hops away
+Task {
+    print("Also not main-thread-bound")
+    await hopToOtherIsolationDomain()
+}
+
+// ✅ Start off the main actor, hop back only for UI work
+Task { @concurrent in
+    await hopToOtherIsolationDomain()
+    await MainActor.run { updateUI() }
+}
+
+// ✅ Synchronous prefix DOES contain main-actor work — keep inheritance
+Task {
+    print("debug")              // trivial, non-main — rides along
+    self.isLoading = true       // needs @MainActor, before any await
+    await fetchData()
 }
 ```
 
@@ -148,6 +187,7 @@ Open the smallest reference that matches the question:
   - `references/performance.md` — Profiling with Instruments, reducing suspension points, execution strategies
   - `references/memory-management.md` — Retain cycles in tasks, memory safety patterns
   - `references/core-data.md` — NSManagedObject sendability, custom executors, isolation conflicts
+  - `references/observation.md` — @Observable with @MainActor, cross-isolation access, Sendable constraints
 - Migration and tooling
   - `references/migration.md` — Swift 6 migration strategy, closure-to-async conversion, @preconcurrency, FRP migration
   - `references/linting.md` — Concurrency-focused lint rules and SwiftLint `async_without_await`

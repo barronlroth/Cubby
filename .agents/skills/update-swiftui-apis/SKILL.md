@@ -5,7 +5,7 @@ description: Scan Apple's SwiftUI documentation for deprecated APIs and update t
 
 # Update SwiftUI APIs
 
-Systematically scan Apple's developer documentation via the Sosumi MCP, identify deprecated SwiftUI APIs and their modern replacements, and update `swiftui-expert-skill/references/latest-apis.md`.
+Systematically scan Apple's developer documentation via the Sosumi MCP, identify deprecated SwiftUI APIs and their modern replacements, and update `skills/swiftui-expert-skill/references/latest-apis.md`.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Systematically scan Apple's developer documentation via the Sosumi MCP, identify
 
 ### 1. Understand current coverage
 
-Read `swiftui-expert-skill/references/latest-apis.md` to understand:
+Read `skills/swiftui-expert-skill/references/latest-apis.md` to understand:
 - Which deprecated-to-modern transitions are already documented
 - The version segments in use (iOS 15+, 16+, 17+, 18+, 26+)
 - The Quick Lookup Table at the bottom
@@ -80,7 +80,7 @@ Keep the attribution line at the top of the file:
 ### 6. Open a pull request
 
 1. Create a branch from `main` named `update/latest-apis-YYYY-MM` (use current year and month).
-2. Commit changes to `swiftui-expert-skill/references/latest-apis.md`.
+2. Commit changes to `skills/swiftui-expert-skill/references/latest-apis.md`.
 3. Open a PR via `gh pr create` with:
    - **Title**: "Update latest SwiftUI APIs (Month Year)"
    - **Body**: Summary of new/changed entries, attribution to Sosumi MCP
