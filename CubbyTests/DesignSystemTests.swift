@@ -20,6 +20,7 @@ struct DesignSystemTests {
     @Test func layoutAndShapeMetricsMeetFoundationInvariants() {
         #expect(CubbyDesign.Layout.minimumTapTarget >= 44)
         #expect(CubbyDesign.Layout.compactIcon < CubbyDesign.Layout.rowIcon)
+        #expect(CubbyDesign.Layout.rowIcon < CubbyDesign.Layout.rowIconMaximum)
         #expect(CubbyDesign.Radius.small < CubbyDesign.Radius.medium)
         #expect(CubbyDesign.Radius.medium < CubbyDesign.Radius.large)
         #expect(CubbyDesign.Radius.large < CubbyDesign.Radius.xLarge)

@@ -23,7 +23,7 @@ struct WrappingHStackLayout: Layout {
         subviews: Subviews,
         cache: inout ()
     ) {
-        let itemSizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let itemSizes = Self.itemSizes(for: subviews, maximumWidth: bounds.width)
         let layout = WrappingLayoutMetrics.calculate(
             itemSizes: itemSizes,
             maximumWidth: bounds.width,
@@ -45,11 +45,26 @@ struct WrappingHStackLayout: Layout {
 
     private func metrics(for subviews: Subviews, maximumWidth: CGFloat?) -> WrappingLayoutMetrics {
         WrappingLayoutMetrics.calculate(
-            itemSizes: subviews.map { $0.sizeThatFits(.unspecified) },
+            itemSizes: Self.itemSizes(for: subviews, maximumWidth: maximumWidth),
             maximumWidth: maximumWidth,
             horizontalSpacing: horizontalSpacing,
             verticalSpacing: verticalSpacing
         )
+    }
+}
+
+extension WrappingHStackLayout {
+    /// Measures each subview at its ideal size, re-measuring any subview wider than the
+    /// container at the container width so long content (for example a tag at
+    /// accessibility text sizes) wraps inside its chip instead of overflowing the row.
+    fileprivate static func itemSizes(for subviews: Subviews, maximumWidth: CGFloat?) -> [CGSize] {
+        subviews.map { subview in
+            let idealSize = subview.sizeThatFits(.unspecified)
+            guard let maximumWidth, maximumWidth.isFinite, idealSize.width > maximumWidth else {
+                return idealSize
+            }
+            return subview.sizeThatFits(ProposedViewSize(width: maximumWidth, height: nil))
+        }
     }
 }
 

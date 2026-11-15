@@ -344,6 +344,7 @@ struct ItemEditView: View {
                 emoji: savedEmoji,
                 isPendingAiEmoji: savedIsPendingAiEmoji
             )
+            CubbyDesign.Haptics.play(.success)
             dismiss()
         } catch {
             DebugLogger.error("ItemEditView - Failed to save item edits: \(error)")

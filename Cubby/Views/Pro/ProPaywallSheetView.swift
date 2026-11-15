@@ -13,6 +13,7 @@ struct ProPaywallSheetView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var proAccessManager: ProAccessManager
+    @ScaledMetric(relativeTo: .body) private var scaledPerkIconSize: CGFloat = 34
 
     @State private var didTimeout = false
     @State private var selectedPackageIdentifier: String?
@@ -42,6 +43,12 @@ struct ProPaywallSheetView: View {
                         }
 
                         complianceSection
+
+                        if dynamicTypeSize.isAccessibilitySize {
+                            // At accessibility sizes the links scroll with the content so the
+                            // pinned purchase bar stays short enough to leave the plans visible.
+                            purchaseFooterLinks
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
@@ -78,6 +85,10 @@ struct ProPaywallSheetView: View {
         }
     }
 
+    private var perkIconSize: CGFloat {
+        min(scaledPerkIconSize, 52)
+    }
+
     private var heroSection: some View {
         VStack(spacing: 10) {
             Image("ProPaywallHero")
@@ -110,9 +121,10 @@ struct ProPaywallSheetView: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(perks) { perk in
                 HStack(alignment: .top, spacing: 12) {
+                    // Decorative emoji: scales with text, capped so the copy keeps the width.
                     Text(perk.emoji)
-                        .font(.system(size: 24))
-                        .frame(width: 34, height: 34)
+                        .font(.system(size: perkIconSize * 0.7))
+                        .frame(width: perkIconSize, height: perkIconSize)
                         .background(PaywallPalette.iconBackground, in: Circle())
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -263,11 +275,9 @@ struct ProPaywallSheetView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            responsivePurchaseFooterLayout {
-                purchaseManagementLinks
-                legalLinks
+            if !dynamicTypeSize.isAccessibilitySize {
+                purchaseFooterLinks
             }
-            .foregroundStyle(PaywallPalette.softInk)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -334,15 +344,24 @@ struct ProPaywallSheetView: View {
 
     private var responsivePurchaseFooterLayout: AnyLayout {
         if dynamicTypeSize.isAccessibilitySize {
-            AnyLayout(VStackLayout(spacing: 0))
+            AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
         } else {
             AnyLayout(HStackLayout(spacing: CubbyDesign.Spacing.standard))
         }
     }
 
+    private var purchaseFooterLinks: some View {
+        responsivePurchaseFooterLayout {
+            purchaseManagementLinks
+            legalLinks
+        }
+        .foregroundStyle(PaywallPalette.softInk)
+        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+    }
+
     @ViewBuilder
     private var purchaseManagementLinks: some View {
-        HStack(spacing: CubbyDesign.Spacing.standard) {
+        responsivePurchaseFooterLayout {
             Button {
                 Task { await proAccessManager.restorePurchases() }
             } label: {
@@ -365,7 +384,7 @@ struct ProPaywallSheetView: View {
     }
 
     private var legalLinks: some View {
-        HStack(spacing: CubbyDesign.Spacing.standard) {
+        responsivePurchaseFooterLayout {
             Link(destination: termsURL) {
                 Text("Terms")
                     .font(CubbyDesign.Typography.captionSmall)
@@ -876,7 +895,7 @@ private struct ProPlanRow: View {
             }
 
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 19, weight: .semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(isSelected ? PaywallPalette.copper : PaywallPalette.softInk.opacity(0.42))
         }
     }

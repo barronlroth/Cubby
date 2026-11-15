@@ -10,6 +10,7 @@ struct MainNavigationView: View {
     @State private var selectedLocation: AppStorageLocation?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @StateObject private var undoManager = UndoManager.shared
+    @State private var undoSuccessCount = 0
     @ObservedObject private var siriService = SiriInventoryService.shared
     @State private var presentedSiriRequest: SiriNavigationRequest?
     @State private var presentedSiriRequestID: UUID?
@@ -117,6 +118,7 @@ struct MainNavigationView: View {
                 .padding(.top, 8)
             }
         }
+        .sensoryFeedback(.success, trigger: undoSuccessCount)
         .cubbyAnimation(.emphasized, value: undoManager.canUndo)
         .cubbyAnimation(.standard, value: undoManager.timeRemaining)
         .onAppear {
@@ -244,7 +246,7 @@ struct MainNavigationView: View {
     private var toolbarButton: some View {
         Button(action: handleToolbarButtonTap) {
             Image(systemName: toolbarIconName)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.title3.weight(.semibold))
         }
         .labelStyle(.iconOnly)
         .controlSize(.large)
@@ -291,7 +293,9 @@ struct MainNavigationView: View {
     }
 
     private func performUndo() {
-        _ = undoManager.undo(using: appStore)
+        if undoManager.undo(using: appStore) {
+            undoSuccessCount += 1
+        }
     }
 
     private func restoreSelectedHomeIfNeeded() {

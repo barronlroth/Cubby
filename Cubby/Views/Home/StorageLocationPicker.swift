@@ -102,6 +102,7 @@ struct StorageLocationPicker: View {
 }
 
 struct LocationPickerRow: View {
+    @State private var selectionFeedbackCount = 0
     let location: AppStorageLocation
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var expandedLocations: Set<UUID>
@@ -203,8 +204,12 @@ struct LocationPickerRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    if selectedLocation?.id != location.id {
+                        selectionFeedbackCount += 1
+                    }
                     selectedLocation = location
                 }
+                .sensoryFeedback(.selection, trigger: selectionFeedbackCount)
                 .contextMenu {
                     Button {
                         showingAddLocation = true
@@ -231,6 +236,7 @@ struct LocationPickerRow: View {
             .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
+                    CubbyDesign.Haptics.play(.warning)
                     do {
                         try StorageLocationDeletionService.deleteLocationIfAllowed(
                             locationId: location.id,

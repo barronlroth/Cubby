@@ -77,44 +77,57 @@ struct SearchView: View {
 struct SearchResultRow: View {
     let item: AppInventoryItem
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var scaledIconSize = CubbyDesign.Layout.rowIcon
+
+    private var iconSize: CGFloat {
+        min(scaledIconSize, CubbyDesign.Layout.rowIconMaximum)
+    }
+
+    private var locationText: String {
+        let path = item.storageLocationPath ?? "Unknown"
+        guard let homeName = item.homeName else { return path }
+        return "\(path) • \(homeName)"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: CubbyDesign.Spacing.small))
+            : AnyLayout(HStackLayout(spacing: CubbyDesign.Spacing.medium))
+        layout {
             ZStack {
                 Circle()
                     .fill(CubbyDesign.Palette.itemIconBackground)
-                    .frame(width: 48, height: 48)
+                    .frame(width: iconSize, height: iconSize)
+                // Emoji is sized from the scaled, capped icon metric rather than a text style.
                 Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
-                    .font(.system(size: 24))
+                    .font(.system(size: iconSize / 2))
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(.headline)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
 
                 if let description = item.itemDescription {
                     Text(description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
 
-                HStack(spacing: 4) {
-                    Image(systemName: "location.fill")
-                        .font(.caption2)
-                    Text(item.storageLocationPath ?? "Unknown")
-                        .font(.caption)
-
-                    if let homeName = item.homeName {
-                        Text("• \(homeName)")
-                            .font(.caption)
-                    }
-                }
-                .foregroundStyle(.tertiary)
+                Text("\(Image(systemName: "location.fill")) \(locationText)")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             }
 
-            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize {
+                Spacer()
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
     }
 }

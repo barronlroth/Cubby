@@ -38,6 +38,16 @@ Choose the token by intent:
 
 Continuous, decorative, parallax, scale, and repeated motion must provide an immediate or non-moving Reduce Motion path even when a token is not a good fit.
 
+### Haptics
+
+Haptics confirm meaningful outcomes; they are not decoration. Use `.success` when an item, location, or home is created or saved and when an undo succeeds, `.warning` when a destructive action is confirmed, and `.selection` or a light impact when a value is chosen (location, tag). The emoji picker supplies its own light selection feedback. Do not add haptics to plain navigation, scrolling, or text entry.
+
+Prefer `.sensoryFeedback(_:trigger:)` when the view that owns the trigger stays on screen. When the same action dismisses the view, call `CubbyDesign.Haptics.play(_:)` before dismissing so the feedback is not lost with the view.
+
+### Dynamic Type sizing
+
+Text uses typography roles or system text styles; do not use `.font(.system(size:))` for text or SF Symbols. Icons and decorative emoji that must keep a specific geometry derive their size from `@ScaledMetric` and cap growth (for example `CubbyDesign.Layout.rowIconMaximum`) so primary text keeps the width at accessibility sizes. Rows that pair an icon with text switch from horizontal to vertical layout when `dynamicTypeSize.isAccessibilitySize` and drop single-line limits on essential text. Glyphs locked inside fixed-size system chrome (for example a 44-point glass toolbar button) may cap with `.dynamicTypeSize(...)` and provide the Large Content Viewer instead.
+
 ## Component and state expectations
 
 Every new reusable component should define and preview the states that apply:

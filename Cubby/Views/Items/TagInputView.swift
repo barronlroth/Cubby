@@ -8,7 +8,9 @@ struct TagInputView: View {
     
     @FocusState private var inputFocus: Bool
     @State private var showingSuggestions = false
+    @State private var tagFeedbackCount = 0
     @Environment(\.cubbyReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     var canAddMoreTags: Bool {
         tags.count < maxTags
@@ -39,17 +41,13 @@ struct TagInputView: View {
                         _ = withAnimation(CubbyDesign.Motion.animation(for: .emphasized, reduceMotion: reduceMotion)) {
                             tags.remove(tag)
                         }
-                        #if os(iOS)
-                        if #available(iOS 17.0, *) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                        #endif
+                        tagFeedbackCount += 1
                     }
                 }
                 
                 if canAddMoreTags {
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
+                        inputRowLayout {
                             TextField("Add tag", text: $currentInput)
                                 .textFieldStyle(.roundedBorder)
                                 .textInputAutocapitalization(.never)
@@ -111,6 +109,14 @@ struct TagInputView: View {
                 }
             }
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: tagFeedbackCount)
+    }
+
+    /// Stacks the Add button under the field at accessibility sizes so the field keeps its width.
+    private var inputRowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: CubbyDesign.Spacing.small))
+            : AnyLayout(HStackLayout(spacing: CubbyDesign.Spacing.small))
     }
     
     private func addTag() {
@@ -129,12 +135,7 @@ struct TagInputView: View {
         
         currentInput = ""
         inputFocus = true
-        
-        #if os(iOS)
-        if #available(iOS 17.0, *) {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-        #endif
+        tagFeedbackCount += 1
     }
 }
 
@@ -148,11 +149,6 @@ struct TagTextField: ViewModifier {
             .autocorrectionDisabled()
             .onSubmit {
                 onSubmit()
-                #if os(iOS)
-                if #available(iOS 17.0, *) {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-                #endif
             }
             .onChange(of: text) { _, newValue in
                 text = newValue.formatAsTagInput()

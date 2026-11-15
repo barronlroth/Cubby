@@ -88,14 +88,29 @@ struct AddItemView: View {
 
                 Section("Location") {
                     Button(action: { showingLocationPicker = true }) {
-                        HStack {
-                            Text("Storage Location")
-                            Spacer()
-                            Text(selectedLocation?.fullPath ?? "Select")
-                                .foregroundColor(.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                        // Fall back to a stacked layout when the label and value can't share a line,
+                        // so "Storage Location" never hyphenates at accessibility sizes.
+                        ViewThatFits(in: .horizontal) {
+                            HStack {
+                                Text("Storage Location")
+                                    .fixedSize()
+                                Spacer()
+                                Text(selectedLocation?.fullPath ?? "Select")
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                locationChevron
+                            }
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: CubbyDesign.Spacing.xSmall) {
+                                    Text("Storage Location")
+                                    Text(selectedLocation?.fullPath ?? "Select")
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                                locationChevron
+                            }
                         }
                     }
                     .foregroundColor(.primary)
@@ -227,6 +242,12 @@ struct AddItemView: View {
         }
     }
 
+    private var locationChevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+    }
+
     private func saveItem() async {
         guard canAddItemsToSelectedHome else { return }
 
@@ -250,6 +271,7 @@ struct AddItemView: View {
                 emoji: selectedEmoji,
                 itemID: itemID
             )
+            CubbyDesign.Haptics.play(.success)
             dismiss()
         } catch {
             DebugLogger.error("Failed to save item: \(error)")

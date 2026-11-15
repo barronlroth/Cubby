@@ -57,6 +57,7 @@ struct AddHomeView: View {
         do {
             let newHome = try appStore.createHome(name: trimmedName)
             selectedHome = newHome
+            CubbyDesign.Haptics.play(.success)
             dismiss()
         } catch {
             DebugLogger.error("Failed to save home: \(error)")

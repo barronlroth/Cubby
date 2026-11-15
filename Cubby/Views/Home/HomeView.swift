@@ -618,11 +618,17 @@ private struct ShareHomeButtonLabel: View {
                     .tint(.primary)
             } else {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.body.weight(.semibold))
+                    // The glyph sits in a fixed 44-point glass circle, so it stops
+                    // growing at accessibility sizes; Large Content Viewer covers the rest.
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             }
         }
         .frame(width: 44, height: 44)
         .contentShape(.circle)
+        .accessibilityShowsLargeContentViewer {
+            Label("Share Home", systemImage: "square.and.arrow.up")
+        }
     }
 }
 
@@ -655,6 +661,11 @@ struct HomePicker: View {
     @State private var pendingHomeAction: PendingHomeAction?
     @State private var homeActionErrorMessage: String?
     @State private var isPerformingHomeAction = false
+    @ScaledMetric(relativeTo: .body) private var removeBadgeSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .body) private var checkmarkColumnWidth: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var utilityIconColumnWidth: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var pickerPanelWidth: CGFloat = 320
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
@@ -698,6 +709,7 @@ struct HomePicker: View {
             presenting: pendingHomeAction
         ) { action in
             Button(action.confirmationButtonTitle, role: .destructive) {
+                CubbyDesign.Haptics.play(.warning)
                 Task { await perform(action) }
             }
             Button("Cancel", role: .cancel) {}
@@ -780,7 +792,8 @@ struct HomePicker: View {
             .padding(.top, 10)
             .padding(.bottom, 14)
         }
-        .frame(width: 320)
+        // Grow with text size, but never wider than a compact iPhone allows.
+        .frame(width: min(pickerPanelWidth, 360))
         .background(.regularMaterial)
     }
 
@@ -792,9 +805,9 @@ struct HomePicker: View {
                     pendingHomeAction = PendingHomeAction(home: home)
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
+                        .frame(width: removeBadgeSize, height: removeBadgeSize)
                         .background(Color.red, in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -804,15 +817,15 @@ struct HomePicker: View {
                 .accessibilityLabel(PendingHomeAction(home: home).accessibilityLabel)
 
                 Image(systemName: "checkmark")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .opacity(selectedHome?.id == home.id ? 1 : 0)
-                    .frame(width: 20)
+                    .frame(width: checkmarkColumnWidth)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(home.name)
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(homeNameLineLimit)
 
                     if let badgeText = shareBadgeText(for: home) {
                         Text(badgeText)
@@ -835,7 +848,7 @@ struct HomePicker: View {
                     Text(home.name)
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(homeNameLineLimit)
 
                     if let badgeText = shareBadgeText(for: home) {
                         Text(badgeText)
@@ -850,7 +863,7 @@ struct HomePicker: View {
 
                     if selectedHome?.id == home.id {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(.primary)
                     }
                 }
@@ -862,6 +875,10 @@ struct HomePicker: View {
         }
     }
 
+    private var homeNameLineLimit: Int {
+        dynamicTypeSize.isAccessibilitySize ? 3 : 1
+    }
+
     private func utilityRow(
         title: String,
         systemImage: String,
@@ -870,9 +887,9 @@ struct HomePicker: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .regular))
+                    .font(.title3)
                     .foregroundStyle(.primary)
-                    .frame(width: 28)
+                    .frame(width: utilityIconColumnWidth)
 
                 Text(title)
                     .font(.body)
@@ -882,7 +899,7 @@ struct HomePicker: View {
 
                 if title != "Add New Home" {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
             }

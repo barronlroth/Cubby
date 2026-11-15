@@ -9,6 +9,12 @@ struct ItemEmojiPickerButton: View {
     var onBeginEditing: () -> Void = {}
 
     @State private var isPickerPresented = false
+    @ScaledMetric(relativeTo: .title2) private var scaledTileSize: CGFloat = 46
+
+    /// The tile grows with text but caps so it does not crowd the title field beside it.
+    private var tileSize: CGFloat {
+        min(scaledTileSize, 72)
+    }
 
     private var displayEmoji: String {
         selectedEmoji ?? fallbackEmoji
@@ -26,11 +32,11 @@ struct ItemEmojiPickerButton: View {
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color(.secondarySystemBackground))
-                    .frame(width: 46, height: 46)
+                    .frame(width: tileSize, height: tileSize)
 
                 Text(displayEmoji)
-                    .font(.title2)
-                    .frame(width: 46, height: 46)
+                    .font(.system(size: tileSize * 0.48))
+                    .frame(width: tileSize, height: tileSize)
 
                 if isPendingAiEmoji && selectedEmoji == nil {
                     ProgressView()
