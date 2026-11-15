@@ -84,7 +84,7 @@ File: `Cubby/AppData/AppStore.swift`
 - Main observable state used by SwiftUI views.
 - Publishes `AppHome`, `AppStorageLocation`, and `AppInventoryItem`.
 - Owns mutations through repository methods.
-- Hides left/shared homes through `HiddenSharedHomeIDStore`.
+- Leaving a shared home purges its zone from the shared store; owner delete of a shared home purges the zone from the private store. Homes older builds hid through the `hiddenSharedHomeIDs` default are purged once and then dropped (`LegacyLeftSharedHomes`).
 - Runs post-save AI emoji enhancement when supported.
 
 ## Migration

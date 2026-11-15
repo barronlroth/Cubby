@@ -311,6 +311,50 @@ struct HomeSharingServiceTests {
         }
     }
 
+    @Test("Owner delete of a shared home purges the share zone from the private store")
+    func ownerDeletePurgesPrivateZone() async throws {
+        let fixture = try makeFixture()
+        let home = appHome(try makeValidHome(in: fixture))
+        let share = try await fixture.service.prepareShare(for: home)
+
+        try await fixture.service.deleteSharedHome(home)
+
+        #expect(fixture.container.purged.map(\.zoneName) == [share.recordID.zoneID.zoneName])
+        #expect(fixture.container.purged.map(\.store) == [fixture.privateStore.identifier])
+    }
+
+    @Test("Owner delete is refused when the home isn't shared or the lookup fails")
+    func ownerDeleteRequiresShare() async throws {
+        let fixture = try makeFixture()
+        let home = appHome(try makeValidHome(in: fixture))
+
+        await #expect(throws: HomeSharingServiceError.shareNotFound) {
+            try await fixture.service.deleteSharedHome(home)
+        }
+        fixture.container.fetchError = FakeError.lookup
+        await #expect(throws: HomeSharingServiceError.shareLookupFailed) {
+            try await fixture.service.deleteSharedHome(home)
+        }
+        #expect(fixture.container.purged.isEmpty)
+    }
+
+    @Test("Finishing an earlier leave purges the zone of a shared-store home only")
+    func legacyLeavePurgesSharedZone() async throws {
+        let fixture = try makeFixture()
+        let sharedHome = insert("CDHome", name: "Theirs", store: fixture.sharedStore, in: fixture)
+        let ownHome = try makeValidHome(in: fixture)
+        try fixture.context.save()
+        let zone = CKRecordZone.ID(zoneName: "com.apple.coredata.cloudkit.share.TEST", ownerName: "_owner")
+        fixture.container.recordIDs[sharedHome.objectID] = CKRecord.ID(recordName: "r", zoneID: zone)
+
+        try await fixture.service.purgeSharedStoreZone(forHomeID: ownHome.value(forKey: "id") as! UUID)
+        #expect(fixture.container.purged.isEmpty)
+
+        try await fixture.service.purgeSharedStoreZone(forHomeID: sharedHome.value(forKey: "id") as! UUID)
+        #expect(fixture.container.purged.map(\.zoneName) == [zone.zoneName])
+        #expect(fixture.container.purged.map(\.store) == [fixture.sharedStore.identifier])
+    }
+
     // MARK: Repository integration
 
     @Test("Repository maps a failed lookup to a read-only, non-owner home")
@@ -361,7 +405,16 @@ private final class FakeSharingContainer: CloudKitSharingContaining {
         acceptedStores.append(store.identifier)
     }
 
-    func purgeObjectsAndRecordsInZone(with zoneID: CKRecordZone.ID, in store: NSPersistentStore?) async throws {}
+    private(set) var purged: [(zoneName: String, store: String?)] = []
+    var recordIDs: [NSManagedObjectID: CKRecord.ID] = [:]
+
+    func purgeObjectsAndRecordsInZone(with zoneID: CKRecordZone.ID, in store: NSPersistentStore?) async throws {
+        purged.append((zoneID.zoneName, store?.identifier))
+    }
+
+    func recordID(for objectID: NSManagedObjectID) -> CKRecord.ID? {
+        recordIDs[objectID]
+    }
 
     func persistUpdatedShare(_ share: CKShare, in store: NSPersistentStore) async throws -> CKShare {
         share

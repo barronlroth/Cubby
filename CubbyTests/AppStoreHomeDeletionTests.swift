@@ -60,40 +60,71 @@ struct AppStoreHomeDeletionTests {
         #expect(appStore.items.isEmpty)
     }
 
-    @Test("Leaving a shared home keeps it hidden after AppStore relaunch")
+    @Test("Leaving a shared home delegates to sharing and no longer writes a hidden-home list")
     @MainActor
-    func testLeaveSharedHomePersistsHiddenHomeAcrossAppStoreInstances() async throws {
+    func testLeaveSharedHomeDelegatesWithoutHiding() async throws {
         let suiteName = "AppStoreHomeDeletionTests-\(UUID().uuidString)"
         let userDefaults = try #require(UserDefaults(suiteName: suiteName))
         userDefaults.removePersistentDomain(forName: suiteName)
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let hiddenHomeStore = HiddenSharedHomeIDStore(userDefaults: userDefaults)
         let shareService = AppStoreRecordingHomeSharingService(role: .readWriteParticipant)
         let repository = try makeRepository(shareService: shareService)
         let leftHome = try repository.createHome(name: "Shared With Me")
-        let keptHome = try repository.createHome(name: "Still Here")
 
         let appStore = AppStore(
             repository: repository,
             notificationCenter: NotificationCenter(),
-            hiddenSharedHomeIDStore: hiddenHomeStore
+            legacyLeftHomeDefaults: userDefaults
         )
 
         try await appStore.leaveSharedHome(id: leftHome.id)
 
         #expect(shareService.leftHomeIDs == [leftHome.id])
-        #expect(appStore.homes.contains { $0.id == leftHome.id } == false)
-        #expect(appStore.homes.contains { $0.id == keptHome.id })
+        #expect(userDefaults.object(forKey: LegacyLeftSharedHomes.key) == nil)
+    }
 
-        let relaunchedAppStore = AppStore(
+    @Test("Owner deleting a shared home purges the share, then removes the local graph")
+    @MainActor
+    func testOwnerDeleteOfSharedHomePurgesShare() async throws {
+        let shareService = AppStoreRecordingHomeSharingService(role: .owner)
+        let repository = try makeRepository(shareService: shareService)
+        let appStore = AppStore(repository: repository, notificationCenter: NotificationCenter())
+        let home = try appStore.createHome(name: "Family Home")
+
+        try await appStore.deleteHome(id: home.id)
+
+        #expect(shareService.deletedSharedHomeIDs == [home.id])
+        #expect(appStore.homes.isEmpty)
+        #expect(appStore.locations.isEmpty)
+    }
+
+    @Test("Homes hidden by older builds stay hidden until their leave is finished, then the list is dropped")
+    @MainActor
+    func testLegacyHiddenHomesAreFinishedAndCleared() async throws {
+        let suiteName = "AppStoreHomeDeletionTests-\(UUID().uuidString)"
+        let userDefaults = try #require(UserDefaults(suiteName: suiteName))
+        userDefaults.removePersistentDomain(forName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let repository = try makeRepository()
+        let legacyHome = try repository.createHome(name: "Left Long Ago")
+        let keptHome = try repository.createHome(name: "Still Here")
+        userDefaults.set([legacyHome.id.uuidString, "not-a-uuid"], forKey: LegacyLeftSharedHomes.key)
+
+        let appStore = AppStore(
             repository: repository,
             notificationCenter: NotificationCenter(),
-            hiddenSharedHomeIDStore: hiddenHomeStore
+            legacyLeftHomeDefaults: userDefaults
         )
+        #expect(appStore.homes.contains { $0.id == legacyHome.id } == false)
+        #expect(appStore.homes.contains { $0.id == keptHome.id })
 
-        #expect(relaunchedAppStore.homes.contains { $0.id == leftHome.id } == false)
-        #expect(relaunchedAppStore.homes.contains { $0.id == keptHome.id })
+        for _ in 0..<50 where userDefaults.object(forKey: LegacyLeftSharedHomes.key) != nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // With no CloudKit service there is no zone to purge, so the leave completes trivially.
+        #expect(userDefaults.object(forKey: LegacyLeftSharedHomes.key) == nil)
     }
 
     private func makePhotoFile(named fileName: String) throws -> URL {
@@ -160,6 +191,12 @@ private final class AppStoreRecordingHomeSharingService: HomeSharingServiceProto
 
     func leaveSharedHome(_ home: AppHome) async throws {
         leftHomeIDs.append(home.id)
+    }
+
+    var deletedSharedHomeIDs: [UUID] = []
+
+    func deleteSharedHome(_ home: AppHome) async throws {
+        deletedSharedHomeIDs.append(home.id)
     }
 
 

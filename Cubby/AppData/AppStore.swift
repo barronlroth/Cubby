@@ -15,21 +15,24 @@ final class AppStore: ObservableObject {
     let repository: CoreDataAppRepository
 
     private let notificationCenter: NotificationCenter
-    private let hiddenSharedHomeIDStore: HiddenSharedHomeIDStore
+    private let legacyLeftHomes: LegacyLeftSharedHomes
     private var observers: [NSObjectProtocol] = []
-    private var hiddenSharedHomeIDs = Set<UUID>()
+    /// Homes older builds "left" by hiding them. They stay filtered until their
+    /// zone is purged, then the old UserDefaults entry is dropped.
+    private var pendingLegacyLeaveIDs = Set<UUID>()
 
     init(
         repository: CoreDataAppRepository,
         notificationCenter: NotificationCenter = .default,
-        hiddenSharedHomeIDStore: HiddenSharedHomeIDStore = HiddenSharedHomeIDStore()
+        legacyLeftHomeDefaults: UserDefaults = .standard
     ) {
         self.repository = repository
         self.notificationCenter = notificationCenter
-        self.hiddenSharedHomeIDStore = hiddenSharedHomeIDStore
-        self.hiddenSharedHomeIDs = hiddenSharedHomeIDStore.load()
+        self.legacyLeftHomes = LegacyLeftSharedHomes(userDefaults: legacyLeftHomeDefaults)
+        self.pendingLegacyLeaveIDs = legacyLeftHomes.load()
         refresh()
         startObserving()
+        completeLegacyLeavesIfNeeded()
     }
 
     deinit {
@@ -40,18 +43,16 @@ final class AppStore: ObservableObject {
         defer { inventoryRevision &+= 1 }
         do {
             let allHomes = try repository.listHomes()
-            let availableHomeIDs = Set(allHomes.map(\.id))
-            hiddenSharedHomeIDs = hiddenSharedHomeIDStore.load().intersection(availableHomeIDs)
-            hiddenSharedHomeIDStore.save(hiddenSharedHomeIDs)
+            let hidden = pendingLegacyLeaveIDs
 
             homes = allHomes
-                .filter { !hiddenSharedHomeIDs.contains($0.id) }
+                .filter { !hidden.contains($0.id) }
             locations = try repository.listLocations()
-                .filter { !hiddenSharedHomeIDs.contains($0.homeID) }
+                .filter { !hidden.contains($0.homeID) }
             items = try repository.listItems()
                 .filter { item in
                     guard let homeID = item.homeID else { return true }
-                    return !hiddenSharedHomeIDs.contains(homeID)
+                    return !hidden.contains(homeID)
                 }
         } catch {
             DebugLogger.error("AppStore refresh failed: \(error)")
@@ -60,7 +61,7 @@ final class AppStore: ObservableObject {
 
     /// Siri uses a throwing read instead of the UI's last successful published snapshot.
     func siriInventoryRecords() throws -> [SiriInventoryRecord] {
-        try repository.siriInventoryRecords(excludingHomeIDs: hiddenSharedHomeIDStore.load())
+        try repository.siriInventoryRecords(excludingHomeIDs: pendingLegacyLeaveIDs)
     }
 
     func home(id: UUID?) -> AppHome? {
@@ -185,9 +186,15 @@ final class AppStore: ObservableObject {
     }
 
     func deleteHome(id: UUID) async throws {
-        let photoFileNames = try repository.deleteHome(id: id)
-        hiddenSharedHomeIDs.remove(id)
-        hiddenSharedHomeIDStore.remove(id)
+        // A shared home is deleted by purging its share zone, which removes the
+        // share for every collaborator. A failed lookup is read-only, so the
+        // plain delete below rejects it.
+        let photoFileNames: [String]
+        if repository.shareLookup(for: id).share != nil {
+            photoFileNames = try await repository.deleteSharedHome(id: id)
+        } else {
+            photoFileNames = try repository.deleteHome(id: id)
+        }
         refresh()
 
         for photoFileName in photoFileNames {
@@ -379,8 +386,6 @@ final class AppStore: ObservableObject {
 
     func leaveSharedHome(id: UUID) async throws {
         try await repository.leaveSharedHome(id: id)
-        hiddenSharedHomeIDs.insert(id)
-        hiddenSharedHomeIDStore.insert(id)
         refresh()
     }
 
@@ -394,6 +399,23 @@ final class AppStore: ObservableObject {
 
     var shareContainer: CKContainer {
         repository.ckContainer
+    }
+
+    private func completeLegacyLeavesIfNeeded() {
+        guard pendingLegacyLeaveIDs.isEmpty == false else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for id in self.pendingLegacyLeaveIDs {
+                do {
+                    try await self.repository.purgeLegacyLeftSharedHome(id: id)
+                    self.pendingLegacyLeaveIDs.remove(id)
+                } catch {
+                    DebugLogger.warning("Could not finish earlier leave of \(id); will retry: \(error)")
+                }
+            }
+            self.legacyLeftHomes.save(self.pendingLegacyLeaveIDs)
+            self.refresh()
+        }
     }
 
     private func startObserving() {
@@ -454,12 +476,14 @@ final class AppStore: ObservableObject {
     }
 }
 
-struct HiddenSharedHomeIDStore {
-    private static let key = "hiddenSharedHomeIDs"
+/// Reads the `hiddenSharedHomeIDs` list older builds wrote when a collaborator
+/// "left" a home without purging it. Only read and trimmed now; never added to.
+struct LegacyLeftSharedHomes {
+    static let key = "hiddenSharedHomeIDs"
 
     private let userDefaults: UserDefaults
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults) {
         self.userDefaults = userDefaults
     }
 
@@ -469,18 +493,10 @@ struct HiddenSharedHomeIDStore {
     }
 
     func save(_ ids: Set<UUID>) {
-        userDefaults.set(ids.map(\.uuidString).sorted(), forKey: Self.key)
-    }
-
-    func insert(_ id: UUID) {
-        var ids = load()
-        ids.insert(id)
-        save(ids)
-    }
-
-    func remove(_ id: UUID) {
-        var ids = load()
-        ids.remove(id)
-        save(ids)
+        if ids.isEmpty {
+            userDefaults.removeObject(forKey: Self.key)
+        } else {
+            userDefaults.set(ids.map(\.uuidString).sorted(), forKey: Self.key)
+        }
     }
 }

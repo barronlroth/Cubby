@@ -50,6 +50,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
         handleShareAcceptance(cloudKitShareMetadata)
     }
 
+    /// Cold launch from an invitation: the metadata arrives in the connection
+    /// options instead of `windowScene(_:userDidAcceptCloudKitShareWith:)`.
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        _ = scene
+        _ = session
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            DebugLogger.info("Cold launch with a CloudKit share invitation")
+            handleShareAcceptance(metadata)
+        }
+    }
+
     func windowScene(
         _ windowScene: UIWindowScene,
         userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
@@ -66,26 +81,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UIWindowSceneDelegate 
             sharingErrorHandler = Self.makeSharingErrorHandler()
         }
 
-        guard let homeSharingService else {
-            DebugLogger.warning(
-                "Received CloudKit share metadata, but HomeSharingService is not configured."
-            )
-            return
-        }
-
+        let service = homeSharingService
+        let errorHandler = sharingErrorHandler
         Task { @MainActor in
-            do {
-                try await homeSharingService.acceptShareInvitation(from: metadata)
-            } catch {
-                if let sharingErrorHandler {
-                    let presentation = sharingErrorHandler.handleShareAcceptanceFailure(error)
-                    DebugLogger.error(
-                        "Failed to accept CloudKit share invitation: \(error). Message: \(presentation.message)"
-                    )
-                } else {
-                    DebugLogger.error("Failed to accept CloudKit share invitation: \(error)")
-                }
-            }
+            await ShareAcceptanceCoordinator.shared.accept(
+                metadata,
+                using: service,
+                errorHandler: errorHandler
+            )
         }
     }
 }

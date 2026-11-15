@@ -927,7 +927,7 @@ private struct PendingHomeAction: Identifiable {
         case .leave:
             "You'll lose access to \"\(home.name)\" on this device and through iCloud sharing. The owner's home is not deleted."
         case .delete where home.isShared:
-            "This permanently deletes \"\(home.name)\" for you and collaborators. This can't be undone."
+            "This stops sharing and permanently deletes \"\(home.name)\" for you and everyone you shared it with. Collaborators lose access right away. This can't be undone."
         case .delete:
             "This permanently deletes \"\(home.name)\" and every location and item in it. This can't be undone."
         }

@@ -248,6 +248,17 @@ struct CubbyApp: App {
                     DuplicateRecordRepairCoordinator.startIfNeeded(
                         persistenceController: persistenceController
                     )
+                    CloudKitEventLog.shared.start(
+                        observing: persistenceController.persistentContainer
+                    ) { identifier in
+                        if identifier == persistenceController.privatePersistentStore()?.identifier {
+                            return "private"
+                        }
+                        if identifier == persistenceController.sharedPersistentStore()?.identifier {
+                            return "shared"
+                        }
+                        return identifier
+                    }
                 }
 
                 let remoteChangeHandler = RemoteChangeHandler(
@@ -270,7 +281,11 @@ struct CubbyApp: App {
                     shareService: resolvedHomeSharingService
                 )
                 EmojiAssignmentCoordinator.shared.recoverAbandonedRequests(in: repository)
-                configuredAppStore = AppStore(repository: repository)
+                let appStore = AppStore(repository: repository)
+                configuredAppStore = appStore
+                ShareAcceptanceCoordinator.shared.knownHomeIDs = { [weak appStore] in
+                    Set(appStore?.homes.map(\.id) ?? [])
+                }
                 #if DEBUG
                 if args.contains("FORCE_MIGRATION_RECOVERY_MESSAGE") {
                     configuredAppStore?.recoveryMessage = DataMigrationService.recoveryMessage

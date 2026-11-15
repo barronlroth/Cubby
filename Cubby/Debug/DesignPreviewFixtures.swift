@@ -86,7 +86,7 @@ final class DesignPreviewFixture {
         )
         let appStore = AppStore(
             repository: repository,
-            hiddenSharedHomeIDStore: HiddenSharedHomeIDStore(userDefaults: defaults)
+            legacyLeftHomeDefaults: defaults
         )
 
         self.persistenceController = persistenceController
