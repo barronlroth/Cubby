@@ -1,6 +1,5 @@
 import CoreData
 import Foundation
-import SwiftData
 
 enum CloudKitSchemaBootstrapper {
     enum BootstrapError: Error {
@@ -27,57 +26,10 @@ enum CloudKitSchemaBootstrapper {
     }
 
     #if DEBUG
+    /// Only the Core Data sharing schema syncs. The legacy SwiftData store is
+    /// local-only, so its schema is not pushed to CloudKit.
     private static func initializeDevelopmentSchema() throws {
         try initializeCoreDataSharingSchema()
-
-        do {
-            try initializeLegacySwiftDataSchema()
-        } catch {
-            DebugLogger.warning("Legacy SwiftData CloudKit schema initialization failed: \(error)")
-        }
-    }
-
-    private static func initializeLegacySwiftDataSchema() throws {
-        try autoreleasepool {
-            let modelConfiguration = ModelConfiguration(
-                schema: Schema([Home.self, StorageLocation.self, InventoryItem.self]),
-                cloudKitDatabase: .private(CloudKitSyncSettings.containerIdentifier)
-            )
-
-            let storeDescription = NSPersistentStoreDescription()
-            storeDescription.url = modelConfiguration.url
-            storeDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-                containerIdentifier: CloudKitSyncSettings.containerIdentifier
-            )
-            storeDescription.shouldAddStoreAsynchronously = false
-
-            guard let managedObjectModel = NSManagedObjectModel.makeManagedObjectModel(
-                for: [Home.self, StorageLocation.self, InventoryItem.self]
-            ) else {
-                throw BootstrapError.managedObjectModelUnavailable
-            }
-
-            let persistentContainer = NSPersistentCloudKitContainer(
-                name: "CubbyCloudKitBootstrap",
-                managedObjectModel: managedObjectModel
-            )
-            persistentContainer.persistentStoreDescriptions = [storeDescription]
-
-            var loadError: Error?
-            persistentContainer.loadPersistentStores { _, error in
-                loadError = error
-            }
-
-            if let loadError {
-                throw loadError
-            }
-
-            try persistentContainer.initializeCloudKitSchema()
-
-            if let store = persistentContainer.persistentStoreCoordinator.persistentStores.first {
-                try persistentContainer.persistentStoreCoordinator.remove(store)
-            }
-        }
     }
 
     private static func initializeCoreDataSharingSchema() throws {
