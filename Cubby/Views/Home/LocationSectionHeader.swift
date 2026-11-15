@@ -1,16 +1,37 @@
 import SwiftUI
 
+/// Actions a section header offers from its context menu. Mutating actions are
+/// nil when the home is read-only, which hides them.
+struct LocationSectionHeaderActions {
+    var onRename: ((String) throws -> Void)?
+    var onMove: (() -> Void)?
+    var onAddNested: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var canDelete = false
+
+    static let readOnly = LocationSectionHeaderActions()
+}
+
 struct LocationSectionHeader: View {
     let locationPath: String
     let itemCount: Int
     var isCollapsed = false
     var allowsCollapse = true
+    var actions: LocationSectionHeaderActions = .readOnly
     var onCollapse: () -> Void = {}
     var onExpand: () -> Void = {}
     var onSelect: () -> Void = {}
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    
+
+    @State private var isRenaming = false
+    @State private var draftName = ""
+    @State private var draftSelection: TextSelection?
+    @State private var renameErrorMessage: String?
+    @State private var renameErrorCount = 0
+    @State private var keepsFocusAfterFailedSubmit = false
+    @FocusState private var isRenameFieldFocused: Bool
+
     private var segments: [String] {
         // Support both " > " and ">" separators
         if locationPath.contains(" > ") || locationPath.contains(">") {
@@ -29,15 +50,15 @@ struct LocationSectionHeader: View {
     private var itemCountText: String {
         itemCount == 1 ? "1 item" : "\(itemCount) items"
     }
-    
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: CubbyDesign.Spacing.medium) {
             titleBlock
                 .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: CubbyDesign.Spacing.small)
 
-            if isCollapsed {
+            if isCollapsed, !isRenaming {
                 Text(itemCountText)
                     .font(CubbyDesign.Typography.captionEmphasized)
                     .foregroundStyle(.secondary)
@@ -47,77 +68,85 @@ struct LocationSectionHeader: View {
                     .accessibilityIdentifier("location-section-count-\(locationPath)")
             }
 
-            if allowsCollapse, isCollapsed {
-                Button {
-                    onExpand()
-                } label: {
-                    Image(systemName: "chevron.right.circle.fill")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .frame(
-                            minWidth: CubbyDesign.Layout.minimumTapTarget,
-                            minHeight: CubbyDesign.Layout.minimumTapTarget
-                        )
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Expand \(title)")
-                .accessibilityValue(itemCountText)
-                .accessibilityHint("Shows the hidden items in this location.")
-                .accessibilityIdentifier("location-section-toggle-\(locationPath)")
+            if !isRenaming {
+                openButton
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
+        .padding(.leading, CubbyDesign.Spacing.standard)
+        .padding(.trailing, CubbyDesign.Spacing.xSmall)
+        .padding(.top, CubbyDesign.Spacing.standard)
+        .padding(.bottom, CubbyDesign.Spacing.small)
+        .contentShape(.rect)
+        .contextMenu { contextMenuContent }
+        .renameAction(beginRename)
+        .sensoryFeedback(.error, trigger: renameErrorCount)
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
     }
 
-    private var titleBlock: some View {
-        interactiveTitleContent
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityLabel("\(title), \(itemCountText)")
-            .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
-            .accessibilityHint(headerAccessibilityHint)
-            .accessibilityAction(named: "Open location") {
-                onSelect()
-            }
-            .accessibilityAction(named: isCollapsed ? "Expand section" : "Collapse section") {
-                guard allowsCollapse else { return }
-                if isCollapsed {
-                    onExpand()
-                } else {
-                    onCollapse()
-                }
-            }
-    }
+    // MARK: Title
 
     @ViewBuilder
-    private var interactiveTitleContent: some View {
-        if allowsCollapse, isCollapsed {
-            titleContent
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onExpand()
-                }
-        } else if allowsCollapse {
-            titleContent
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onSelect()
-                }
-                .highPriorityGesture(
-                    LongPressGesture(minimumDuration: 0.45)
-                        .onEnded { _ in onCollapse() }
-                )
+    private var titleBlock: some View {
+        if isRenaming {
+            renameField
         } else {
             titleContent
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    onSelect()
+                .onTapGesture(perform: handleTitleTap)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits([.isHeader, .isButton])
+                .accessibilityLabel("\(title), \(itemCountText)")
+                .accessibilityValue(allowsCollapse ? (isCollapsed ? "Collapsed" : "Expanded") : "")
+                .accessibilityHint(headerAccessibilityHint)
+                .accessibilityAction(named: "Open \(title)", onSelect)
+                .modifier(MutatingAccessibilityActions(title: title, actions: actions, onRename: beginRename))
+        }
+    }
+
+    private var renameField: some View {
+        VStack(alignment: .leading, spacing: CubbyDesign.Spacing.xSmall) {
+            TextField("Location name", text: $draftName, selection: $draftSelection)
+                .font(CubbyDesign.Typography.sectionTitle)
+                .textFieldStyle(.plain)
+                .submitLabel(.done)
+                .autocorrectionDisabled()
+                .focused($isRenameFieldFocused)
+                .onSubmit(commitRename)
+                .onKeyPress(.escape) {
+                    cancelRename()
+                    return .handled
                 }
+                .onChange(of: draftName) { _, _ in renameErrorMessage = nil }
+                .padding(.vertical, CubbyDesign.Spacing.xSmall)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(renameErrorMessage == nil ? CubbyDesign.Palette.accent : CubbyDesign.Palette.destructive)
+                        .frame(height: CubbyDesign.Stroke.emphasized)
+                }
+                .accessibilityLabel("Rename \(title)")
+                .accessibilityIdentifier("location-section-rename-field-\(locationPath)")
+
+            if let renameErrorMessage {
+                Text(renameErrorMessage)
+                    .font(CubbyDesign.Typography.caption)
+                    .foregroundStyle(CubbyDesign.Palette.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear {
+            // Focus once the field is in the hierarchy (after the context menu closes).
+            DispatchQueue.main.async { isRenameFieldFocused = true }
+        }
+        .onChange(of: isRenameFieldFocused) { _, isFocused in
+            guard !isFocused else { return }
+            // Return resigns focus right after onSubmit; a failed submit asks to stay open.
+            if keepsFocusAfterFailedSubmit {
+                keepsFocusAfterFailedSubmit = false
+                isRenameFieldFocused = true
+            } else {
+                cancelRename()
+            }
         }
     }
 
@@ -163,10 +192,136 @@ struct LocationSectionHeader: View {
         }
     }
 
+    private var openButton: some View {
+        Button(action: onSelect) {
+            Image(systemName: "chevron.right")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .frame(
+                    minWidth: CubbyDesign.Layout.minimumTapTarget,
+                    minHeight: CubbyDesign.Layout.minimumTapTarget
+                )
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(title)")
+        .accessibilityHint("Shows nested locations and every item in this location.")
+        .accessibilityIdentifier("location-section-open-\(locationPath)")
+    }
+
+    // MARK: Context menu
+
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        Button(action: onSelect) {
+            Label("Open \u{201C}\(title)\u{201D}", systemImage: "arrow.up.forward.app")
+        }
+
+        if actions.onRename != nil {
+            RenameButton()
+        }
+
+        if let onMove = actions.onMove {
+            Button(action: onMove) {
+                Label("Move to\u{2026}", systemImage: "folder")
+            }
+        }
+
+        if let onAddNested = actions.onAddNested {
+            Button(action: onAddNested) {
+                Label("Add Nested Location", systemImage: "folder.badge.plus")
+            }
+        }
+
+        if let onDelete = actions.onDelete {
+            Divider()
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(!actions.canDelete)
+        }
+    }
+
+    // MARK: Behaviour
+
+    private func handleTitleTap() {
+        guard allowsCollapse else {
+            onSelect()
+            return
+        }
+        if isCollapsed {
+            onExpand()
+        } else {
+            onCollapse()
+        }
+    }
+
+    private func beginRename() {
+        guard actions.onRename != nil else { return }
+        draftName = title
+        renameErrorMessage = nil
+        isRenaming = true
+        // Select the whole name so typing replaces it, as Files does.
+        draftSelection = TextSelection(range: draftName.startIndex..<draftName.endIndex)
+    }
+
+    private func commitRename() {
+        guard let onRename = actions.onRename else {
+            cancelRename()
+            return
+        }
+        do {
+            try onRename(draftName)
+            endRename()
+        } catch {
+            renameErrorMessage = error.localizedDescription
+            renameErrorCount += 1
+            keepsFocusAfterFailedSubmit = true
+            isRenameFieldFocused = true
+        }
+    }
+
+    private func cancelRename() {
+        guard isRenaming else { return }
+        endRename()
+    }
+
+    private func endRename() {
+        isRenaming = false
+        isRenameFieldFocused = false
+        keepsFocusAfterFailedSubmit = false
+        renameErrorMessage = nil
+    }
+
     private var headerAccessibilityHint: String {
-        guard allowsCollapse else { return "" }
+        guard allowsCollapse else { return "Opens this storage location." }
         return isCollapsed
-            ? "Tap to show items in this storage location."
-            : "Tap to open this storage location. Long press to collapse it."
+            ? "Shows the items in this storage location."
+            : "Hides the items in this storage location."
+    }
+}
+
+/// Mirrors the context menu for VoiceOver users as named actions.
+private struct MutatingAccessibilityActions: ViewModifier {
+    let title: String
+    let actions: LocationSectionHeaderActions
+    let onRename: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityActions {
+                if actions.onRename != nil {
+                    Button("Rename", action: onRename)
+                }
+                if let onMove = actions.onMove {
+                    Button("Move to\u{2026}", action: onMove)
+                }
+                if let onAddNested = actions.onAddNested {
+                    Button("Add Nested Location", action: onAddNested)
+                }
+                if let onDelete = actions.onDelete, actions.canDelete {
+                    Button("Delete", action: onDelete)
+                }
+            }
     }
 }

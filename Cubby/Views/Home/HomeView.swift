@@ -33,9 +33,12 @@ struct HomeView: View {
     @State private var preparingShareHomeID: UUID?
     @State private var collapsedLocationSectionIDs: Set<UUID> = []
     @State private var presentedSheets: Set<BlockingSheet> = []
+    @State private var nestedLocationParent: AppStorageLocation?
+    @State private var pendingLocationDeletion: AppStorageLocation?
+    @State private var locationActionErrorMessage: String?
 
     private enum BlockingSheet {
-        case addItem, addLocation, addHome, search, options, sharing
+        case addItem, addLocation, addHome, search, options, sharing, addNestedLocation
     }
 
     @Environment(\.activePaywall) private var activePaywall
@@ -111,6 +114,8 @@ struct HomeView: View {
         showingAddItem || showingAddLocation || showingAddHome || showingSearch
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
             || preparingShareHomeID != nil
+            || nestedLocationParent != nil || pendingLocationDeletion != nil
+            || locationActionErrorMessage != nil
             || !presentedSheets.isEmpty
     }
 
@@ -204,6 +209,46 @@ struct HomeView: View {
 #endif
                 }
                 .onAppear { presentedSheets.insert(.sharing) }
+            }
+            .sheet(item: $nestedLocationParent, onDismiss: {
+                presentedSheets.remove(.addNestedLocation)
+            }) { parent in
+                AddLocationView(homeId: parent.homeID, parentLocation: parent)
+                    .onAppear { presentedSheets.insert(.addNestedLocation) }
+            }
+            .alert(
+                "Delete Location?",
+                isPresented: Binding(
+                    get: { pendingLocationDeletion != nil },
+                    set: { if !$0 { pendingLocationDeletion = nil } }
+                ),
+                presenting: pendingLocationDeletion
+            ) { location in
+                Button("Delete", role: .destructive) {
+                    CubbyDesign.Haptics.play(.warning)
+                    do {
+                        try StorageLocationDeletionService.deleteLocationIfAllowed(
+                            locationId: location.id,
+                            appStore: appStore
+                        )
+                    } catch {
+                        locationActionErrorMessage = error.localizedDescription
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { location in
+                Text("This will delete \u{201C}\(location.name)\u{201D}.")
+            }
+            .alert(
+                "Couldn\u{2019}t Update Location",
+                isPresented: Binding(
+                    get: { locationActionErrorMessage != nil },
+                    set: { if !$0 { locationActionErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(locationActionErrorMessage ?? "")
             }
             .alert(
                 "Share Home Error",
@@ -412,6 +457,7 @@ struct HomeView: View {
                             itemCount: section.items.count,
                             isCollapsed: isCollapsed,
                             allowsCollapse: !isSearching,
+                            actions: headerActions(for: section.location),
                             onCollapse: { collapseSection(section) },
                             onExpand: { expandSection(section) },
                             onSelect: { selectedLocation = section.location }
@@ -420,6 +466,26 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    private var canMutateSelectedHome: Bool {
+        guard let selectedHome else { return false }
+        return (appStore.home(id: selectedHome.id) ?? selectedHome).permission.canMutate
+    }
+
+    private func headerActions(for location: AppStorageLocation) -> LocationSectionHeaderActions {
+        guard canMutateSelectedHome else { return .readOnly }
+        return LocationSectionHeaderActions(
+            onRename: { name in
+                try appStore.renameLocation(id: location.id, to: name)
+            },
+            onMove: nil,
+            onAddNested: location.depth < StorageLocation.maxNestingDepth - 1
+                ? { nestedLocationParent = location }
+                : nil,
+            onDelete: { pendingLocationDeletion = location },
+            canDelete: location.canDelete
+        )
     }
 
     private func isSectionCollapsed(_ section: LocationSection) -> Bool {
@@ -661,6 +727,10 @@ struct HomePicker: View {
     @State private var pendingHomeAction: PendingHomeAction?
     @State private var homeActionErrorMessage: String?
     @State private var isPerformingHomeAction = false
+    @State private var renamingHomeID: UUID?
+    @State private var homeDraftName = ""
+    @State private var homeRenameErrorCount = 0
+    @FocusState private var isHomeNameFieldFocused: Bool
     @ScaledMetric(relativeTo: .body) private var removeBadgeSize: CGFloat = 24
     @ScaledMetric(relativeTo: .body) private var checkmarkColumnWidth: CGFloat = 20
     @ScaledMetric(relativeTo: .body) private var utilityIconColumnWidth: CGFloat = 28
@@ -731,7 +801,39 @@ struct HomePicker: View {
         } message: {
             Text(homeActionErrorMessage ?? "Unable to update homes.")
         }
+        .sensoryFeedback(.error, trigger: homeRenameErrorCount)
+        .onChange(of: isPickerPresented) { _, isPresented in
+            if !isPresented { cancelHomeRename() }
+        }
         .siriPresentationBlocker(isPresented: hasBlockingPresentation)
+    }
+
+    private func beginHomeRename(_ home: AppHome) {
+        commitHomeRenameIfNeeded()
+        homeDraftName = home.name
+        renamingHomeID = home.id
+        DispatchQueue.main.async { isHomeNameFieldFocused = true }
+    }
+
+    private func commitHomeRenameIfNeeded() {
+        guard let homeID = renamingHomeID else { return }
+        do {
+            let renamed = try appStore.renameHome(id: homeID, to: homeDraftName)
+            if selectedHome?.id == homeID {
+                selectedHome = renamed
+            }
+            CubbyDesign.Haptics.play(.success)
+            cancelHomeRename()
+        } catch {
+            homeRenameErrorCount += 1
+            homeActionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelHomeRename() {
+        renamingHomeID = nil
+        homeDraftName = ""
+        isHomeNameFieldFocused = false
     }
 
     private var pickerPanel: some View {
@@ -744,6 +846,7 @@ struct HomePicker: View {
                     Spacer()
 
                     Button("Done") {
+                        commitHomeRenameIfNeeded()
                         isEditingHomes = false
                     }
                     .font(.subheadline.weight(.semibold))
@@ -822,19 +925,53 @@ struct HomePicker: View {
                     .frame(width: checkmarkColumnWidth)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(home.name)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .lineLimit(homeNameLineLimit)
+                    if renamingHomeID == home.id {
+                        TextField("Home name", text: $homeDraftName)
+                            .font(.body)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .focused($isHomeNameFieldFocused)
+                            .onSubmit(commitHomeRenameIfNeeded)
+                            .accessibilityLabel("Rename \(home.name)")
+                    } else {
+                        Text(home.name)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .lineLimit(homeNameLineLimit)
+                    }
 
                     if let badgeText = shareBadgeText(for: home) {
                         Text(badgeText)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
+
+                    if !home.isOwnedByCurrentUser {
+                        Text("Only the owner can rename")
+                            .font(CubbyDesign.Typography.captionSmall)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer(minLength: 0)
+
+                if home.isOwnedByCurrentUser, renamingHomeID != home.id {
+                    Button {
+                        beginHomeRename(home)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(
+                                minWidth: CubbyDesign.Layout.minimumTapTarget,
+                                minHeight: CubbyDesign.Layout.minimumTapTarget
+                            )
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isPerformingHomeAction)
+                    .accessibilityLabel("Rename \(home.name)")
+                }
             }
             .frame(minHeight: 42)
             .padding(.horizontal, 8)

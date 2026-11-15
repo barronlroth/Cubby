@@ -7,6 +7,12 @@ struct LocationDetailView: View {
     @State private var showingAddLocation = false
     @State private var addItemSheetActive = false
     @State private var addLocationSheetActive = false
+    @State private var draftTitle = ""
+    @State private var renameErrorCount = 0
+    @State private var showingDeleteConfirmation = false
+    @State private var locationActionErrorMessage: String?
+
+    @Environment(\.dismiss) private var dismiss
 
     @Environment(\.activePaywall) private var activePaywall
     @Environment(\.sharedHomesGateService) private var sharedHomesGateService
@@ -35,7 +41,82 @@ struct LocationDetailView: View {
         return home.permission.canMutate
     }
 
+    private var currentName: String {
+        resolvedLocation?.name ?? location.name
+    }
+
     var body: some View {
+        content
+            .modifier(
+                LocationTitleModifier(
+                    title: currentName,
+                    isRenamable: canMutateLocation,
+                    draftTitle: $draftTitle,
+                    menu: { titleMenu }
+                )
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { draftTitle = currentName }
+            .onChange(of: currentName) { _, newName in draftTitle = newName }
+            .onChange(of: draftTitle) { _, newTitle in commitTitle(newTitle) }
+            .sensoryFeedback(.error, trigger: renameErrorCount)
+            .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
+                Button("Delete", role: .destructive, action: deleteLocation)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete \u{201C}\(currentName)\u{201D}.")
+            }
+            .alert(
+                "Couldn\u{2019}t Update Location",
+                isPresented: Binding(
+                    get: { locationActionErrorMessage != nil },
+                    set: { if !$0 { locationActionErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(locationActionErrorMessage ?? "")
+            }
+    }
+
+    @ViewBuilder
+    private var titleMenu: some View {
+        RenameButton()
+        Divider()
+        Button(role: .destructive) {
+            showingDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        .disabled(!(resolvedLocation ?? location).canDelete)
+    }
+
+    private func commitTitle(_ newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canMutateLocation, trimmed != currentName else { return }
+        do {
+            try appStore.renameLocation(id: location.id, to: trimmed)
+        } catch {
+            renameErrorCount += 1
+            draftTitle = currentName
+            locationActionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteLocation() {
+        CubbyDesign.Haptics.play(.warning)
+        do {
+            try StorageLocationDeletionService.deleteLocationIfAllowed(
+                locationId: location.id,
+                appStore: appStore
+            )
+            dismiss()
+        } catch {
+            locationActionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if !childLocations.isEmpty || location.depth < StorageLocation.maxNestingDepth {
@@ -110,8 +191,6 @@ struct LocationDetailView: View {
             }
             .padding(.vertical)
         }
-        .navigationTitle(resolvedLocation?.name ?? location.name)
-        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             if canMutateLocation {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -171,5 +250,23 @@ struct LocationDetailView: View {
             return
         }
         showingAddItem = true
+    }
+}
+
+/// An editable navigation title with a title menu when the home is mutable; a plain title otherwise.
+private struct LocationTitleModifier<Menu: View>: ViewModifier {
+    let title: String
+    let isRenamable: Bool
+    @Binding var draftTitle: String
+    @ViewBuilder let menu: () -> Menu
+
+    func body(content: Content) -> some View {
+        if isRenamable {
+            content
+                .navigationTitle($draftTitle)
+                .toolbarTitleMenu { menu() }
+        } else {
+            content.navigationTitle(title)
+        }
     }
 }
