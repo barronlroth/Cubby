@@ -63,6 +63,7 @@ struct MainNavigationView: View {
         } detail: {
             if let selectedLocation {
                 LocationDetailView(location: selectedLocation)
+                    .environment(\.popToHomeList) { self.selectedLocation = nil }
             } else {
                 ContentUnavailableView(
                     "Select a Location",

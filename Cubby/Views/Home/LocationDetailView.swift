@@ -17,6 +17,7 @@ struct LocationDetailView: View {
     /// `.some(nil)` is the home (top level); nil means nothing is targeted.
     @State private var dropTarget: UUID??
     @State private var dropErrorCount = 0
+    @Environment(\.popToHomeList) private var popToHomeList
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.undoManager) private var systemUndoManager
@@ -142,37 +143,44 @@ struct LocationDetailView: View {
                     let isCurrent = index == segments.count - 1
                     let isTargeted = !isCurrent && dropTarget == .some(segment.id)
                         && isValidLocationDrop(dragLocationID, toParent: segment.id)
-                    Label {
-                        Text(segment.name)
-                            .font(isCurrent ? CubbyDesign.Typography.captionEmphasized : CubbyDesign.Typography.caption)
-                            .lineLimit(1)
-                    } icon: {
-                        if index == 0 {
-                            Image(systemName: "house")
+                    PathSegmentLink(
+                        destination: (isCurrent ? nil : segment.id).flatMap { appStore.location(id: $0) },
+                        onHomeTap: (index == 0 && !isCurrent) ? { returnToHomeList() } : nil
+                    ) {
+                        Label {
+                            Text(segment.name)
+                                .font(isCurrent ? CubbyDesign.Typography.captionEmphasized : CubbyDesign.Typography.caption)
+                                .lineLimit(1)
+                        } icon: {
+                            if index == 0 {
+                                Image(systemName: "house")
+                            }
                         }
-                    }
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(isTargeted ? Color.white : (isCurrent ? Color.primary : Color.secondary))
-                    .padding(.horizontal, CubbyDesign.Spacing.small)
-                    .padding(.vertical, CubbyDesign.Spacing.xSmall)
-                    .frame(minHeight: CubbyDesign.Layout.compactIcon + CubbyDesign.Spacing.small)
-                    .background {
-                        Capsule().fill(isTargeted ? CubbyDesign.Palette.accent : Color.clear)
-                    }
-                    .contentShape(Capsule())
-                    .modifier(
-                        PathSegmentDropTarget(isEnabled: canMutateLocation && !isCurrent) { refs in
-                            handleLocationDrop(refs, toParent: segment.id)
-                        } onTargetChange: { targeted in
-                            updateDropTarget(segment.id, isTargeted: targeted)
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(isTargeted ? Color.white : (isCurrent ? Color.primary : Color.secondary))
+                        .padding(.horizontal, CubbyDesign.Spacing.small)
+                        .padding(.vertical, CubbyDesign.Spacing.xSmall)
+                        .frame(minHeight: CubbyDesign.Layout.compactIcon + CubbyDesign.Spacing.small)
+                        .background {
+                            Capsule().fill(isTargeted ? CubbyDesign.Palette.accent : Color.clear)
                         }
-                    )
-                    .accessibilityLabel(index == 0 ? "\(segment.name), top level" : segment.name)
+                        .contentShape(Capsule())
+                        .accessibilityAddTraits(isCurrent ? [] : .isButton)
+                        .accessibilityHint(isCurrent ? "" : (index == 0 ? "Goes back to the home list." : "Opens this location."))
+                        .modifier(
+                            PathSegmentDropTarget(isEnabled: canMutateLocation && !isCurrent) { refs in
+                                handleLocationDrop(refs, toParent: segment.id)
+                            } onTargetChange: { targeted in
+                                updateDropTarget(segment.id, isTargeted: targeted)
+                            }
+                        )
+                        .accessibilityLabel(index == 0 ? "\(segment.name), top level" : segment.name)
+                    }
 
                     if !isCurrent {
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Color(uiColor: .tertiaryLabel))
                             .accessibilityHidden(true)
                     }
                 }
@@ -184,6 +192,15 @@ struct LocationDetailView: View {
         .background(.bar)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Path")
+    }
+
+    /// The home segment returns to the home list (ancestors are NavigationLinks).
+    private func returnToHomeList() {
+        if let popToHomeList {
+            popToHomeList()
+        } else {
+            dismiss()
+        }
     }
 
     private func isValidLocationDrop(_ draggedID: UUID?, toParent parentID: UUID?) -> Bool {
@@ -372,6 +389,7 @@ struct LocationDetailView: View {
                 || moveSubject != nil
         )
         .safeAreaInset(edge: .top) { pathBar }
+
         .sensoryFeedback(.error, trigger: dropErrorCount)
     }
 
@@ -431,9 +449,7 @@ private struct NestedLocationCard: View {
                     .background(Color.gray.opacity(0.2))
                     .clipShape(Capsule())
             }
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            CubbyDesign.DisclosureIndicator()
         }
         .padding()
         .background(
@@ -496,6 +512,35 @@ private struct PathSegmentDropTarget: ViewModifier {
             }
         } else {
             content
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Pops every pushed location page back to the home list, when the host supports it.
+    @Entry var popToHomeList: (() -> Void)?
+}
+
+/// Wraps a path segment so tapping it navigates: an ancestor pushes its page,
+/// the home segment returns to the home list, and the current segment is inert.
+private struct PathSegmentLink<Content: View>: View {
+    let destination: AppStorageLocation?
+    let onHomeTap: (() -> Void)?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if let destination {
+            NavigationLink(destination: LocationDetailView(location: destination)) {
+                content()
+            }
+            .buttonStyle(.plain)
+        } else if let onHomeTap {
+            Button(action: onHomeTap) {
+                content()
+            }
+            .buttonStyle(.plain)
+        } else {
+            content()
         }
     }
 }

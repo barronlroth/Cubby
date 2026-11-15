@@ -198,10 +198,7 @@ private struct SiriInventoryResultRow: View {
                 ProgressView()
                     .accessibilityLabel("Opening item")
             } else {
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                CubbyDesign.DisclosureIndicator()
             }
         }
         .padding(.vertical, CubbyDesign.Spacing.xSmall)

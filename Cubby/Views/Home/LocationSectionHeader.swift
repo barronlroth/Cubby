@@ -226,9 +226,7 @@ struct LocationSectionHeader: View {
 
     private var openButton: some View {
         Button(action: onSelect) {
-            Image(systemName: "chevron.right")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            CubbyDesign.DisclosureIndicator()
                 .frame(
                     minWidth: CubbyDesign.Layout.minimumTapTarget,
                     minHeight: CubbyDesign.Layout.minimumTapTarget

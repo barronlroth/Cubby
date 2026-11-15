@@ -42,6 +42,7 @@ struct HomeView: View {
     @State private var highlightGeneration = 0
     @State private var selectedItemIDs: Set<UUID> = []
     @State private var showingBatchDeleteConfirmation = false
+    @State private var pendingItemDeletionIDs: [UUID] = []
     @State private var dragItemID: UUID?
     @State private var dropTargetLocationID: UUID?
     @State private var dropErrorCount = 0
@@ -126,6 +127,7 @@ struct HomeView: View {
             || preparingShareHomeID != nil
             || nestedLocationParent != nil || pendingLocationDeletion != nil
             || moveSubject != nil || showingBatchDeleteConfirmation
+            || !pendingItemDeletionIDs.isEmpty
             || locationActionErrorMessage != nil
             || !presentedSheets.isEmpty
     }
@@ -164,6 +166,22 @@ struct HomeView: View {
             } message: {
                 Text("You can undo this from the banner for a few seconds.")
             }
+            .confirmationDialog(
+                "Delete \u{201C}\(pendingItemDeletionIDs.first.flatMap { appStore.item(id: $0)?.title } ?? "Item")\u{201D}?",
+                isPresented: Binding(
+                    get: { !pendingItemDeletionIDs.isEmpty },
+                    set: { if !$0 { pendingItemDeletionIDs = [] } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    deleteItems(pendingItemDeletionIDs)
+                    pendingItemDeletionIDs = []
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You can undo this from the banner for a few seconds.")
+            }
             .sensoryFeedback(.error, trigger: dropErrorCount)
             .onChange(of: appStore.items) { _, items in
                 let existing = Set(items.map(\.id))
@@ -171,6 +189,7 @@ struct HomeView: View {
             }
             .navigationDestination(item: $selectedLocation) { location in
                 LocationDetailView(location: location)
+                    .environment(\.popToHomeList) { selectedLocation = nil }
             }
             .sheet(isPresented: $showingAddLocation, onDismiss: {
                 presentedSheets.remove(.addLocation)
@@ -330,21 +349,14 @@ struct HomeView: View {
 
                 Spacer(minLength: 8)
 
-                if canSelectItems {
-                    Button(isSelectingItems ? "Done" : "Select") {
-                        if isSelectingItems {
-                            endSelection()
-                        } else {
-                            withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
-                                isSelectingItems = true
-                            }
-                        }
-                    }
+                if isSelectingItems {
+                    // Select mode starts from an item's context menu (long press).
+                    Button("Done", action: endSelection)
                     .font(CubbyDesign.Typography.bodyEmphasized)
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.capsule)
                     .frame(minHeight: CubbyDesign.Layout.minimumTapTarget)
-                    .accessibilityIdentifier("home-select-button")
+                    .accessibilityIdentifier("home-selection-done")
                 }
 
                 if let selectedHome, !isSelectingItems {
@@ -494,17 +506,16 @@ struct HomeView: View {
     @ViewBuilder
     private func listView(for sections: [LocationSection]) -> some View {
         ScrollViewReader { proxy in
-        // Bind selection only in Select mode so row taps keep navigating otherwise.
-        List(selection: isSelectingItems ? $selectedItemIDs : nil) {
+        // Selection is drawn by the rows, not List(selection:): this list is the
+        // split view's sidebar, where a selection binding navigates the detail column.
+        List {
             header
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
-                .selectionDisabled()
 
             if sections.isEmpty {
                 emptyState
-                    .selectionDisabled()
             } else {
                 ForEach(sections) { section in
                     let isCollapsed = isSectionCollapsed(section)
@@ -514,7 +525,18 @@ struct HomeView: View {
                                 ItemRow(
                                     item: item,
                                     showLocation: false,
+                                    isSelected: isSelectingItems ? selectedItemIDs.contains(item.id) : nil,
+                                    onToggleSelection: { toggleSelection(item.id) },
                                     onMove: canMutateSelectedHome ? { moveSubject = .items([item]) } : nil
+                                )
+                                .modifier(
+                                    ItemContextMenu(
+                                        item: item,
+                                        isEnabled: canMutateSelectedHome && !isSelectingItems,
+                                        onSelect: { beginSelection(with: item) },
+                                        onMove: { moveSubject = .items([item]) },
+                                        onDelete: { pendingItemDeletionIDs = [item.id] }
+                                    )
                                 )
                                 .modifier(
                                     ItemDragSource(
@@ -523,7 +545,6 @@ struct HomeView: View {
                                         onDragStart: { dragItemID = item.id }
                                     )
                                 )
-                                .tag(item.id)
                                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -561,7 +582,6 @@ struct HomeView: View {
                 }
             }
         }
-        .environment(\.editMode, .constant(isSelectingItems ? .active : .inactive))
         .onChange(of: highlightedLocationID) { _, locationID in
             guard let locationID else { return }
             withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
@@ -597,10 +617,6 @@ struct HomeView: View {
     }
 
     // MARK: Select mode
-
-    private var canSelectItems: Bool {
-        canMutateSelectedHome && !locationSections.isEmpty
-    }
 
     private var selectedItems: [AppInventoryItem] {
         guard let selectedHome else { return [] }
@@ -639,8 +655,27 @@ struct HomeView: View {
         }
     }
 
+    private func toggleSelection(_ itemID: UUID) {
+        if selectedItemIDs.contains(itemID) {
+            selectedItemIDs.remove(itemID)
+        } else {
+            selectedItemIDs.insert(itemID)
+        }
+    }
+
+    private func beginSelection(with item: AppInventoryItem) {
+        withAnimation(CubbyDesign.Motion.animation(for: .standard, reduceMotion: reduceMotion)) {
+            selectedItemIDs = [item.id]
+            isSelectingItems = true
+        }
+    }
+
     private func deleteSelectedItems() {
-        let ids = selectedItems.map(\.id)
+        deleteItems(selectedItems.map(\.id))
+        endSelection()
+    }
+
+    private func deleteItems(_ ids: [UUID]) {
         guard !ids.isEmpty else { return }
         CubbyDesign.Haptics.play(.warning)
         let snapshots = ids.compactMap(appStore.deleteSnapshot(for:))
@@ -661,7 +696,6 @@ struct HomeView: View {
                 systemUndoManager: nil
             )
         }
-        endSelection()
     }
 
     // MARK: Drag and drop
@@ -796,6 +830,62 @@ struct HomeView: View {
         case .shared:
             SharedHomeStatusRow(isSharedWithYou: false)
         }
+    }
+}
+
+/// Long-press menu for an item row: Select (enters Select mode), Move to…, Delete.
+/// It coexists with `.draggable`: holding shows the menu, moving starts a drag.
+private struct ItemContextMenu: ViewModifier {
+    let item: AppInventoryItem
+    let isEnabled: Bool
+    let onSelect: () -> Void
+    let onMove: () -> Void
+    let onDelete: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.contextMenu {
+                Button(action: onSelect) {
+                    Label("Select", systemImage: "checkmark.circle")
+                }
+                Button(action: onMove) {
+                    Label("Move to\u{2026}", systemImage: "folder")
+                }
+                Divider()
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            } preview: {
+                ItemContextPreview(item: item)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct ItemContextPreview: View {
+    let item: AppInventoryItem
+
+    var body: some View {
+        HStack(spacing: CubbyDesign.Spacing.medium) {
+            Text(item.emoji ?? EmojiPicker.emoji(for: item.id))
+                .font(.largeTitle)
+                .frame(width: CubbyDesign.Layout.rowIcon, height: CubbyDesign.Layout.rowIcon)
+                .background(CubbyDesign.Palette.itemIconBackground, in: Circle())
+            VStack(alignment: .leading, spacing: CubbyDesign.Spacing.xSmall) {
+                Text(item.title)
+                    .font(CubbyDesign.Typography.bodyEmphasized)
+                if let path = item.storageLocationPath {
+                    Text(path)
+                        .font(CubbyDesign.Typography.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(CubbyDesign.Spacing.standard)
+        .frame(minWidth: 260, alignment: .leading)
+        .background(CubbyDesign.Palette.canvas)
     }
 }
 
@@ -1037,40 +1127,64 @@ private struct ShareHomeButtonStyle: ViewModifier {
     }
 }
 
+/// The home title is a system menu (drawn as Liquid Glass on iOS 26+): a picker of
+/// homes, then search, options, home management and Add New Home.
 struct HomePicker: View {
     @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
     @Binding var showingSearch: Bool
     @Binding var showingOptions: Bool
 
-    @State private var isPickerPresented = false
-    @State private var isEditingHomes = false
-    @State private var pendingHomeAction: PendingHomeAction?
-    @State private var homeActionErrorMessage: String?
-    @State private var isPerformingHomeAction = false
-    @State private var renamingHomeID: UUID?
-    @State private var homeDraftName = ""
-    @State private var homeRenameErrorCount = 0
-    @FocusState private var isHomeNameFieldFocused: Bool
-    @ScaledMetric(relativeTo: .body) private var removeBadgeSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .body) private var checkmarkColumnWidth: CGFloat = 20
-    @ScaledMetric(relativeTo: .body) private var utilityIconColumnWidth: CGFloat = 28
-    @ScaledMetric(relativeTo: .body) private var pickerPanelWidth: CGFloat = 320
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showingManageHomes = false
 
     @Environment(\.activePaywall) private var activePaywall
     @EnvironmentObject private var proAccessManager: ProAccessManager
     @EnvironmentObject private var appStore: AppStore
-    @Environment(\.undoManager) private var systemUndoManager
 
-    private var hasBlockingPresentation: Bool {
-        isPickerPresented || pendingHomeAction != nil || homeActionErrorMessage != nil
-            || isPerformingHomeAction
+    private func isSelected(_ home: AppHome) -> Binding<Bool> {
+        Binding(
+            get: { selectedHome?.id == home.id },
+            set: { isOn in
+                if isOn { selectedHome = appStore.home(id: home.id) ?? home }
+            }
+        )
     }
 
     var body: some View {
-        Button {
-            isPickerPresented.toggle()
+        Menu {
+            Section {
+                ForEach(appStore.homes) { home in
+                    // A toggle draws the system checkmark and supports a subtitle line.
+                    Toggle(isOn: isSelected(home)) {
+                        Text(home.name)
+                        if let subtitle = Self.shareSubtitle(for: home) {
+                            Text(subtitle)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    showingSearch = true
+                } label: {
+                    Label("Search All Items", systemImage: "magnifyingglass")
+                }
+                Button {
+                    showingOptions = true
+                } label: {
+                    Label("Options", systemImage: "slider.horizontal.3")
+                }
+                Button {
+                    showingManageHomes = true
+                } label: {
+                    Label("Manage Homes\u{2026}", systemImage: "house")
+                }
+                .accessibilityIdentifier("Manage Homes")
+                Button(action: handleAddHomeTapped) {
+                    Label("Add New Home", systemImage: "plus")
+                }
+            }
         } label: {
             HStack(spacing: 6) {
                 Text(selectedHome?.name ?? "Select Home")
@@ -1082,296 +1196,21 @@ struct HomePicker: View {
                     .renderingMode(.template)
                     .foregroundStyle(.primary)
             }
+            .contentShape(.rect)
         }
+        .menuIndicator(.hidden)
+        .tint(.primary)
         .accessibilityLabel("Home Picker")
-        .popover(isPresented: $isPickerPresented, arrowEdge: .top) {
-            pickerPanel
-                .presentationCompactAdaptation(.popover)
+        .accessibilityValue(selectedHome?.name ?? "")
+        .sheet(isPresented: $showingManageHomes) {
+            ManageHomesView(selectedHome: $selectedHome)
         }
-        .alert(
-            pendingHomeAction?.confirmationTitle ?? "",
-            isPresented: Binding(
-                get: { pendingHomeAction != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        pendingHomeAction = nil
-                    }
-                }
-            ),
-            presenting: pendingHomeAction
-        ) { action in
-            Button(action.confirmationButtonTitle, role: .destructive) {
-                CubbyDesign.Haptics.play(.warning)
-                Task { await perform(action) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { action in
-            Text(action.confirmationMessage)
-        }
-        .alert(
-            "Home Update Failed",
-            isPresented: Binding(
-                get: { homeActionErrorMessage != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        homeActionErrorMessage = nil
-                    }
-                }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(homeActionErrorMessage ?? "Unable to update homes.")
-        }
-        .sensoryFeedback(.error, trigger: homeRenameErrorCount)
-        .onChange(of: isPickerPresented) { _, isPresented in
-            if !isPresented { cancelHomeRename() }
-        }
-        .siriPresentationBlocker(isPresented: hasBlockingPresentation)
+        .siriPresentationBlocker(isPresented: showingManageHomes)
     }
 
-    private func beginHomeRename(_ home: AppHome) {
-        commitHomeRenameIfNeeded()
-        homeDraftName = home.name
-        renamingHomeID = home.id
-        DispatchQueue.main.async { isHomeNameFieldFocused = true }
-    }
-
-    private func commitHomeRenameIfNeeded() {
-        guard let homeID = renamingHomeID else { return }
-        do {
-            let renamed = try InventoryReorganizer.renameHome(
-                id: homeID,
-                to: homeDraftName,
-                appStore: appStore,
-                systemUndoManager: systemUndoManager
-            )
-            if selectedHome?.id == homeID {
-                selectedHome = renamed
-            }
-            CubbyDesign.Haptics.play(.success)
-            cancelHomeRename()
-        } catch {
-            homeRenameErrorCount += 1
-            homeActionErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func cancelHomeRename() {
-        renamingHomeID = nil
-        homeDraftName = ""
-        isHomeNameFieldFocused = false
-    }
-
-    private var pickerPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if isEditingHomes {
-                HStack {
-                    Text("Edit Homes")
-                        .font(.headline.weight(.semibold))
-
-                    Spacer()
-
-                    Button("Done") {
-                        commitHomeRenameIfNeeded()
-                        isEditingHomes = false
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 10)
-            }
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(appStore.homes) { home in
-                        homeRow(for: home)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, isEditingHomes ? 0 : 12)
-            }
-            .frame(maxHeight: 360)
-
-            Divider()
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-
-            VStack(alignment: .leading, spacing: 2) {
-                utilityRow(title: "Search All Items", systemImage: "magnifyingglass") {
-                    isPickerPresented = false
-                    showingSearch = true
-                }
-
-                utilityRow(title: "Options", systemImage: "slider.horizontal.3") {
-                    isPickerPresented = false
-                    showingOptions = true
-                }
-
-                utilityRow(title: "Manage Homes", systemImage: "gearshape") {
-                    isEditingHomes = true
-                }
-
-                utilityRow(title: "Add New Home", systemImage: "plus") {
-                    handleAddHomeTapped()
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 14)
-        }
-        // Grow with text size, but never wider than a compact iPhone allows.
-        .frame(width: min(pickerPanelWidth, 360))
-        .background(.regularMaterial)
-    }
-
-    @ViewBuilder
-    private func homeRow(for home: AppHome) -> some View {
-        if isEditingHomes {
-            HStack(spacing: 14) {
-                Button {
-                    pendingHomeAction = PendingHomeAction(home: home)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: removeBadgeSize, height: removeBadgeSize)
-                        .background(Color.red, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(.rect)
-                .disabled(isPerformingHomeAction)
-                .accessibilityLabel(PendingHomeAction(home: home).accessibilityLabel)
-
-                Image(systemName: "checkmark")
-                    .font(.callout.weight(.semibold))
-                    .opacity(selectedHome?.id == home.id ? 1 : 0)
-                    .frame(width: checkmarkColumnWidth)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    if renamingHomeID == home.id {
-                        TextField("Home name", text: $homeDraftName)
-                            .font(.body)
-                            .textFieldStyle(.roundedBorder)
-                            .submitLabel(.done)
-                            .focused($isHomeNameFieldFocused)
-                            .onSubmit(commitHomeRenameIfNeeded)
-                            .accessibilityLabel("Rename \(home.name)")
-                    } else {
-                        Text(home.name)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .lineLimit(homeNameLineLimit)
-                    }
-
-                    if let badgeText = shareBadgeText(for: home) {
-                        Text(badgeText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !home.isOwnedByCurrentUser {
-                        Text("Only the owner can rename")
-                            .font(CubbyDesign.Typography.captionSmall)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                if home.isOwnedByCurrentUser, renamingHomeID != home.id {
-                    Button {
-                        beginHomeRename(home)
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(
-                                minWidth: CubbyDesign.Layout.minimumTapTarget,
-                                minHeight: CubbyDesign.Layout.minimumTapTarget
-                            )
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isPerformingHomeAction)
-                    .accessibilityLabel("Rename \(home.name)")
-                }
-            }
-            .frame(minHeight: 42)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        } else {
-            Button {
-                selectedHome = home
-                isPickerPresented = false
-            } label: {
-                HStack(spacing: 10) {
-                    Text(home.name)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .lineLimit(homeNameLineLimit)
-
-                    if let badgeText = shareBadgeText(for: home) {
-                        Text(badgeText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.12), in: Capsule())
-                    }
-
-                    Spacer(minLength: 12)
-
-                    if selectedHome?.id == home.id {
-                        Image(systemName: "checkmark")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .frame(minHeight: 42)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var homeNameLineLimit: Int {
-        dynamicTypeSize.isAccessibilitySize ? 3 : 1
-    }
-
-    private func utilityRow(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                    .frame(width: utilityIconColumnWidth)
-
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if title != "Add New Home" {
-                    Image(systemName: "chevron.right")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .frame(minHeight: 42)
-            .padding(.horizontal, 6)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    static func shareSubtitle(for home: AppHome) -> String? {
+        guard home.isShared else { return nil }
+        return home.isOwnedByCurrentUser ? "Shared" : "Shared with you"
     }
 
     private func handleAddHomeTapped() {
@@ -1384,100 +1223,6 @@ struct HomePicker: View {
             }
             return
         }
-        isPickerPresented = false
         showingAddHome = true
-    }
-
-    @MainActor
-    private func perform(_ action: PendingHomeAction) async {
-        guard !isPerformingHomeAction else { return }
-        isPerformingHomeAction = true
-        defer { isPerformingHomeAction = false }
-
-        do {
-            switch action.kind {
-            case .delete:
-                try await appStore.deleteHome(id: action.home.id)
-            case .leave:
-                try await appStore.leaveSharedHome(id: action.home.id)
-            }
-            selectedHome = MainNavigationView.selectionAfterRemovingHome(
-                action.home.id,
-                currentSelection: selectedHome,
-                remainingHomes: appStore.homes
-            )
-            if appStore.homes.isEmpty {
-                isPickerPresented = false
-            }
-        } catch {
-            homeActionErrorMessage = error.localizedDescription
-        }
-    }
-
-    private func shareBadgeText(for home: AppHome) -> String? {
-        guard home.isShared else { return nil }
-        return home.isOwnedByCurrentUser ? "Shared" : "Shared with you"
-    }
-}
-
-private struct PendingHomeAction: Identifiable {
-    enum Kind {
-        case delete
-        case leave
-    }
-
-    let id = UUID()
-    let home: AppHome
-    let kind: Kind
-
-    init(home: AppHome) {
-        self.home = home
-        if home.isShared && !home.isOwnedByCurrentUser {
-            kind = .leave
-        } else {
-            kind = .delete
-        }
-    }
-
-    var confirmationTitle: String {
-        switch kind {
-        case .leave:
-            "Leave Shared Home?"
-        case .delete where home.isShared:
-            "Delete Shared Home for Everyone?"
-        case .delete:
-            "Delete Home?"
-        }
-    }
-
-    var confirmationMessage: String {
-        switch kind {
-        case .leave:
-            "You'll lose access to \"\(home.name)\" on this device and through iCloud sharing. The owner's home is not deleted."
-        case .delete where home.isShared:
-            "This permanently deletes \"\(home.name)\" for you and collaborators. This can't be undone."
-        case .delete:
-            "This permanently deletes \"\(home.name)\" and every location and item in it. This can't be undone."
-        }
-    }
-
-    var confirmationButtonTitle: String {
-        switch kind {
-        case .leave:
-            "Leave Home"
-        case .delete where home.isShared:
-            "Delete Shared Home"
-        case .delete:
-            "Delete Home"
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch kind {
-        case .leave:
-            "Leave \(home.name)"
-        case .delete:
-            "Delete \(home.name)"
-        }
     }
 }

@@ -3,14 +3,25 @@ import SwiftUI
 struct ItemRow: View {
     let item: AppInventoryItem
     let showLocation: Bool
+    /// Non-nil in Select mode: the row shows a checkmark circle and tapping toggles it.
+    var isSelected: Bool?
+    var onToggleSelection: (() -> Void)?
     var onMove: (() -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .body) private var scaledIconSize = CubbyDesign.Layout.rowIcon
 
-    init(item: AppInventoryItem, showLocation: Bool = true, onMove: (() -> Void)? = nil) {
+    init(
+        item: AppInventoryItem,
+        showLocation: Bool = true,
+        isSelected: Bool? = nil,
+        onToggleSelection: (() -> Void)? = nil,
+        onMove: (() -> Void)? = nil
+    ) {
         self.item = item
         self.showLocation = showLocation
+        self.isSelected = isSelected
+        self.onToggleSelection = onToggleSelection
         self.onMove = onMove
     }
 
@@ -23,18 +34,7 @@ struct ItemRow: View {
     }
 
     var body: some View {
-        NavigationLink(destination: ItemDetailView(itemId: item.id)) {
-            rowLayout {
-                emojiIcon
-                textContent
-                if !isAccessibilitySize {
-                    Spacer()
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .padding(.vertical, 10)
-        }
+        rowContainer
         .buttonStyle(.plain)
         .accessibilityActions {
             if let onMove {
@@ -42,6 +42,43 @@ struct ItemRow: View {
             }
         }
         .siriInventoryItem(item.id)
+    }
+
+    @ViewBuilder
+    private var rowContainer: some View {
+        if let isSelected {
+            Button {
+                onToggleSelection?()
+            } label: {
+                HStack(spacing: CubbyDesign.Spacing.medium) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(isSelected ? CubbyDesign.Palette.accent : Color(uiColor: .tertiaryLabel))
+                        .contentTransition(.symbolEffect(.replace))
+                        .accessibilityHidden(true)
+                    rowContent
+                }
+            }
+            .sensoryFeedback(.selection, trigger: isSelected)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        } else {
+            NavigationLink(destination: ItemDetailView(itemId: item.id)) {
+                rowContent
+            }
+        }
+    }
+
+    private var rowContent: some View {
+        rowLayout {
+            emojiIcon
+            textContent
+            if !isAccessibilitySize {
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .padding(.vertical, 10)
     }
 
     private var rowLayout: AnyLayout {
