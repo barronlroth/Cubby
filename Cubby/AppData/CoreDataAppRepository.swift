@@ -11,6 +11,8 @@ enum AppRepositoryError: LocalizedError, Equatable {
     case maximumNestingDepthReached
     case invalidMoveTarget
     case homeDeleteNotAllowed
+    case invalidName
+    case readOnlyHome
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +32,10 @@ enum AppRepositoryError: LocalizedError, Equatable {
             "The item can’t be moved to that location."
         case .homeDeleteNotAllowed:
             "You can't delete a home shared with you. Leave the shared home instead."
+        case .invalidName:
+            "Enter a name."
+        case .readOnlyHome:
+            "You have view-only access to this home."
         }
     }
 }
@@ -1369,5 +1375,273 @@ private extension NSManagedObject {
 
     func uuidValue(forKey key: String) -> UUID? {
         value(forKeyPath: key) as? UUID
+    }
+}
+
+// MARK: - Rename and reorganize
+
+extension CoreDataAppRepository {
+    static let maximumLocationNameLength = 100
+    static let maximumHomeNameLength = 50
+
+    func renameHome(id: UUID, to name: String) throws -> AppHome {
+        guard let home = try fetchHomeObject(id: id) else {
+            throw AppRepositoryError.homeNotFound
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.isEmpty == false,
+              trimmedName.count <= Self.maximumHomeNameLength else {
+            throw AppRepositoryError.invalidName
+        }
+
+        let appHome = makeHome(home)
+        // Only owners rename homes; the name is shared with every participant.
+        guard appHome.permission.role == .owner else {
+            throw AppRepositoryError.readOnlyHome
+        }
+        guard home.stringValue(forKey: "name") != trimmedName else {
+            return appHome
+        }
+
+        home.setValue(trimmedName, forKey: "name")
+        home.setValue(Date(), forKey: "modifiedAt")
+        try saveOrRollback()
+
+        guard let renamed = try self.home(id: id) else {
+            throw AppRepositoryError.homeNotFound
+        }
+        return renamed
+    }
+
+    /// Best-effort: keeps the CKShare title (shown in invitations) in step with an owned home's name.
+    func updateShareTitleIfNeeded(homeID: UUID) async {
+        guard let homeObject = try? fetchHomeObject(id: homeID) else { return }
+        let home = makeHome(homeObject)
+        guard home.isShared,
+              home.permission.role == .owner,
+              home.name.isEmpty == false,
+              let share = existingShare(for: homeID),
+              (share[CKShare.SystemFieldKey.title] as? String) != home.name,
+              let privateStore = persistenceController.privatePersistentStore() else {
+            return
+        }
+
+        share[CKShare.SystemFieldKey.title] = home.name as CKRecordValue
+        do {
+            _ = try await persistenceController.persistentContainer.persistUpdatedShare(share, in: privateStore)
+        } catch {
+            DebugLogger.error("Updating share title failed for home \(homeID): \(error)")
+        }
+    }
+
+    func renameLocation(id: UUID, to name: String) throws -> AppStorageLocation {
+        guard let location = try fetchLocationObject(id: id) else {
+            throw AppRepositoryError.locationNotFound
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.isEmpty == false,
+              trimmedName.count <= Self.maximumLocationNameLength else {
+            throw AppRepositoryError.invalidName
+        }
+        try requireMutableHome(for: location)
+
+        if location.stringValue(forKey: "name") != trimmedName {
+            guard let homeID = location.uuidValue(forKey: "home.id") else {
+                throw AppRepositoryError.homeNotFound
+            }
+            let parentID = location.uuidValue(forKey: "parentLocation.id")
+            if try locationNameExists(
+                trimmedName,
+                homeID: homeID,
+                parentLocationID: parentID,
+                excludingLocationID: id
+            ) {
+                throw AppRepositoryError.duplicateLocationName
+            }
+
+            location.setValue(trimmedName, forKey: "name")
+            location.setValue(Date(), forKey: "modifiedAt")
+            try saveOrRollback()
+        }
+
+        guard let renamed = try self.location(id: id) else {
+            throw AppRepositoryError.locationNotFound
+        }
+        return renamed
+    }
+
+    func moveLocation(id: UUID, toParent parentID: UUID?) throws -> AppStorageLocation {
+        guard let location = try fetchLocationObject(id: id) else {
+            throw AppRepositoryError.locationNotFound
+        }
+        try requireMutableHome(for: location)
+
+        let target = try parentID.map(fetchRequiredLocationObject)
+        try validateLocationMove(location, to: target)
+
+        let currentParentID = location.uuidValue(forKey: "parentLocation.id")
+        if currentParentID != parentID {
+            guard let homeID = location.uuidValue(forKey: "home.id") else {
+                throw AppRepositoryError.homeNotFound
+            }
+            if try locationNameExists(
+                location.stringValue(forKey: "name"),
+                homeID: homeID,
+                parentLocationID: parentID,
+                excludingLocationID: id
+            ) {
+                throw AppRepositoryError.duplicateLocationName
+            }
+
+            let newDepth = (target?.intValue(forKey: "depth") ?? -1) + 1
+            location.setValue(target, forKey: "parentLocation")
+            location.setValue(Date(), forKey: "modifiedAt")
+            for (descendant, relativeLevel) in subtreeWithRelativeLevels(of: location) {
+                descendant.setValue(Int16(newDepth + relativeLevel), forKey: "depth")
+            }
+            try saveOrRollback()
+        }
+
+        guard let moved = try self.location(id: id) else {
+            throw AppRepositoryError.locationNotFound
+        }
+        return moved
+    }
+
+    /// Non-throwing pre-check for drag-and-drop highlighting and pickers. Mirrors `moveLocation`'s rules.
+    func canMoveLocation(id: UUID, toParent parentID: UUID?) -> Bool {
+        guard let location = try? fetchLocationObject(id: id) else { return false }
+        guard (try? requireMutableHome(for: location)) != nil else { return false }
+        let target: NSManagedObject?
+        if let parentID {
+            guard let resolved = try? fetchLocationObject(id: parentID) else { return false }
+            target = resolved
+        } else {
+            target = nil
+        }
+        guard (try? validateLocationMove(location, to: target)) != nil else { return false }
+        guard location.uuidValue(forKey: "parentLocation.id") != parentID else { return true }
+        guard let homeID = location.uuidValue(forKey: "home.id") else { return false }
+        let duplicate = (try? locationNameExists(
+            location.stringValue(forKey: "name"),
+            homeID: homeID,
+            parentLocationID: parentID,
+            excludingLocationID: id
+        )) ?? true
+        return duplicate == false
+    }
+
+    func moveItems(ids: [UUID], to locationID: UUID) throws -> [AppInventoryItem] {
+        guard let location = try fetchLocationObject(id: locationID) else {
+            throw AppRepositoryError.locationNotFound
+        }
+        try requireMutableHome(for: location)
+
+        var itemObjects: [NSManagedObject] = []
+        for id in ids {
+            guard let item = try fetchItemObject(id: id) else {
+                throw AppRepositoryError.itemNotFound
+            }
+            guard canMoveItem(item, to: location) else {
+                throw AppRepositoryError.invalidMoveTarget
+            }
+            itemObjects.append(item)
+        }
+
+        let now = Date()
+        for item in itemObjects where (item.value(forKey: "storageLocation") as? NSManagedObject) != location {
+            item.setValue(location, forKey: "storageLocation")
+            item.setValue(now, forKey: "modifiedAt")
+        }
+        try saveOrRollback()
+
+        let homesByID = try fetchHomesByID()
+        let locationsByID = try fetchLocationsByID()
+        return itemObjects.compactMap { makeItem($0, homesByID: homesByID, locationsByID: locationsByID) }
+    }
+}
+
+private extension CoreDataAppRepository {
+    func saveOrRollback() throws {
+        do {
+            try saveContext()
+        } catch {
+            viewContext.rollback()
+            throw error
+        }
+    }
+
+    func requireMutableHome(for location: NSManagedObject) throws {
+        guard let home = location.value(forKey: "home") as? NSManagedObject else {
+            throw AppRepositoryError.homeNotFound
+        }
+        guard makeHome(home).permission.canMutate else {
+            throw AppRepositoryError.readOnlyHome
+        }
+    }
+
+    /// Same home, same store, no cycles, and the moved subtree must fit under the nesting limit.
+    func validateLocationMove(_ location: NSManagedObject, to target: NSManagedObject?) throws {
+        if let target {
+            guard let locationStore = location.objectID.persistentStore,
+                  let targetStore = target.objectID.persistentStore,
+                  locationStore == targetStore,
+                  let homeID = location.uuidValue(forKey: "home.id"),
+                  homeID == target.uuidValue(forKey: "home.id") else {
+                throw AppRepositoryError.invalidMoveTarget
+            }
+
+            var visited = Set<NSManagedObjectID>()
+            var current: NSManagedObject? = target
+            while let ancestor = current, visited.insert(ancestor.objectID).inserted {
+                if ancestor.objectID == location.objectID {
+                    throw AppRepositoryError.invalidMoveTarget
+                }
+                current = ancestor.value(forKey: "parentLocation") as? NSManagedObject
+            }
+        }
+
+        let newDepth = (target?.intValue(forKey: "depth") ?? -1) + 1
+        let subtreeHeight = subtreeWithRelativeLevels(of: location).map(\.1).max() ?? 0
+        if newDepth + subtreeHeight > StorageLocation.maxNestingDepth - 1 {
+            throw AppRepositoryError.maximumNestingDepthReached
+        }
+    }
+
+    /// The location and every descendant, paired with its level below the location (the location is 0).
+    func subtreeWithRelativeLevels(of location: NSManagedObject) -> [(NSManagedObject, Int)] {
+        var result: [(NSManagedObject, Int)] = []
+        var visited = Set<NSManagedObjectID>()
+        var queue: [(NSManagedObject, Int)] = [(location, 0)]
+        while queue.isEmpty == false {
+            let (node, level) = queue.removeFirst()
+            guard visited.insert(node.objectID).inserted else { continue }
+            result.append((node, level))
+            let children = node.value(forKey: "childLocations") as? Set<NSManagedObject> ?? []
+            queue.append(contentsOf: children.map { ($0, level + 1) })
+        }
+        return result
+    }
+
+    func locationNameExists(
+        _ name: String,
+        homeID: UUID,
+        parentLocationID: UUID?,
+        excludingLocationID: UUID
+    ) throws -> Bool {
+        var subpredicates = [
+            NSPredicate(format: "home.id == %@", homeID as CVarArg),
+            NSPredicate(format: "name =[c] %@", name),
+            NSPredicate(format: "id != %@", excludingLocationID as CVarArg)
+        ]
+        if let parentLocationID {
+            subpredicates.append(NSPredicate(format: "parentLocation.id == %@", parentLocationID as CVarArg))
+        } else {
+            subpredicates.append(NSPredicate(format: "parentLocation == nil"))
+        }
+        return try fetchCount(
+            entityName: "CDStorageLocation",
+            predicate: NSCompoundPredicate(andPredicateWithSubpredicates: subpredicates)
+        ) > 0
     }
 }

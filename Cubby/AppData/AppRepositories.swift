@@ -6,6 +6,7 @@ protocol HomeRepository {
     func listHomes() throws -> [AppHome]
     func home(id: UUID) throws -> AppHome?
     func createHome(name: String) throws -> AppHome
+    func renameHome(id: UUID, to name: String) throws -> AppHome
     @discardableResult
     func deleteHome(id: UUID) throws -> [String]
 }
@@ -16,6 +17,9 @@ protocol LocationRepository {
     func location(id: UUID) throws -> AppStorageLocation?
     func createLocation(_ draft: AppLocationCreationDraft) throws -> AppStorageLocation
     func deleteLocation(id: UUID) throws
+    func renameLocation(id: UUID, to name: String) throws -> AppStorageLocation
+    /// Moves a location (and its whole subtree) under `parentID`; nil means the top level of its home.
+    func moveLocation(id: UUID, toParent parentID: UUID?) throws -> AppStorageLocation
 }
 
 @MainActor
@@ -25,6 +29,8 @@ protocol ItemRepository {
     func createItem(_ draft: AppItemDraft) throws -> AppInventoryItem
     func updateItem(id: UUID, draft: AppItemUpdateDraft) throws -> AppInventoryItem
     func moveItem(id: UUID, to locationID: UUID) throws -> AppInventoryItem
+    /// Moves several items into one location with a single save.
+    func moveItems(ids: [UUID], to locationID: UUID) throws -> [AppInventoryItem]
     func deleteItem(id: UUID) throws
     func restoreDeletedItem(_ snapshot: AppDeletedItemSnapshot) throws -> AppInventoryItem
 }
