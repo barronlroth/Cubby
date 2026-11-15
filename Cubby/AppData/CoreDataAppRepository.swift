@@ -933,6 +933,36 @@ final class CoreDataAppRepository: HomeRepository, LocationRepository, ItemRepos
         try await shareService.leaveSharedHome(home)
     }
 
+    /// Deletes an owned shared home by purging its share zone (the share is
+    /// removed for everyone), then removes anything the purge left locally.
+    /// Returns the deleted items' photo file names.
+    func deleteSharedHome(id: UUID) async throws -> [String] {
+        guard let shareService,
+              let homeObject = try fetchHomeObject(id: id),
+              let appHome = makeHome(homeObject),
+              appHome.permission.role == .owner else {
+            throw AppRepositoryError.homeDeleteNotAllowed
+        }
+
+        let photoFileNames = try fetchItems(
+            predicate: NSPredicate(format: "storageLocation.home.id == %@", id as CVarArg)
+        ).compactMap { $0.value(forKey: "photoFileName") as? String }
+
+        try await shareService.deleteSharedHome(appHome)
+
+        viewContext.refreshAllObjects()
+        if try fetchHomeObject(id: id) != nil {
+            _ = try deleteHome(id: id)
+        }
+        return photoFileNames
+    }
+
+    /// Purges the zone of a home an older build "left" by hiding it.
+    func purgeLegacyLeftSharedHome(id: UUID) async throws {
+        guard let service = shareService as? HomeSharingService else { return }
+        try await service.purgeSharedStoreZone(forHomeID: id)
+    }
+
     func ownerHomeCount() throws -> Int {
         try fetchCount(
             entityName: "CDHome",

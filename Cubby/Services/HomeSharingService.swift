@@ -34,7 +34,12 @@ protocol HomeSharingServiceProtocol {
     func permission(for home: AppHome) -> SharePermission
     func canEdit(_ home: AppHome) -> Bool
     func isShared(_ home: AppHome) -> Bool
+    /// Participant leave: purges the share's zone from the shared store, which
+    /// removes the participant and the local copy.
     func leaveSharedHome(_ home: AppHome) async throws
+    /// Owner delete of a shared home: purges the share zone from the private
+    /// store, which removes the share for every participant.
+    func deleteSharedHome(_ home: AppHome) async throws
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws
     func participants(for home: AppHome) -> [CKShare.Participant]
     /// Resolves sharing state for many homes at once so a refresh does not
@@ -136,6 +141,7 @@ protocol CloudKitSharingContaining: AnyObject {
     func acceptShareInvitations(from metadata: [CKShare.Metadata], into store: NSPersistentStore) async throws
     func purgeObjectsAndRecordsInZone(with zoneID: CKRecordZone.ID, in store: NSPersistentStore?) async throws
     func persistUpdatedShare(_ share: CKShare, in store: NSPersistentStore) async throws -> CKShare
+    func recordID(for objectID: NSManagedObjectID) -> CKRecord.ID?
 }
 
 final class PersistentCloudKitSharingContainer: CloudKitSharingContaining {
@@ -186,6 +192,10 @@ final class PersistentCloudKitSharingContainer: CloudKitSharingContaining {
                 }
             }
         }
+    }
+
+    func recordID(for objectID: NSManagedObjectID) -> CKRecord.ID? {
+        container.recordID(for: objectID)
     }
 
     func persistUpdatedShare(_ share: CKShare, in store: NSPersistentStore) async throws -> CKShare {
@@ -333,6 +343,10 @@ extension SharePermission {
 }
 
 extension HomeSharingServiceProtocol {
+    func deleteSharedHome(_ home: AppHome) async throws {
+        _ = home
+    }
+
     func fetchShare(for home: AppHome) -> CKShare? {
         shareLookup(for: home).share
     }
@@ -561,12 +575,56 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         guard let currentParticipant = share.currentUserParticipant else {
             throw HomeSharingServiceError.shareNotFound
         }
-
         guard currentParticipant.role != .owner else {
             throw HomeSharingServiceError.cannotLeaveOwnedShare
         }
+        guard let sharedStore = persistenceController.sharedPersistentStore() else {
+            throw HomeSharingServiceError.missingSharedPersistentStore
+        }
 
-        try await deleteShareFromSharedDatabase(share)
+        let zoneID = share.recordID.zoneID
+        DebugLogger.info("Leaving shared home \(home.id): purging zone \(zoneID.zoneName) from shared store")
+        try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
+    }
+
+    func deleteSharedHome(_ home: AppHome) async throws {
+        let share: CKShare
+        switch shareLookup(for: home) {
+        case .shared(let found):
+            share = found
+        case .notShared:
+            throw HomeSharingServiceError.shareNotFound
+        case .lookupFailed:
+            throw HomeSharingServiceError.shareLookupFailed
+        }
+        guard SharePermission(share: share).role == .owner else {
+            throw HomeSharingServiceError.cannotLeaveOwnedShare
+        }
+        guard let privateStore = persistenceController.privatePersistentStore() else {
+            throw HomeSharingServiceError.shareCreationFailed
+        }
+
+        let zoneID = share.recordID.zoneID
+        DebugLogger.info("Deleting shared home \(home.id): purging zone \(zoneID.zoneName) from private store")
+        try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: privateStore)
+    }
+
+    /// Finishes a leave recorded by older builds, which only hid the home: purges
+    /// the zone holding a shared-store home. No-op for private-store homes.
+    func purgeSharedStoreZone(forHomeID homeID: UUID) async throws {
+        guard let sharedStore = persistenceController.sharedPersistentStore(),
+              let object = managedObject(homeID: homeID),
+              object.objectID.persistentStore == sharedStore else {
+            return
+        }
+        let zoneID = lookup(objectID: object.objectID, homeID: homeID).share?.recordID.zoneID
+            ?? container.recordID(for: object.objectID)?.zoneID
+        guard let zoneID else {
+            DebugLogger.warning("No CloudKit zone found for previously left home \(homeID)")
+            return
+        }
+        DebugLogger.info("Completing earlier leave of \(homeID): purging zone \(zoneID.zoneName)")
+        try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
     }
 
     func acceptShareInvitation(from metadata: CKShare.Metadata) async throws {
@@ -656,24 +714,15 @@ final class HomeSharingService: HomeSharingServiceProtocol {
         }
     }
 
-    private func deleteShareFromSharedDatabase(_ share: CKShare) async throws {
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, Error>) in
-            ckContainer.sharedCloudDatabase.delete(withRecordID: share.recordID) { _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
-    }
-
     /// Fetches the home, preferring the private-store row when duplicates exist.
     private func managedObject(for home: AppHome) -> NSManagedObject? {
+        managedObject(homeID: home.id)
+    }
+
+    private func managedObject(homeID: UUID) -> NSManagedObject? {
         let context = persistenceController.persistentContainer.viewContext
         let request = NSFetchRequest<NSManagedObject>(entityName: "CDHome")
-        request.predicate = NSPredicate(format: "id == %@", home.id as CVarArg)
+        request.predicate = NSPredicate(format: "id == %@", homeID as CVarArg)
         guard let objects = try? context.fetch(request), objects.isEmpty == false else {
             return nil
         }

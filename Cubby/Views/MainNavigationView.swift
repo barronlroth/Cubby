@@ -12,6 +12,7 @@ struct MainNavigationView: View {
     @StateObject private var undoManager = UndoManager.shared
     @State private var undoSuccessCount = 0
     @ObservedObject private var siriService = SiriInventoryService.shared
+    @ObservedObject private var shareAcceptance = ShareAcceptanceCoordinator.shared
     @State private var presentedSiriRequest: SiriNavigationRequest?
     @State private var presentedSiriRequestID: UUID?
 
@@ -147,6 +148,29 @@ struct MainNavigationView: View {
         }
         .onChange(of: appStore.homes) { _, newHomes in
             synchronizeSelectedHome(with: newHomes)
+            if let joinedHomeID = shareAcceptance.homesDidChange(newHomes),
+               let joinedHome = appStore.home(id: joinedHomeID) {
+                selectedHome = joinedHome
+            }
+        }
+        .overlay(alignment: .top) {
+            if let joiningText = shareJoiningText {
+                ShareJoiningBanner(text: joiningText)
+                    .padding(.top, CubbyDesign.Spacing.small)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .cubbyAnimation(.standard, value: shareJoiningText)
+        .alert(
+            "Couldn't Join Shared Home",
+            isPresented: Binding(
+                get: { shareAcceptanceFailure != nil },
+                set: { if !$0 { shareAcceptance.dismissFailure() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { shareAcceptance.dismissFailure() }
+        } message: {
+            Text(shareAcceptanceFailure ?? "")
         }
         .onChange(of: selectedHome) { _, newHome in
             if let newHome {
@@ -298,6 +322,25 @@ struct MainNavigationView: View {
         }
     }
 
+    private var shareJoiningText: String? {
+        switch shareAcceptance.state {
+        case .joining(let title), .waitingForImport(let title):
+            if let title, title.isEmpty == false {
+                return "Joining “\(title)”…"
+            }
+            return "Joining shared home…"
+        case .idle, .failed:
+            return nil
+        }
+    }
+
+    private var shareAcceptanceFailure: String? {
+        if case .failed(let message) = shareAcceptance.state {
+            return message
+        }
+        return nil
+    }
+
     private func restoreSelectedHomeIfNeeded() {
         guard selectedHome == nil else { return }
 
@@ -374,5 +417,26 @@ private struct ApplyHomeDesign: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(CubbyDesign.Palette.homeCanvas)
+    }
+}
+
+/// Shown at the top of the home screen while a share invitation is accepted
+/// and the shared home downloads.
+private struct ShareJoiningBanner: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: CubbyDesign.Spacing.small) {
+            ProgressView()
+                .controlSize(.small)
+            Text(text)
+                .font(CubbyDesign.Typography.bodySmallEmphasized)
+                .lineLimit(2)
+        }
+        .padding(.horizontal, CubbyDesign.Spacing.standard)
+        .padding(.vertical, CubbyDesign.Spacing.small)
+        .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }

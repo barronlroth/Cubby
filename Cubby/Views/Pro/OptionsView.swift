@@ -35,6 +35,13 @@ struct OptionsView: View {
                 subscriptionActionsSection
                 upgradeSection
                 legalSection
+                #if DEBUG
+                Section("Debug") {
+                    NavigationLink("Sharing Diagnostics") {
+                        SharingDiagnosticsView()
+                    }
+                }
+                #endif
             }
             .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)
