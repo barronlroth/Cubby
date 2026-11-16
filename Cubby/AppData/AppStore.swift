@@ -318,6 +318,64 @@ final class AppStore: ObservableObject {
         LastUsedLocationService.remember(location: location(id: locationID))
     }
 
+    @discardableResult
+    func renameHome(id: UUID, to name: String) throws -> AppHome {
+        let home = try repository.renameHome(id: id, to: name)
+        refresh()
+        let repository = repository
+        Task { await repository.updateShareTitleIfNeeded(homeID: id) }
+        return home
+    }
+
+    @discardableResult
+    func renameLocation(id: UUID, to name: String) throws -> AppStorageLocation {
+        let location = try repository.renameLocation(id: id, to: name)
+        refresh()
+        return location
+    }
+
+    @discardableResult
+    func moveLocation(id: UUID, toParent parentID: UUID?) throws -> AppStorageLocation {
+        let location = try repository.moveLocation(id: id, toParent: parentID)
+        refresh()
+        return location
+    }
+
+    func canMoveLocation(id: UUID, toParent parentID: UUID?) -> Bool {
+        repository.canMoveLocation(id: id, toParent: parentID)
+    }
+
+    /// The location plus every nested location below it, from the published snapshot.
+    func subtreeLocationIDs(of locationID: UUID) -> Set<UUID> {
+        var result: Set<UUID> = []
+        var queue = [locationID]
+        while let next = queue.popLast() {
+            guard result.insert(next).inserted else { continue }
+            queue.append(contentsOf: location(id: next)?.childLocationIDs ?? [])
+        }
+        return result
+    }
+
+    /// Ancestors from the top level down to (but excluding) the location.
+    func ancestorLocations(of locationID: UUID) -> [AppStorageLocation] {
+        var result: [AppStorageLocation] = []
+        var visited: Set<UUID> = [locationID]
+        var current = location(id: locationID)?.parentLocationID
+        while let id = current, visited.insert(id).inserted, let ancestor = location(id: id) {
+            result.insert(ancestor, at: 0)
+            current = ancestor.parentLocationID
+        }
+        return result
+    }
+
+    @discardableResult
+    func moveItems(ids: [UUID], to locationID: UUID) throws -> [AppInventoryItem] {
+        let moved = try repository.moveItems(ids: ids, to: locationID)
+        refresh()
+        LastUsedLocationService.remember(location: location(id: locationID))
+        return moved
+    }
+
     func deleteItem(id: UUID) throws {
         try repository.deleteItem(id: id)
         refresh()

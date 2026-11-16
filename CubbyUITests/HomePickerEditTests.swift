@@ -6,41 +6,40 @@ final class HomePickerEditTests: XCTestCase {
     }
 
     @MainActor
-    func testManageHomesEntersAndExitsEditMode() throws {
+    private func openManageHomes(arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: "com.barronroth.Cubby")
-        app.launchArguments.append(contentsOf: ["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"])
+        app.launchArguments.append(contentsOf: ["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"] + arguments)
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Main Home"].waitForExistence(timeout: 10))
 
         app.buttons["Home Picker"].tap()
-        XCTAssertTrue(app.buttons["Manage Homes"].waitForExistence(timeout: 5))
+        let manageHomes = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Manage Homes")).firstMatch
+        XCTAssertTrue(manageHomes.waitForExistence(timeout: 5))
+        manageHomes.tap()
+        XCTAssertTrue(app.navigationBars["Homes"].waitForExistence(timeout: 5))
+        return app
+    }
 
-        app.buttons["Manage Homes"].tap()
-        XCTAssertTrue(app.staticTexts["Edit Homes"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Delete Main Home"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+    @MainActor
+    func testManageHomesOpensAndCloses() throws {
+        let app = openManageHomes()
 
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["Manage Homes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Main Home"].waitForExistence(timeout: 5))
+        app.navigationBars["Homes"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Homes"].waitForNonExistence(timeout: 5))
     }
 
     @MainActor
     func testDeleteHomeControlPresentsConfirmation() throws {
-        let app = XCUIApplication(bundleIdentifier: "com.barronroth.Cubby")
-        app.launchArguments.append(contentsOf: ["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"])
-        app.launch()
+        let app = openManageHomes()
 
-        XCTAssertTrue(app.staticTexts["Main Home"].waitForExistence(timeout: 10))
-
-        app.buttons["Home Picker"].tap()
-        XCTAssertTrue(app.buttons["Manage Homes"].waitForExistence(timeout: 5))
-        app.buttons["Manage Homes"].tap()
+        let row = app.cells.containing(.staticText, identifier: "Main Home").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
 
         let deleteButton = app.buttons["Delete Main Home"]
         XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
-        XCTAssertEqual(deleteButton.frame.width, 44, accuracy: 0.01)
-        XCTAssertEqual(deleteButton.frame.height, 44, accuracy: 0.01)
         deleteButton.tap()
 
         XCTAssertTrue(app.alerts["Delete Home?"].waitForExistence(timeout: 5))
@@ -49,20 +48,11 @@ final class HomePickerEditTests: XCTestCase {
 
     @MainActor
     func testLeaveSharedHomeControlPresentsConfirmation() throws {
-        let app = XCUIApplication(bundleIdentifier: "com.barronroth.Cubby")
-        app.launchArguments.append(contentsOf: [
-            "UI-TESTING",
-            "SEED_MOCK_DATA",
-            "FORCE_PRO_TIER",
-            "MOCK_SHARED_HOMES_MIXED"
-        ])
-        app.launch()
+        let app = openManageHomes(arguments: ["MOCK_SHARED_HOMES_MIXED"])
 
-        XCTAssertTrue(app.staticTexts["Main Home"].waitForExistence(timeout: 10))
-
-        app.buttons["Home Picker"].tap()
-        XCTAssertTrue(app.buttons["Manage Homes"].waitForExistence(timeout: 5))
-        app.buttons["Manage Homes"].tap()
+        let row = app.cells.containing(.staticText, identifier: "Beach House").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
 
         let leaveButton = app.buttons["Leave Beach House"]
         XCTAssertTrue(leaveButton.waitForExistence(timeout: 5))

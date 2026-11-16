@@ -24,5 +24,28 @@
         <string>circular-medium.otf</string>
         <string>circular-medium-italic.otf</string>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.barronroth.cubby.item-ref</string>
+            <key>UTTypeDescription</key>
+            <string>Cubby Item Reference</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.barronroth.cubby.location-ref</string>
+            <key>UTTypeDescription</key>
+            <string>Cubby Location Reference</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
