@@ -32,6 +32,12 @@ fresh eligibility snapshot for the navigation tree. Locking, access changes, and
 inventory revisions clear those annotations before revalidation.
 Entity export is a plain-text summary only; receiving text never creates items.
 
+`AddItemsToCubbyIntent` ("Add Items to Cubby") takes text and opens the app to
+the add-from-a-list review (`Views/BulkAdd`). It never saves on its own: the user
+confirms the rows, and Save commits them through `AppStore.commitInventoryImportPlan`.
+Text that is already a JSON array of `{name, emoji?, location}` skips the
+on-device model and goes straight to review.
+
 References:
 
 - [Custom entities](https://developer.apple.com/documentation/appintents/defining-app-entities-for-your-custom-data-types)
