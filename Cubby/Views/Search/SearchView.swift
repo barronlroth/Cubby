@@ -5,36 +5,19 @@ struct SearchView: View {
     @EnvironmentObject private var appStore: AppStore
 
     @State private var searchText = ""
-    @State private var selectedHomeID: UUID?
-
-    private var homes: [AppHome] {
-        appStore.homes
-    }
 
     private var searchResults: [AppInventoryItem] {
         guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             return []
         }
 
-        return appStore.searchItems(query: searchText, homeID: selectedHomeID)
+        // Global search always covers every home; each home has its own inline search.
+        return appStore.searchItems(query: searchText, homeID: nil)
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if homes.count > 1 {
-                    Picker("Home", selection: $selectedHomeID) {
-                        Text("All Homes")
-                            .tag(nil as UUID?)
-                        ForEach(homes) { home in
-                            Text(home.name)
-                                .tag(home.id as UUID?)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding()
-                }
-
                 if searchResults.isEmpty && !searchText.isEmpty {
                     ContentUnavailableView(
                         "No Results",
