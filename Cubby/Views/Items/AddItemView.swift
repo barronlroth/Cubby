@@ -243,9 +243,7 @@ struct AddItemView: View {
     }
 
     private var locationChevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
+        CubbyDesign.DisclosureIndicator()
     }
 
     private func saveItem() async {

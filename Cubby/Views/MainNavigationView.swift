@@ -5,7 +5,6 @@ struct MainNavigationView: View {
     @Binding var showingAddItem: Bool
     @Binding var canAddItem: Bool
     let initialSelectedHomeID: UUID?
-    @State private var showingBulkAdd = false
 
     @State private var selectedHome: AppHome?
     @State private var selectedLocation: AppStorageLocation?
@@ -15,6 +14,8 @@ struct MainNavigationView: View {
     @ObservedObject private var siriService = SiriInventoryService.shared
     @State private var presentedSiriRequest: SiriNavigationRequest?
     @State private var presentedSiriRequestID: UUID?
+    @State private var isSelectingItems = false
+    @State private var showingBulkAdd = false
 
     @Environment(\.isSearching) private var isSearching
     @Environment(\.dismissSearch) private var dismissSearch
@@ -42,7 +43,8 @@ struct MainNavigationView: View {
                 selectedLocation: $selectedLocation,
                 searchText: $searchText,
                 showingAddItem: $showingAddItem,
-                showingBulkAdd: $showingBulkAdd
+                showingBulkAdd: $showingBulkAdd,
+                isSelectingItems: $isSelectingItems
             )
             .searchable(text: $searchText, prompt: Text("Search Items"))
             .applyLiquidGlassSearchBehaviors()
@@ -53,7 +55,7 @@ struct MainNavigationView: View {
             .modifier(ContentTopMarginZero())
             .toolbar {
                 #if os(iOS)
-                if #available(iOS 26.0, *) {
+                if #available(iOS 26.0, *), !isSelectingItems {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                     ToolbarItem(placement: .bottomBar) { Spacer(minLength: 12) }
                     ToolbarItem(placement: .bottomBar) { toolbarButton }
@@ -63,6 +65,7 @@ struct MainNavigationView: View {
         } detail: {
             if let selectedLocation {
                 LocationDetailView(location: selectedLocation)
+                    .environment(\.popToHomeList) { self.selectedLocation = nil }
             } else {
                 ContentUnavailableView(
                     "Select a Location",

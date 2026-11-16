@@ -133,7 +133,6 @@ final class SiriAppIntentsTests: XCTestCase {
         XCTAssertTrue(searchAllItems.waitForExistence(timeout: 5))
         searchAllItems.tap()
         XCTAssertTrue(app.staticTexts["Search"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["All Homes"].waitForExistence(timeout: 5))
         let searchField = app.searchFields.firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
         searchField.tap()

@@ -146,9 +146,8 @@ final class CoreUserBehaviorUITests: XCTestCase {
         openDedicatedSearch(in: app)
 
         XCTAssertTrue(app.staticTexts["Search Your Items"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["All Homes"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Main Home"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Beach House"].waitForExistence(timeout: 5))
+        // Global search has no per-home filter; it always covers every home.
+        XCTAssertFalse(app.segmentedControls.firstMatch.exists)
 
         let searchField = app.searchFields.firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
@@ -161,12 +160,7 @@ final class CoreUserBehaviorUITests: XCTestCase {
         searchField.tap()
         searchField.typeText("Surfboard")
 
-        XCTAssertTrue(app.staticTexts["Surfboard"].waitForExistence(timeout: 5))
-
-        app.buttons["Main Home"].tap()
-        XCTAssertTrue(app.staticTexts["No Results"].waitForExistence(timeout: 5))
-
-        app.buttons["All Homes"].tap()
+        // Surfboard lives in Beach House while Main Home is selected: found across homes.
         XCTAssertTrue(app.staticTexts["Surfboard"].waitForExistence(timeout: 5))
 
         app.staticTexts["Surfboard"].tap()
@@ -322,8 +316,9 @@ final class CoreUserBehaviorUITests: XCTestCase {
         let app = launchApp(["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"])
 
         XCTAssertTrue(app.staticTexts["Roof Cargo Box"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Garage"].waitForExistence(timeout: 5))
-        app.staticTexts["Garage"].tap()
+        let openGarage = app.buttons["location-section-open-Garage"]
+        XCTAssertTrue(openGarage.waitForExistence(timeout: 5))
+        openGarage.tap()
 
         XCTAssertTrue(app.staticTexts["Nested Locations"].waitForExistence(timeout: 5))
 

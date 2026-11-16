@@ -116,7 +116,10 @@ final class CubbyAccessibilityAuditTests: XCTestCase {
         let app = launchStandardFixture()
         waitForHome(in: app)
         app.buttons["Home Picker"].tap()
-        XCTAssertTrue(app.buttons["Manage Homes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Manage Homes")).firstMatch
+                .waitForExistence(timeout: 5)
+        )
         XCTAssertTrue(app.buttons["Cubby Pro"].waitForExistence(timeout: 5))
 
         try validateCompactDestinationIfNeeded(app)
