@@ -23,6 +23,7 @@ struct HomeView: View {
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var searchText: String
     @Binding var showingAddItem: Bool
+    @Binding var showingBulkAdd: Bool
 
     @State private var showingAddLocation = false
     @State private var showingAddHome = false
@@ -35,7 +36,7 @@ struct HomeView: View {
     @State private var presentedSheets: Set<BlockingSheet> = []
 
     private enum BlockingSheet {
-        case addItem, addLocation, addHome, search, options, sharing
+        case addItem, bulkAdd, addLocation, addHome, search, options, sharing
     }
 
     @Environment(\.activePaywall) private var activePaywall
@@ -108,7 +109,7 @@ struct HomeView: View {
     }
 
     private var hasBlockingPresentation: Bool {
-        showingAddItem || showingAddLocation || showingAddHome || showingSearch
+        showingAddItem || showingBulkAdd || showingAddLocation || showingAddHome || showingSearch
             || showingOptions || activeShareSheet != nil || shareErrorMessage != nil
             || preparingShareHomeID != nil
             || !presentedSheets.isEmpty
@@ -176,6 +177,12 @@ struct HomeView: View {
                         .onAppear { presentedSheets.insert(.addItem) }
                 }
             }
+            .sheet(isPresented: $showingBulkAdd, onDismiss: {
+                presentedSheets.remove(.bulkAdd)
+            }) {
+                BulkAddFlowView(initialText: nil, initialHomeID: selectedHome?.id)
+                    .onAppear { presentedSheets.insert(.bulkAdd) }
+            }
             .sheet(item: $activeShareSheet, onDismiss: {
                 presentedSheets.remove(.sharing)
             }) { context in
@@ -233,6 +240,7 @@ struct HomeView: View {
                 HomePicker(
                     selectedHome: $selectedHome,
                     showingAddHome: $showingAddHome,
+                    showingBulkAdd: $showingBulkAdd,
                     showingSearch: $showingSearch,
                     showingOptions: $showingOptions
                 )
@@ -653,6 +661,7 @@ private struct ShareHomeButtonStyle: ViewModifier {
 struct HomePicker: View {
     @Binding var selectedHome: AppHome?
     @Binding var showingAddHome: Bool
+    @Binding var showingBulkAdd: Bool
     @Binding var showingSearch: Bool
     @Binding var showingOptions: Bool
 
@@ -773,6 +782,13 @@ struct HomePicker: View {
                 utilityRow(title: "Search All Items", systemImage: "magnifyingglass") {
                     isPickerPresented = false
                     showingSearch = true
+                }
+
+                if let selectedHome, selectedHome.permission.canMutate {
+                    utilityRow(title: "Add from a List", systemImage: "list.bullet.rectangle") {
+                        isPickerPresented = false
+                        showingBulkAdd = true
+                    }
                 }
 
                 utilityRow(title: "Options", systemImage: "slider.horizontal.3") {

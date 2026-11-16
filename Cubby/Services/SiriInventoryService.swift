@@ -121,6 +121,13 @@ final class SiriInventoryService: ObservableObject {
         )
     }
 
+    /// Opens the add-from-a-list review. The text is only parsed and shown for review;
+    /// nothing is saved until the user taps Save in the app.
+    func addItems(text: String) async throws {
+        _ = try await recordsForRequest()
+        navigationRequest = SiriNavigationRequest(destination: .addItems(text))
+    }
+
     /// Refresh the UI snapshot only when its presenter can actually navigate.
     /// Doing this underneath an active editor can invalidate its interaction host.
     func prepareQueuedNavigation(id: UUID) -> Bool {

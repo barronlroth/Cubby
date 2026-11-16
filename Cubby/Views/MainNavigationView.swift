@@ -5,6 +5,7 @@ struct MainNavigationView: View {
     @Binding var showingAddItem: Bool
     @Binding var canAddItem: Bool
     let initialSelectedHomeID: UUID?
+    @State private var showingBulkAdd = false
 
     @State private var selectedHome: AppHome?
     @State private var selectedLocation: AppStorageLocation?
@@ -40,7 +41,8 @@ struct MainNavigationView: View {
                 selectedHome: $selectedHome,
                 selectedLocation: $selectedLocation,
                 searchText: $searchText,
-                showingAddItem: $showingAddItem
+                showingAddItem: $showingAddItem,
+                showingBulkAdd: $showingBulkAdd
             )
             .searchable(text: $searchText, prompt: Text("Search Items"))
             .applyLiquidGlassSearchBehaviors()
@@ -131,6 +133,9 @@ struct MainNavigationView: View {
         .onChange(of: showingAddItem) { _, isPresented in
             if !isPresented { presentPendingSiriNavigation() }
         }
+        .onChange(of: showingBulkAdd) { _, isPresented in
+            if !isPresented { presentPendingSiriNavigation() }
+        }
         .onChange(of: siriService.hasPresentationBlockers) { _, isBlocked in
             if !isBlocked { presentPendingSiriNavigation() }
         }
@@ -197,12 +202,21 @@ struct MainNavigationView: View {
             SiriSearchResultsView(initialQuery: query) {
                 siriService.acknowledgeNavigation(id: request.id)
             }
+        case .addItems(let text):
+            BulkAddFlowView(
+                initialText: text,
+                initialHomeID: selectedHome?.id,
+                onAppearHandled: {
+                    siriService.acknowledgeNavigation(id: request.id)
+                }
+            )
         }
     }
 
     private func presentPendingSiriNavigation() {
         guard proAccessManager.entitlementState == .pro,
               !showingAddItem,
+              !showingBulkAdd,
               !siriService.hasPresentationBlockers,
               presentedSiriRequest == nil,
               let request = siriService.navigationRequest else { return }
@@ -243,7 +257,30 @@ struct MainNavigationView: View {
         #endif
     }
 
+    @ViewBuilder
     private var toolbarButton: some View {
+        if isSearchEngaged {
+            plainToolbarButton
+        } else {
+            // Tap adds one item; press and hold offers adding several from a list.
+            Menu {
+                Button("Add Item", systemImage: "plus", action: handleToolbarButtonTap)
+                Button("Add from a List", systemImage: "list.bullet.rectangle", action: handleBulkAddTap)
+            } label: {
+                Image(systemName: toolbarIconName)
+                    .font(.title3.weight(.semibold))
+            } primaryAction: {
+                handleToolbarButtonTap()
+            }
+            .labelStyle(.iconOnly)
+            .controlSize(.large)
+            .disabled(!canAddItem)
+            .accessibilityLabel(toolbarAccessibilityLabel)
+            .accessibilityHint(toolbarAccessibilityHint)
+        }
+    }
+
+    private var plainToolbarButton: some View {
         Button(action: handleToolbarButtonTap) {
             Image(systemName: toolbarIconName)
                 .font(.title3.weight(.semibold))
@@ -267,7 +304,19 @@ struct MainNavigationView: View {
         if isSearchEngaged {
             return "Clears the current search text"
         }
-        return canAddItem ? "Opens the new item form" : "Select a home to add items"
+        return canAddItem
+            ? "Opens the new item form. Press and hold to add several items from a list."
+            : "Select a home to add items"
+    }
+
+    private func handleBulkAddTap() {
+        guard canAddItem, let selectedHome else { return }
+        let gate = appStore.canCreateItem(homeID: selectedHome.id, isPro: proAccessManager.isPro)
+        guard gate.isAllowed else {
+            activePaywall.wrappedValue = PaywallContext(reason: gate.reason == .overLimit ? .overLimit : .itemLimitReached)
+            return
+        }
+        showingBulkAdd = true
     }
 
     private func handleToolbarButtonTap() {

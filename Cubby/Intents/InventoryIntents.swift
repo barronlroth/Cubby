@@ -66,6 +66,36 @@ struct SearchInventoryIntent: AppIntent {
     }
 }
 
+/// Opens Cubby to review items found in free-form text (a ramble, a list, or JSON).
+/// Nothing is saved until the user confirms the review in the app.
+struct AddItemsToCubbyIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add Items to Cubby"
+    static let description = IntentDescription(
+        "Open Cubby to review items found in text, such as a list or a walk-through of a room, before adding them.",
+        categoryName: "Inventory"
+    )
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let supportedModes: IntentModes = .foreground
+
+    @Parameter(
+        title: "Text",
+        description: "What's where. A ramble, one item per line, or a JSON array of {name, emoji, location}.",
+        inputOptions: String.IntentInputOptions(multiline: true),
+        requestValueDialog: "What would you like to add?"
+    )
+    var text: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add items from \(\.$text) to Cubby")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        try await SiriInventoryService.shared.addItems(text: text)
+        return .result()
+    }
+}
+
 struct CubbyAppShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -92,6 +122,15 @@ struct CubbyAppShortcuts: AppShortcutsProvider {
             phrases: ["Search my inventory in \(.applicationName)"],
             shortTitle: "Search Inventory",
             systemImageName: "magnifyingglass"
+        )
+        AppShortcut(
+            intent: AddItemsToCubbyIntent(),
+            phrases: [
+                "Add items to \(.applicationName)",
+                "Add a list to \(.applicationName)"
+            ],
+            shortTitle: "Add Items",
+            systemImageName: "text.badge.plus"
         )
     }
 }
