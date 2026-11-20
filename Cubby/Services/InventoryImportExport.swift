@@ -279,7 +279,7 @@ struct InventoryHomeContextExportBuilder {
     }
 
     private static func makeLocationPathIndex(from locations: [AppStorageLocation]) -> [UUID: [String]] {
-        let locationsByID = Dictionary(uniqueKeysWithValues: locations.map { ($0.id, $0) })
+        let locationsByID = Dictionary(locations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var pathsByID: [UUID: [String]] = [:]
 
         func path(for location: AppStorageLocation, visitedIDs: Set<UUID> = []) -> [String] {
@@ -839,7 +839,7 @@ private extension InventoryImportDryRunPlanner {
     }
 
     func makeLocationPathIndex(from locations: [AppStorageLocation]) -> [UUID: [String]] {
-        let locationsByID = Dictionary(uniqueKeysWithValues: locations.map { ($0.id, $0) })
+        let locationsByID = Dictionary(locations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var pathsByID: [UUID: [String]] = [:]
 
         func path(for location: AppStorageLocation, visitedIDs: Set<UUID> = []) -> [String] {
