@@ -47,4 +47,53 @@ final class StorageLocationPickerUITests: XCTestCase {
             "Master Bedroom > Walk-in Closet > Top Shelf"
         )
     }
+
+    /// Regression: tapping a row's plus without searching first toggles that
+    /// row's disclosure group, and the Add Sub-location sheet used to close as
+    /// soon as it opened.
+    @MainActor
+    func testSubLocationSheetStaysOpenWithoutSearching() throws {
+        let app = XCUIApplication(bundleIdentifier: "com.barronroth.Cubby")
+        app.launchArguments.append(contentsOf: ["UI-TESTING", "SEED_MOCK_DATA", "FORCE_PRO_TIER"])
+        app.launch()
+
+        let addItemButton = app.buttons["Add Item"]
+        XCTAssertTrue(addItemButton.waitForExistence(timeout: 10))
+        addItemButton.tap()
+
+        let locationButton = app.buttons["add-item-location-picker-button"]
+        XCTAssertTrue(locationButton.waitForExistence(timeout: 5))
+        locationButton.tap()
+
+        let addSubLocationButton = app.buttons["Add sub-location under Master Bedroom"]
+        XCTAssertTrue(addSubLocationButton.waitForExistence(timeout: 5))
+        addSubLocationButton.tap()
+
+        let sheetTitle = app.staticTexts["Add Sub-location"]
+        XCTAssertTrue(sheetTitle.waitForExistence(timeout: 5))
+
+        // Give any spurious dismissal time to happen.
+        let stillOpen = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"),
+            object: sheetTitle
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [stillOpen], timeout: 2), .timedOut)
+
+        let nameField = app.textFields["Sub-location name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Under Bed")
+
+        app.buttons["save-location-button"].tap()
+
+        XCTAssertTrue(app.staticTexts["Under Bed"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons["Done"].tap()
+
+        let updatedLocationButton = app.buttons["add-item-location-picker-button"]
+        XCTAssertTrue(updatedLocationButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            updatedLocationButton.value as? String,
+            "Master Bedroom > Under Bed"
+        )
+    }
 }

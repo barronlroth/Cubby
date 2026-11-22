@@ -11,6 +11,11 @@ struct StorageLocationPicker: View {
 
     @State private var searchText = ""
     @State private var showingAddLocation = false
+    /// Parent of the sub-location being created. The sheet lives here, outside
+    /// the List, because a sheet attached to a row is torn down when that row's
+    /// cell is reloaded (tapping a row's plus also toggles its disclosure group,
+    /// which inserts or removes child rows), so it closed as soon as it opened.
+    @State private var subLocationParent: AppStorageLocation?
     @State private var expandedLocations = Set<UUID>()
 
     private var rootLocations: [AppStorageLocation] {
@@ -39,7 +44,7 @@ struct StorageLocationPicker: View {
                             selectedLocation: $selectedLocation,
                             expandedLocations: $expandedLocations,
                             searchText: searchText,
-                            onLocationCreated: handleLocationCreated
+                            onAddSubLocation: { subLocationParent = $0 }
                         )
                     }
                 } else {
@@ -82,6 +87,13 @@ struct StorageLocationPicker: View {
                     onLocationCreated: handleLocationCreated
                 )
             }
+            .sheet(item: $subLocationParent) { parent in
+                AddLocationView(
+                    homeId: parent.homeID,
+                    parentLocation: parent,
+                    onLocationCreated: handleLocationCreated
+                )
+            }
         }
     }
 
@@ -107,9 +119,8 @@ struct LocationPickerRow: View {
     @Binding var selectedLocation: AppStorageLocation?
     @Binding var expandedLocations: Set<UUID>
     let searchText: String
-    let onLocationCreated: (AppStorageLocation) -> Void
+    let onAddSubLocation: (AppStorageLocation) -> Void
 
-    @State private var showingAddLocation = false
     @State private var showingDeleteConfirmation = false
     @State private var deletionErrorMessage: String?
 
@@ -169,7 +180,7 @@ struct LocationPickerRow: View {
                             selectedLocation: $selectedLocation,
                             expandedLocations: $expandedLocations,
                             searchText: searchText,
-                            onLocationCreated: onLocationCreated
+                            onAddSubLocation: onAddSubLocation
                         )
                         .padding(.leading, 20)
                     }
@@ -190,7 +201,7 @@ struct LocationPickerRow: View {
                             .fontWeight(.semibold)
                     }
 
-                    Button(action: { showingAddLocation = true }) {
+                    Button(action: { onAddSubLocation(location) }) {
                         Image(systemName: "plus.circle")
                             .foregroundStyle(isSelected ? .white : Color.accentColor)
                     }
@@ -212,7 +223,7 @@ struct LocationPickerRow: View {
                 .sensoryFeedback(.selection, trigger: selectionFeedbackCount)
                 .contextMenu {
                     Button {
-                        showingAddLocation = true
+                        onAddSubLocation(location)
                     } label: {
                         Label("Add Nested Location", systemImage: "folder.badge.plus")
                     }
@@ -225,13 +236,6 @@ struct LocationPickerRow: View {
                     .disabled(!location.canDelete)
                     .accessibilityHint("Only empty leaf locations can be deleted.")
                 }
-            }
-            .sheet(isPresented: $showingAddLocation) {
-                AddLocationView(
-                    homeId: location.homeID,
-                    parentLocation: location,
-                    onLocationCreated: onLocationCreated
-                )
             }
             .alert("Delete Location?", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {}
