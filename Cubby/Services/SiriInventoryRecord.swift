@@ -20,6 +20,8 @@ struct SiriNavigationRequest: Identifiable, Equatable {
     enum Destination: Equatable {
         case item(UUID)
         case search(String)
+        /// Text to review before adding items, from the "Add Items to Cubby" action.
+        case addItems(String)
     }
 
     let id = UUID()
