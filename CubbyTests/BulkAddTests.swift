@@ -153,16 +153,13 @@ struct TranscriptChunkerTests {
 struct BulkAddLocationTreeTests {
     let fixture = BulkAddHomeFixture()
 
-    @Test("Builds full paths with short IDs from the home's locations only")
+    @Test("Builds full paths from the home's locations only")
     func buildsPaths() {
         let otherHome = location("Attic", home: UUID(), path: "Attic")
         let tree = BulkAddLocationTree(homeID: fixture.homeID, locations: fixture.locations + [otherHome])
         #expect(tree.entries.count == 7)
         #expect(tree.entries.map(\.displayPath).contains("Garage > Shelf 2 > Red bin"))
         #expect(!tree.entries.map(\.displayPath).contains("Attic"))
-        #expect(tree.entries.map(\.shortID) == (1...7).map { "L\($0)" })
-        let redBin = tree.entries.first { $0.id == fixture.redBin.id }
-        #expect(tree.entry(shortID: " l\(redBin!.shortID.dropFirst()) ")?.id == fixture.redBin.id)
         #expect(tree.unsorted?.id == fixture.unsorted.id)
     }
 
@@ -183,6 +180,39 @@ struct BulkAddLocationTreeTests {
         #expect(tree.match(path: ["Top Shelf"]) == nil)
         #expect(tree.destination(forPath: ["Top Shelf"]) == .new(["Top Shelf"]))
         #expect(tree.match(path: []) == nil)
+    }
+
+    @Test("Spoken places match saved names despite articles, number words, and partial room names")
+    func spokenForms() {
+        let tree = fixture.tree
+        #expect(tree.match(path: ["the garage", "shelf two", "the red bin"])?.id == fixture.redBin.id)
+        #expect(tree.match(path: ["Garage", "second shelf"]) == nil)
+        #expect(tree.match(path: ["kitchen", "top shelf"])?.id == fixture.kitchenTop.id)
+        #expect(BulkAddText.spokenKey("Under the Bed") == "under bed")
+        #expect(BulkAddText.displaySegment("the red bin") == "Red Bin")
+        #expect(BulkAddText.displaySegment("shelf two") == "Shelf 2")
+        #expect(BulkAddText.displaySegment("box of cables") == "Box of Cables")
+        #expect(BulkAddText.title(name: "Headlamps", quantity: 2) == "Headlamps (2)")
+        #expect(BulkAddText.title(name: "Stove", quantity: 1) == "Stove")
+    }
+
+    /// Barron's first device test: the home had only Master Bedroom > Under Bed, and the model
+    /// put garage items under the bed. Unknown places must become New, not snap to a saved one.
+    @Test("Unknown rooms become New; 'under the bed' finds the only Under Bed")
+    func reproHome() {
+        let homeID = UUID()
+        let unsorted = location("Unsorted", home: homeID, path: "Unsorted")
+        let bedroom = location("Master Bedroom", home: homeID, path: "Master Bedroom")
+        let underBed = location("Under Bed", home: homeID, parent: bedroom.id, path: "Master Bedroom > Under Bed")
+        let tree = BulkAddLocationTree(homeID: homeID, locations: [unsorted, bedroom, underBed])
+
+        #expect(tree.destination(forPath: ["Garage", "Shelf two", "red bin"]) == .new(["Garage", "Shelf 2", "Red Bin"]))
+        #expect(tree.destination(forPath: ["under the bed"]) == .existing(underBed.id))
+        #expect(tree.destination(forPath: ["Bedroom", "Under the bed"]) == .existing(underBed.id))
+        #expect(tree.destination(forPath: ["bedroom"]) == .existing(bedroom.id))
+        #expect(tree.destination(forPath: ["Bedroom", "Closet"]) == .new(["Master Bedroom", "Closet"]))
+        #expect(tree.destination(forPath: ["Garage", "Bed"]) == .new(["Garage", "Bed"]))
+        #expect(!tree.promptLines(limit: 10).contains("Unsorted"))
     }
 
     @Test("A new container under a known location keeps the known parent")
@@ -245,48 +275,101 @@ struct BulkAddMergerTests {
         #expect(merged.map(\.name) == ["Tent Stakes"])
     }
 
-    @Test("Model rows resolve short IDs, new paths, and fall back to the carried room")
+    @Test("Model rows keep the spoken place, format quantities, and fall back to the carried place")
     func modelRowConversion() {
         let tree = fixture.tree
-        let redBinID = tree.entries.first { $0.id == fixture.redBin.id }!.shortID
-        let byID = FoundationModelInventoryParser.candidate(
-            name: "Headlamps (2)", emoji: "🔦", locationID: redBinID, newLocationPath: "",
-            tree: tree, carriedLocation: ""
+        let placed = FoundationModelInventoryParser.candidate(
+            name: "two Headlamps", quantity: 2, emoji: "🔦", place: ["garage", "shelf two", "red bin"],
+            tree: tree, carriedPlace: []
         )
-        #expect(byID == BulkAddCandidate(name: "Headlamps (2)", emoji: "🔦", destination: .existing(fixture.redBin.id)))
+        #expect(placed == BulkAddCandidate(name: "Headlamps (2)", emoji: "🔦", destination: .existing(fixture.redBin.id)))
 
-        let byPath = FoundationModelInventoryParser.candidate(
-            name: "Tent Stakes", emoji: "not an emoji", locationID: "L99", newLocationPath: "Garage > Shelf 2 > Blue bin",
-            tree: tree, carriedLocation: ""
+        let newPlace = FoundationModelInventoryParser.candidate(
+            name: "Tent Stakes", quantity: 1, emoji: "not an emoji", place: ["Garage > Shelf 2 > blue bin"],
+            tree: tree, carriedPlace: []
         )
-        #expect(byPath == BulkAddCandidate(name: "Tent Stakes", emoji: nil, destination: .new(["Garage", "Shelf 2", "Blue bin"])))
+        #expect(newPlace == BulkAddCandidate(name: "Tent Stakes", emoji: nil, destination: .new(["Garage", "Shelf 2", "Blue Bin"])))
 
         let carried = FoundationModelInventoryParser.candidate(
-            name: "Jumper Cables", emoji: "", locationID: "", newLocationPath: "",
-            tree: tree, carriedLocation: "Garage > Shelf 2"
+            name: "Jumper Cables", quantity: 1, emoji: "", place: ["unknown"],
+            tree: tree, carriedPlace: ["Garage", "Shelf 2"]
         )
         #expect(carried.destination == .existing(fixture.shelf2.id))
 
         let nowhere = FoundationModelInventoryParser.candidate(
-            name: "Kite", emoji: "🪁", locationID: "", newLocationPath: "",
-            tree: tree, carriedLocation: ""
+            name: "Kite", quantity: 1, emoji: "🪁", place: [], tree: tree, carriedPlace: []
         )
         #expect(nowhere.destination == nil)
     }
 
-    @Test("The prompt lists known locations, the carried room, and marks context as processed")
+    @Test("Position details are dropped, room-relative places join the current room, plurals merge")
+    func spokenCleanup() {
+        let tree = fixture.tree
+        #expect(FoundationModelInventoryParser.cleanPlace(["Kitchen", "Pantry", "On the left side"]) == ["Kitchen", "Pantry"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Bedroom", "Closet", "Floor"]) == ["Bedroom", "Closet"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Basement", "Down there by the stairs"]) == ["Basement"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Office", "Floor next to desk"]) == ["Office"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Basement", "With the Halloween decorations"]) == ["Basement"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Garage", "Top Shelf"]) == ["Garage", "Top Shelf"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Bedroom", "Under the bed"]) == ["Bedroom", "Under the bed"])
+
+        let sink = FoundationModelInventoryParser.candidate(
+            name: "Fire Extinguisher", quantity: 1, emoji: "🧯", place: ["Under the sink"],
+            tree: tree, carriedPlace: ["Kitchen", "Junk Drawer"]
+        )
+        #expect(sink.destination == .new(["Kitchen", "Under Sink"]))
+        // A relative place that matches a saved location is not re-rooted.
+        let shelf = FoundationModelInventoryParser.candidate(
+            name: "Stove", quantity: 1, emoji: "", place: ["in the red bin"],
+            tree: tree, carriedPlace: ["Kitchen"]
+        )
+        #expect(shelf.destination == .existing(fixture.redBin.id))
+
+        let merged = BulkAddMerger().merge([
+            BulkAddCandidate(name: "Sleeping Bags (2)", emoji: nil, destination: .new(["Bedroom", "Closet"])),
+            BulkAddCandidate(name: "Sleeping Bag (2)", emoji: nil, destination: .new(["Bedroom", "Closet"]))
+        ])
+        #expect(merged.count == 1)
+        #expect(BulkAddText.titleCased("camping stove") == "Camping Stove")
+        #expect(BulkAddText.titleCased("iPhone charger") == "iPhone Charger")
+        #expect(BulkAddText.titleCased("box of AA batteries") == "Box of AA Batteries")
+        #expect(BulkAddText.titleCased("GUITAR CASE") == "Guitar Case")
+        #expect(BulkAddText.titleCased("HDMI cables") == "HDMI Cables")
+        #expect(FoundationModelInventoryParser.stripQuantity("First Aid Kit") == "First Aid Kit")
+        #expect(FoundationModelInventoryParser.stripQuantity("two headlamps") == "headlamps")
+        #expect(FoundationModelInventoryParser.cleanPlace(["Shed", "Hook by the door"]) == ["Shed"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Bathroom", "Upstairs", "Under Sink"]) == ["Bathroom", "Under Sink"])
+        #expect(FoundationModelInventoryParser.cleanPlace(["Garage", "Tool Wall", "Hook"]) == ["Garage", "Tool Wall"])
+
+        let echo = FoundationModelInventoryParser.candidate(
+            name: "GUITAR CASE", quantity: 1, emoji: "🎸", place: ["Garage", "Shelf 2", "GUITAR"],
+            tree: tree, carriedPlace: []
+        )
+        #expect(echo == BulkAddCandidate(name: "Guitar Case", emoji: "🎸", destination: .existing(fixture.shelf2.id)))
+        #expect(tree.destination(forPath: ["Basement", "Garage", "Top Shelf"]) == .existing(fixture.garageTop.id))
+
+        let rows = FoundationModelInventoryParser.withoutContainerRows([
+            .init(name: "Blue Tote", quantity: 1, emoji: "", place: ["Basement"]),
+            .init(name: "Halloween Decorations", quantity: 1, emoji: "", place: ["Basement", "Blue Tote"])
+        ])
+        #expect(rows.map(\.name) == ["Halloween Decorations"])
+    }
+
+    @Test("The prompt offers saved places as spelling hints, the carried place, and marks context")
     func promptContents() {
         let tree = fixture.tree
         let prompt = FoundationModelInventoryParser.prompt(
-            context: "earlier words", text: SampleRambles.garage, part: 2, of: 3,
-            carriedLocation: "Garage > Shelf 2", homeName: "Juniper House", tree: tree
+            context: "earlier words", text: SampleRambles.garage,
+            carriedPlace: ["Garage", "Shelf 2"], tree: tree, includesVocabulary: true
         )
-        #expect(prompt.contains("Known locations in Juniper House:"))
-        #expect(prompt.contains(": Garage > Shelf 2 > Red bin"))
-        #expect(prompt.contains("the speaker is in: Garage > Shelf 2"))
-        #expect(prompt.contains("Do not list items from it:\n\"\"\"\nearlier words"))
-        #expect(prompt.contains("Passage 2 of 3:"))
-        #expect(FoundationModelInventoryParser.resolvedPathText(tree.entries[0].shortID, tree: tree) == tree.entries[0].displayPath)
+        #expect(prompt.contains("for spelling only"))
+        #expect(prompt.contains("- Garage > Shelf 2 > Red bin"))
+        #expect(prompt.contains("the speaker was in: Garage > Shelf 2"))
+        #expect(prompt.contains("Do not list items from them:\n\"\"\"\nearlier words"))
+        let bare = FoundationModelInventoryParser.prompt(
+            context: "", text: "x", carriedPlace: [], tree: tree, includesVocabulary: false
+        )
+        #expect(!bare.contains("Red bin"))
     }
 }
 

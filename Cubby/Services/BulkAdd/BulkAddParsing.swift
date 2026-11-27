@@ -38,18 +38,142 @@ enum BulkAddText {
     static func pathKey(_ path: [String]) -> String {
         path.map(normalized).joined(separator: "\u{1F}")
     }
+
+    static let numberWords: [String: String] = [
+        "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+        "seven": "7", "eight": "8", "nine": "9", "ten": "10", "eleven": "11", "twelve": "12"
+    ]
+    /// Ordinals name places ("second shelf") but are never item counts ("First Aid Kit").
+    static let ordinalWords: [String: String] = [
+        "first": "1", "second": "2", "third": "3", "fourth": "4", "fifth": "5"
+    ]
+    private static let fillerWords: Set<String> = ["the", "a", "an", "my", "our", "this", "that", "his", "her", "their"]
+    private static let lowercaseTitleWords: Set<String> = ["of", "and", "in", "on", "the", "a", "an", "for", "with", "to"]
+
+    /// How a spoken place compares to a saved one: "under the bed" matches "Under Bed",
+    /// "shelf two" matches "Shelf 2", and case, punctuation, and articles are ignored.
+    static func spokenKey(_ segment: String) -> String {
+        var words = normalized(segment)
+            .lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map { numberWords[String($0)] ?? ordinalWords[String($0)] ?? String($0) }
+            .filter { !fillerWords.contains($0) }
+        while words.count > 1, let first = words.first, leadingPlaceWords.contains(first) {
+            words.removeFirst()
+        }
+        return words.joined(separator: " ")
+    }
+
+    /// "in the red bin" and "on top shelf" name the same place as "Red Bin" and "Top Shelf".
+    private static let leadingPlaceWords: Set<String> = ["in", "inside", "on", "at", "into"]
+
+    /// Spoken position details that are not storage locations of their own: "on the floor",
+    /// "on the left side", "by the stairs", "next to the desk", "with the decorations".
+    /// They are dropped from the path so the item lands in the place that contains them.
+    static func isPositionDetail(_ segment: String) -> Bool {
+        let words = normalized(segment).lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { !fillerWords.contains($0) }
+        guard let first = words.first else { return true }
+        let relational: Set<String> = ["by", "near", "beside", "next", "behind", "with", "against", "around", "down", "over", "up", "there", "here", "somewhere"]
+        if relational.contains(first) { return true }
+        // "Hook by the door", "shelf above the washer": a spot described relative to something else.
+        if words.dropFirst().contains(where: { ["by", "near", "beside", "next", "above", "below", "against"].contains($0) }) {
+            return true
+        }
+        let rest = words.drop(while: { leadingPlaceWords.contains($0) })
+        if let lead = rest.first, ["floor", "ground", "left", "right", "corner"].contains(lead) { return true }
+        let detailOnly: Set<String> = ["floor", "ground", "left", "right", "side", "corner", "back", "front", "middle", "bottom", "top", "there", "here", "it",
+                                       "upstairs", "downstairs", "hook", "hooks", "wall", "walls"]
+        return !rest.isEmpty && rest.allSatisfy { detailOnly.contains($0) }
+    }
+
+    /// Places named relative to the room ("under the sink") belong inside the current room.
+    static func isRelativeToRoom(_ segment: String) -> Bool {
+        let first = normalized(segment).lowercased().split(separator: " ").first.map(String.init) ?? ""
+        return ["under", "beneath", "above", "inside", "behind"].contains(first)
+    }
+
+    /// Display form for a new location the speaker named: "the red bin" becomes "Red Bin",
+    /// "shelf two" becomes "Shelf 2". Names the speaker already capitalized are kept.
+    static func displaySegment(_ segment: String) -> String {
+        var words = clean(segment).split(separator: " ").map(String.init)
+        while let first = words.first, words.count > 1,
+              fillerWords.contains(first.lowercased()) || leadingPlaceWords.contains(first.lowercased()) {
+            words.removeFirst()
+        }
+        if words.count > 1 {
+            words = words.enumerated()
+                .filter { $0.offset == 0 || !["the", "a", "an", "my", "our"].contains($0.element.lowercased()) }
+                .map(\.element)
+        }
+        let hasCapital = words.contains { $0.first?.isUppercase == true }
+        return words.enumerated().map { index, word in
+            if let digit = numberWords[word.lowercased()] { return digit }
+            if hasCapital { return word }
+            if index > 0, lowercaseTitleWords.contains(word) { return word }
+            return word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ")
+    }
+
+    /// "Camping stove" becomes "Camping Stove". Words with their own capitals ("iPhone",
+    /// "AA") are kept, and short joining words stay lowercase.
+    static func titleCased(_ name: String) -> String {
+        var text = clean(name)
+        // The model sometimes answers in all caps; keep short acronyms like "TV" or "HDMI".
+        if !text.contains(where: \.isLowercase), text.split(separator: " ").contains(where: { $0.count > 4 }) {
+            text = text.lowercased()
+        }
+        return text.split(separator: " ").enumerated().map { index, word in
+            let text = String(word)
+            if text.contains(where: \.isUppercase) && !(text.first?.isUppercase == true && text.dropFirst().allSatisfy { !$0.isUppercase }) {
+                return text
+            }
+            if index > 0, lowercaseTitleWords.contains(text.lowercased()) { return text.lowercased() }
+            return text.prefix(1).uppercased() + text.dropFirst()
+        }.joined(separator: " ")
+    }
+
+    /// "Headlamps" with a quantity of 2 becomes "Headlamps (2)".
+    static func title(name: String, quantity: Int) -> String {
+        let cleaned = clean(name)
+        guard quantity > 1, !cleaned.hasSuffix(")") else { return cleaned }
+        return "\(cleaned) (\(quantity))"
+    }
+
+    /// Item identity for dedupe: "Sleeping Bag (2)" and "sleeping bags (2)" are the same item.
+    static func itemKey(_ name: String) -> String {
+        normalized(name).lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map { word -> String in
+                var text = String(word)
+                if text.count > 3, text.hasSuffix("s"), !text.hasSuffix("ss") { text.removeLast() }
+                return text
+            }
+            .joined(separator: " ")
+    }
+
+    static func wordsContain(_ container: String, _ part: String) -> Bool {
+        guard !part.isEmpty else { return false }
+        let containerWords = container.split(separator: " ")
+        let partWords = part.split(separator: " ")
+        guard partWords.count <= containerWords.count else { return false }
+        return (0...(containerWords.count - partWords.count)).contains { start in
+            Array(containerWords[start..<(start + partWords.count)]) == partWords
+        }
+    }
 }
 
-/// The target home's locations as full paths, each with a short ID the model can echo back.
-/// Short IDs ("L1", "L2", ...) keep the prompt small; UUIDs never leave the device anyway,
-/// but 36-character tokens would crowd the model's context window.
+/// The target home's locations as full paths. Matching spoken places to these is done
+/// here, deterministically; the language model only reports what the speaker said.
 struct BulkAddLocationTree: Equatable {
     struct Entry: Equatable, Identifiable {
         let id: UUID
-        let shortID: String
         let path: [String]
 
         var displayPath: String { path.joined(separator: " > ") }
+        var keys: [String] { path.map(BulkAddText.spokenKey) }
     }
 
     let entries: [Entry]
@@ -79,16 +203,10 @@ struct BulkAddLocationTree: Equatable {
             return components
         }
 
-        let sorted = homeLocations
-            .map { (location: $0, path: path(for: $0)) }
-            .sorted { lhs, rhs in
-                lhs.path.joined(separator: " > ")
-                    .localizedStandardCompare(rhs.path.joined(separator: " > ")) == .orderedAscending
-            }
         self.init(
-            entries: sorted.enumerated().map { offset, value in
-                Entry(id: value.location.id, shortID: "L\(offset + 1)", path: value.path)
-            }
+            entries: homeLocations
+                .map { Entry(id: $0.id, path: path(for: $0)) }
+                .sorted { $0.displayPath.localizedStandardCompare($1.displayPath) == .orderedAscending }
         )
     }
 
@@ -98,47 +216,72 @@ struct BulkAddLocationTree: Equatable {
         entries.first { $0.id == id }
     }
 
-    func entry(shortID: String) -> Entry? {
-        let trimmed = BulkAddText.clean(shortID).uppercased()
-        return entries.first { $0.shortID == trimmed }
-    }
-
     /// The home's default "Unsorted" location, used when the transcript gives no place.
     var unsorted: Entry? {
         entries.first { $0.path.count == 1 && BulkAddText.normalized($0.path[0]) == "unsorted" }
     }
 
-    /// Exact full-path match first. A partial path ("Red bin", "Shelf 2 > Red bin") matches
-    /// only when exactly one location ends with it, so ambiguous names become new rows
-    /// the user can re-point instead of silently landing in the wrong room.
+    /// Matches a spoken place to a saved location:
+    /// 1. the same full path, ignoring case, articles, and "two" vs "2";
+    /// 2. otherwise the only location whose own name matches the last spoken part, when every
+    ///    other spoken part fits one of its parents ("Bedroom > under the bed" fits
+    ///    "Master Bedroom > Under Bed");
+    /// 3. a lone room name may match the only top-level room containing it ("Bedroom").
+    /// Anything ambiguous or unknown returns nil, so it becomes a New location to re-point.
     func match(path: [String]) -> Entry? {
-        let cleaned = path.map(BulkAddText.clean).filter { !$0.isEmpty }
-        guard !cleaned.isEmpty else { return nil }
-        if let exact = entriesByPathKey[BulkAddText.pathKey(cleaned)] {
+        let spoken = path.map(BulkAddText.spokenKey).filter { !$0.isEmpty }
+        guard let last = spoken.last else { return nil }
+        if let exact = entries.first(where: { $0.keys == spoken }) {
             return exact
         }
-        let suffix = cleaned.map(BulkAddText.normalized)
-        let matches = entries.filter { entry in
-            guard entry.path.count > suffix.count else { return false }
-            return Array(entry.path.suffix(suffix.count)).map(BulkAddText.normalized) == suffix
+
+        let ancestors = Array(spoken.dropLast())
+        let candidates = entries.filter { entry in
+            entry.keys.last == last && ancestors.allSatisfy { part in
+                entry.keys.dropLast().contains { Self.fits($0, part) }
+            }
         }
-        return matches.count == 1 ? matches[0] : nil
+        if candidates.count == 1 { return candidates[0] }
+        if candidates.count > 1 {
+            // Prefer the candidate whose parents the speaker named exactly.
+            let exactParents = candidates.filter { entry in
+                ancestors.allSatisfy { entry.keys.dropLast().contains($0) }
+            }
+            return exactParents.count == 1 && !ancestors.isEmpty ? exactParents[0] : nil
+        }
+
+        if spoken.count == 1 {
+            let rooms = entries.filter { $0.path.count == 1 && Self.fits($0.keys[0], last) }
+            if rooms.count == 1 { return rooms[0] }
+        }
+        return nil
     }
 
-    /// Resolves free text to an existing location when possible, otherwise to a new path.
+    private static func fits(_ saved: String, _ spoken: String) -> Bool {
+        saved == spoken || BulkAddText.wordsContain(saved, spoken) || BulkAddText.wordsContain(spoken, saved)
+    }
+
+    /// Resolves a spoken place to an existing location, or to a New path that keeps the
+    /// deepest existing parent it can find ("Garage > Shelf 2 > blue bin" under a saved
+    /// "Garage > Shelf 2" becomes New "Garage > Shelf 2 > Blue Bin").
     func destination(forPath path: [String]) -> BulkAddDestination? {
-        let cleaned = path.map(BulkAddText.clean).filter { !$0.isEmpty }
+        var cleaned = path.map(BulkAddText.clean).filter { !BulkAddText.spokenKey($0).isEmpty }
         guard !cleaned.isEmpty else { return nil }
+        // "Basement > Garage > Top Shelf": a saved room named after another place starts the path.
+        let roomKeys = Set(entries.filter { $0.path.count == 1 }.map { $0.keys[0] })
+        if match(path: cleaned) == nil,
+           let restart = cleaned.indices.dropFirst().last(where: { roomKeys.contains(BulkAddText.spokenKey(cleaned[$0])) }) {
+            cleaned = Array(cleaned[restart...])
+        }
         if let entry = match(path: cleaned) {
             return .existing(entry.id)
         }
-        // Keep the known parent when the model names a new bin inside an existing shelf.
         for prefixLength in stride(from: cleaned.count - 1, through: 1, by: -1) {
-            if let parent = entriesByPathKey[BulkAddText.pathKey(Array(cleaned.prefix(prefixLength)))] {
-                return .new(parent.path + cleaned.dropFirst(prefixLength))
+            if let parent = match(path: Array(cleaned.prefix(prefixLength))) {
+                return .new(parent.path + cleaned.dropFirst(prefixLength).map(BulkAddText.displaySegment))
             }
         }
-        return .new(cleaned)
+        return .new(cleaned.map(BulkAddText.displaySegment))
     }
 
     func displayPath(for destination: BulkAddDestination) -> String {
@@ -159,10 +302,12 @@ struct BulkAddLocationTree: Equatable {
         }
     }
 
-    /// Compact prompt text: one "L3: Garage > Shelf 2 > Red bin" line per location.
+    /// Prompt vocabulary: one saved path per line, so the model spells known places the
+    /// same way. It is told to report what was said, not to pick from this list.
     func promptLines(limit: Int) -> String {
         entries.prefix(limit)
-            .map { "\($0.shortID): \($0.displayPath)" }
+            .filter { $0.id != unsorted?.id }
+            .map { "- \($0.displayPath)" }
             .joined(separator: "\n")
     }
 }
@@ -271,7 +416,7 @@ struct BulkAddMerger {
         case nil:
             place = "none"
         }
-        return "\(BulkAddText.normalized(name))|\(place)"
+        return "\(BulkAddText.itemKey(name))|\(place)"
     }
 }
 
